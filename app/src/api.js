@@ -25,6 +25,20 @@ export function countTrashDossiers(wsId) {
     .then(({ count }) => count || 0)
 }
 
+/** Met à jour les métadonnées d'une photo (teinte, favori, description…). */
+export function updatePatientPhoto(id, fields) {
+  return supabase
+    .from('patient_photos')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single()
+    .then(({ data, error }) => {
+      if (error) console.warn('updatePatientPhoto:', error.message)
+      return data
+    })
+}
+
 export function getPhoto(id) {
   return supabase
     .from('patient_photos')

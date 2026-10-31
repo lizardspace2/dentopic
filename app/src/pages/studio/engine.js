@@ -416,7 +416,7 @@ export class Editor {
    * handles : calque dont on affiche les poignées de transformation.
    * compare : fraction 0..1 — écran partagé original (gauche) / édité (droite).
    */
-  render(target, view, { showOriginal = false, cropRect = null, handles = null, compare = null } = {}) {
+  render(target, view, { showOriginal = false, cropRect = null, handles = null, compare = null, previewRotate = 0, overlay = null, line = null } = {}) {
     const ctx = target.getContext('2d')
     ctx.clearRect(0, 0, target.width, target.height)
     if (!this.w) return
@@ -425,6 +425,12 @@ export class Editor {
     ctx.save()
     ctx.setTransform(view.scale, 0, 0, view.scale, view.ox, view.oy)
     ctx.imageSmoothingEnabled = view.scale < 1
+    // aperçu de redressage : le document pivote avant application
+    if (previewRotate) {
+      ctx.translate(this.w / 2, this.h / 2)
+      ctx.rotate((previewRotate * Math.PI) / 180)
+      ctx.translate(-this.w / 2, -this.h / 2)
+    }
     // damier de transparence sous le document
     if (!this._checker) {
       const p = mkCanvas(12, 12)
@@ -499,6 +505,29 @@ export class Editor {
       ctx.setLineDash([6 / view.scale, 4 / view.scale])
       ctx.strokeRect(x, y, w, h)
       ctx.setLineDash([])
+    }
+    // photo de référence incrustée (guide de prise de vue) — coin bas-droit
+    if (overlay?.img) {
+      const oi = overlay.img
+      const iw = oi.naturalWidth || oi.width, ih = oi.naturalHeight || oi.height
+      const ow = this.w * 0.26, oh = ow * (ih / iw)
+      const m = this.w * 0.015, ox = this.w - ow - m, oy = this.h - oh - m
+      ctx.globalAlpha = overlay.alpha ?? 0.92
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(ox - 3 / view.scale, oy - 3 / view.scale, ow + 6 / view.scale, oh + 6 / view.scale)
+      ctx.drawImage(oi, ox, oy, ow, oh)
+      ctx.globalAlpha = 1
+    }
+    // droite de référence du redressage (tracer le plan occlusal / l'horizon)
+    if (line) {
+      const [x1, y1, x2, y2] = line
+      ctx.strokeStyle = '#4f8fe8'
+      ctx.lineWidth = 2 / view.scale
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#4f8fe8'
+      for (const [cx, cy] of [[x1, y1], [x2, y2]]) {
+        ctx.beginPath(); ctx.arc(cx, cy, 4 / view.scale, 0, 7); ctx.fill(); ctx.stroke()
+      }
     }
     // poignées de transformation du calque actif (outil Déplacement)
     if (handles && !handles.locked) {
@@ -575,6 +604,46 @@ export class Editor {
     this.sel = null
   }
 
+  /** Rotation arbitraire autour du centre (redressage plan occlusal, horizon…). */
+  rotateAngle(deg) {
+    const rad = (deg * Math.PI) / 180
+    const cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad))
+    const { w, h } = this
+    const nw = Math.round(w * cos + h * sin), nh = Math.round(w * sin + h * cos)
+    for (const l of this.layers) {
+      const next = mkCanvas(nw, nh)
+      const ctx = next.getContext('2d')
+      ctx.translate(nw / 2, nh / 2)
+      ctx.rotate(rad)
+      ctx.drawImage(l.cv, -w / 2, -h / 2)
+      l.cv = next; l.ctx = ctx; l.dx = 0; l.dy = 0
+    }
+    this.w = nw; this.h = nh; this.sel = null
+    this.markDirty()
+  }
+
+  /** Moyennes RVB + luminance du composite brut (calibrage). */
+  meanRGB() { return meanRGBOf(this.composite()) }
+
+  /** Balance des blancs « gris moyen » : les dominantes sont neutralisées. */
+  autoWB() {
+    const m = this.meanRGB()
+    const avg = (m.r + m.g + m.b) / 3
+    const cl = (v) => Math.min(2.5, Math.max(0.4, v))
+    this.wb = { r: cl(avg / (m.r || 1)), g: cl(avg / (m.g || 1)), b: cl(avg / (m.b || 1)) }
+    this.markDirty()
+    return this.wb
+  }
+
+  /** Étalonnage sur une photo de référence : BB (dominante) + exposition assorties. */
+  calibrateTo(ref) {
+    const a = this.meanRGB(), b = meanRGBOf(ref)
+    const cl = (v) => Math.min(2.5, Math.max(0.4, v))
+    this.wb = { r: cl(b.r / (a.r || 1)), g: cl(b.g / (a.g || 1)), b: cl(b.b / (a.b || 1)) }
+    this.adjust.exposure = Math.min(3, Math.max(-3, Math.log2((b.lum || 1) / (a.lum || 1))))
+    this.markDirty()
+  }
+
   // ---- Historique ----------------------------------------------------------------
 
   snapshot() {
@@ -643,6 +712,17 @@ export async function fetchImg(url) {
 
 export function rgbToHex(r, g, b) {
   return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')
+}
+
+/** Moyennes RVB + luminance d'un canvas ou d'une image (échantillonnage ~1/8). */
+export function meanRGBOf(src, step = 10) {
+  const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height
+  const cv = src.getContext ? src : (() => { const c = mkCanvas(w, h); c.getContext('2d').drawImage(src, 0, 0); return c })()
+  const d = cv.getContext('2d').getImageData(0, 0, w, h).data
+  let r = 0, g = 0, b = 0, n = 0
+  for (let i = 0; i < d.length; i += 4 * step) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++ }
+  r /= n; g /= n; b /= n
+  return { r, g, b, lum: 0.299 * r + 0.587 * g + 0.114 * b }
 }
 
 // ---- Montage avant / après -------------------------------------------------------
@@ -717,5 +797,92 @@ export function buildContactSheet(imgs, { cols = 4, cellW = 800, ratio = 4 / 3, 
     const sw = cellW / s, sh = cellH / s
     ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, dx, dy, cellW, cellH)
   })
+  return cv
+}
+
+// ---- Planche du référentiel dentaire ------------------------------------------
+//
+// Grille 3×3 : les 8 vues du protocole (portraits, sourire, intra-orales,
+// occlusales) autour d'une cellule centrale de titre. `cells` = 8 objets
+// {label, img|null} placés autour du centre ; les cases vides restent des
+// emplacements annotés (le gabarit reste utilisable même incomplet).
+
+export function buildProtocolSheet(cells, { cellW = 900, ratio = 4 / 3, gap = 16, bg = '#0b0e14', title = 'DentoPic — Cas clinique' } = {}) {
+  const cellH = Math.round(cellW / ratio)
+  const cols = 3, rows = 3
+  const w = cols * cellW + (cols + 1) * gap
+  const h = rows * cellH + (rows + 1) * gap
+  const cv = mkCanvas(w, h)
+  const ctx = cv.getContext('2d')
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, w, h)
+
+  // position de grille de chaque slot : 0..8, le centre (4) est le titre
+  const order = [0, 1, 2, 3, 5, 6, 7, 8]
+  const placements = []
+  cells.forEach((cell, i) => {
+    const pos = order[i]
+    if (pos == null || !cell) return
+    const col = pos % cols, row = Math.floor(pos / cols)
+    const dx = gap + col * (cellW + gap), dy = gap + row * (cellH + gap)
+    if (cell.img) {
+      // la photo devient un calque séparé (planche éditable vue par vue) ;
+      // le gabarit garde un cadre discret visible si le calque est masqué
+      placements.push({ label: cell.label, dx, dy, w: cellW, h: cellH, cv: sheetCellCanvas(cell.img, cell.label, cellW, cellH) })
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)'
+      ctx.lineWidth = 2
+      ctx.strokeRect(dx + 1, dy + 1, cellW - 2, cellH - 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.22)'
+      ctx.font = `500 ${Math.round(cellW / 26)}px 'Inter Tight', sans-serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(cell.label, dx + cellW / 2, dy + cellH / 2)
+      ctx.textAlign = 'left'
+    } else {
+      // emplacement vide : gabarit annoté
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+      ctx.setLineDash([10, 8])
+      ctx.lineWidth = 2
+      ctx.strokeRect(dx + 4, dy + 4, cellW - 8, cellH - 8)
+      ctx.setLineDash([])
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.font = `500 ${Math.round(cellW / 26)}px 'Inter Tight', sans-serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(cell.label, dx + cellW / 2, dy + cellH / 2)
+      ctx.textAlign = 'left'
+    }
+  })
+
+  // cellule centrale : titre / marque
+  const cx = gap + cellW + gap, cy = gap + cellH + gap
+  ctx.fillStyle = 'rgba(255,255,255,0.05)'
+  ctx.beginPath(); ctx.roundRect(cx, cy, cellW, cellH, 10); ctx.fill()
+  ctx.fillStyle = '#4f8fe8'
+  ctx.font = `700 ${Math.round(cellW / 14)}px 'Inter Tight', sans-serif`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText('DentoPic', cx + cellW / 2, cy + cellH / 2 - cellH / 12)
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'
+  ctx.font = `400 ${Math.round(cellW / 30)}px 'Inter Tight', sans-serif`
+  ctx.fillText(title, cx + cellW / 2, cy + cellH / 2 + cellH / 10)
+  ctx.textAlign = 'left'
+  return { canvas: cv, placements }
+}
+
+// Cellule photo de la planche : cover-crop + étiquette de la vue en bas à gauche.
+function sheetCellCanvas(img, label, w, h) {
+  const cv = mkCanvas(w, h)
+  const ctx = cv.getContext('2d')
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height
+  const s = Math.max(w / iw, h / ih)
+  const sw = w / s, sh = h / s
+  ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, w, h)
+  if (label) {
+    ctx.font = `600 ${Math.round(w / 30)}px 'Inter Tight', sans-serif`
+    const tw = ctx.measureText(label).width, pad = w / 60, bh = Math.max(28, w / 22)
+    ctx.fillStyle = 'rgba(17,24,39,0.75)'
+    ctx.beginPath(); ctx.roundRect(8, h - bh - 8, tw + pad * 2, bh, 6); ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(label, 8 + pad, h - bh / 2 - 8)
+  }
   return cv
 }

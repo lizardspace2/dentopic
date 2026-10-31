@@ -7,13 +7,19 @@ import { Box, Flex, Input } from '@chakra-ui/react'
 import { useSearchParams } from 'react-router-dom'
 import { C } from '../../theme'
 import { useApp } from '../../context/AppContext'
-import { createMontage, getPhoto, listDossiers, saveEditedPhoto } from '../../api'
+import {
+  createMontage, getPhoto, listDossiers, listProtocolSteps, saveEditedPhoto,
+  updatePatientPhoto,
+} from '../../api'
 import { photoUrl } from '../../media'
-import { Editor, buildMontage, fetchImg, loadImg, rgbToHex, DEFAULT_ADJUST } from './engine'
+import {
+  Editor, buildMontage, buildProtocolSheet, fetchImg, loadImg, rgbToHex,
+  DEFAULT_ADJUST,
+} from './engine'
 import {
   MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas,
 } from './panels'
-import { OpenPhotoModal, ExportModal, MontageModal } from './modals'
+import { OpenPhotoModal, ExportModal, MontageModal, SheetModal } from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 
@@ -47,6 +53,13 @@ export default function Studio() {
   const [showOriginal, setShowOriginal] = useState(false)
   const [compare, setCompare] = useState(null) // fraction 0..1 du séparateur avant/après
   const [wbPick, setWbPick] = useState(false)  // pipette balance des blancs armée
+  // -- Dentaire ----------------------------------------------------------------------
+  const [straighten, setStraighten] = useState(null) // {angle, ruler, line}
+  const [steps, setSteps] = useState([])             // protocole (référence)
+  const [refStep, setRefStep] = useState(null)       // étape choisie
+  const [refImg, setRefImg] = useState(null)         // photo de référence (img)
+  const [refOverlay, setRefOverlay] = useState(false)// incrustation sur le canevas
+  const [shade, setShade] = useState(null)           // teinte VITA de la photo
 
   const bump = useCallback(() => { editor.markDirty(); setVersion((v) => v + 1) }, [editor])
   const toImg = useCallback(
@@ -63,6 +76,7 @@ export default function Studio() {
     editor.open(img, p.original_filename || 'photo')
     editor.isMontage = false
     setSrcPhoto(p)
+    setShade(p.tooth_shade || null)
     setDocOpen(true)
     setModal(null)
     setCompare(null); setWbPick(false)
@@ -110,8 +124,12 @@ export default function Studio() {
     if (cv) editor.render(cv, view, {
       showOriginal, cropRect, compare,
       handles: tool === 'move' && opts.transform ? editor.active : null,
+      previewRotate: straighten?.angle || 0,
+      line: straighten?.line || null,
+      overlay: refOverlay && refImg ? { img: refImg } : null,
     })
-  }, [editor, view, showOriginal, cropRect, compare, tool, opts.transform, version])
+  }, [editor, view, showOriginal, cropRect, compare, tool, opts.transform, version,
+    straighten, refOverlay, refImg])
 
   useEffect(render, [render, version])
 
@@ -129,6 +147,66 @@ export default function Studio() {
   }, [render])
 
   useEffect(() => { if (wsId) listDossiers(wsId, { limit: 100 }).then(setDossiers) }, [wsId])
+  useEffect(() => { listProtocolSteps().then(setSteps) }, [])
+
+  // Photo de référence : étape du protocole -> charge son image de référence
+  const pickRefStep = async (id) => {
+    setRefStep(id)
+    const st = steps.find((s) => s.id === id)
+    if (st?.reference_path) {
+      const url = await photoUrl(st.reference_path)
+      if (url) { setRefImg(await fetchImg(url)); setRefOverlay(true) }
+    }
+  }
+  const pickRefPhoto = async (p) => {
+    const url = await photoUrl(p.storage_path)
+    if (url) { setRefImg(await fetchImg(url)); setRefOverlay(true) }
+    setModal(null)
+  }
+
+  // Teinte VITA — enregistrée sur la fiche photo (patient_photos.tooth_shade)
+  const onShade = async (code) => {
+    if (!srcPhoto) return
+    const next = shade === code ? null : code
+    setShade(next)
+    await updatePatientPhoto(srcPhoto.id, { tooth_shade: next })
+  }
+
+  // Étalonner sur une photo de référence (BB + exposition assorties)
+  const calibrateToRef = async (p) => {
+    const url = await photoUrl(p.storage_path)
+    if (!url) return
+    const img = await fetchImg(url)
+    editor.snapshot()
+    editor.calibrateTo(img)
+    setModal(null)
+    bump()
+  }
+
+  // Planche du référentiel : compose les 8 vues sur une image éditable
+  const composeSheet = async (slots) => {
+    const cells = await Promise.all(slots.map(async (s) => ({
+      label: s.label,
+      img: s.photo ? await fetchImg(await photoUrl(s.photo.storage_path)) : null,
+    })))
+    const { canvas, placements } = buildProtocolSheet(cells, { title: editor.docName.replace(/\.\w+$/, '') })
+    editor.open(canvas, 'planche-referentiel.png')
+    // chaque vue devient un calque nommé — déplaçable, masquable, supprimable
+    const empty = editor.layers.find((l) => !l.locked && l.name === 'Calque 1')
+    if (empty) editor.removeLayer(empty.id)
+    for (const p of placements) {
+      const l = editor.addLayer(p.label)
+      l.ctx.drawImage(p.cv, p.dx, p.dy)
+    }
+    editor.setActive(editor.layers[editor.layers.length - 1].id)
+    editor.isMontage = true
+    setSrcPhoto(null)
+    setShade(null)
+    setDocOpen(true)
+    setModal(null)
+    fitView()
+    bump()
+  }
 
   // /studio?edit=<photoId> — ouverture directe depuis un dossier patient
   const [searchParams] = useSearchParams()
@@ -173,6 +251,12 @@ export default function Studio() {
     if (compare != null) {
       stroke.current = { kind: 'divider' }
       setCompare(clamp(ix / editor.w, 0.02, 0.98))
+      return
+    }
+    // redressage : tracer la droite qui doit devenir horizontale
+    if (straighten?.ruler) {
+      stroke.current = { kind: 'ruler', x0: ix, y0: iy }
+      setStraighten((s) => ({ ...s, line: [ix, iy, ix, iy] }))
       return
     }
 
@@ -285,6 +369,7 @@ export default function Studio() {
     if (!s) return
     if (s.kind === 'stroke') paint(ix, iy, s.l)
     else if (s.kind === 'divider') setCompare(clamp(ix / editor.w, 0.02, 0.98))
+    else if (s.kind === 'ruler') setStraighten((st) => ({ ...st, line: [s.x0, s.y0, ix, iy] }))
     else if (s.kind === 'move') {
       editor.active.dx = s.dx + (ix - s.ox)
       editor.active.dy = s.dy + (iy - s.oy)
@@ -314,6 +399,12 @@ export default function Studio() {
   const onPointerUp = () => {
     const s = stroke.current
     if (s?.kind === 'sel' && editor.sel && (editor.sel[2] < 3 || editor.sel[3] < 3)) editor.sel = null
+    if (s?.kind === 'ruler' && straighten?.line) {
+      const [x1, y1, x2, y2] = straighten.line
+      const dx = x2 - x1, dy = y2 - y1
+      const deg = Math.hypot(dx, dy) > editor.w * 0.05 ? -Math.atan2(dy, dx) * 180 / Math.PI : 0
+      setStraighten((st) => ({ ...st, angle: clamp(deg, -45, 45), ruler: false, line: null }))
+    }
     stroke.current = null
     bump()
   }
@@ -334,6 +425,16 @@ export default function Studio() {
   // ---- Menus --------------------------------------------------------------------------
 
   const applyCrop = () => { editor.snapshot(); editor.crop(cropRect); setCropRect(null); bump() }
+
+  // Redressage : applique l'angle (slider ou droite tracée) au document
+  const onApplyStraighten = () => {
+    if (!straighten) return
+    editor.snapshot()
+    editor.rotateAngle(straighten.angle)
+    setStraighten(null)
+    fitView()
+    bump()
+  }
 
   const doExport = async (format) => {
     const cv = editor.compositeFiltered()
@@ -505,12 +606,29 @@ export default function Studio() {
         </Box>
         {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump}
           wbPick={wbPick} onWbPick={() => setWbPick((v) => !v)}
-          comparing={compare != null} onCompare={() => setCompare((c) => (c != null ? null : 0.5))} />}
+          comparing={compare != null} onCompare={() => setCompare((c) => (c != null ? null : 0.5))}
+          dental={{
+            comparing: compare != null,
+            onCompare: () => setCompare((c) => (c != null ? null : 0.5)),
+            onMontage: () => setModal('montage'),
+            straighten, setStraighten, onApplyStraighten,
+            wbPick, onWbPick: () => setWbPick((v) => !v),
+            onCalRef: () => setModal('calref'),
+            shade, onShade, srcPhoto,
+            steps, refStep, onRefStep: pickRefStep,
+            refImg, refOverlay,
+            onToggleOverlay: () => setRefOverlay((v) => !v),
+            onPickRef: () => setModal('refpick'),
+            onSheet: () => setModal('sheet'),
+          }} />}
       </Flex>
       <StatusBar editor={editor} zoom={view.scale} tool={tool} onZoom={(f) => zoomAt(f)} />
 
       <OpenPhotoModal open={modal === 'open'} onClose={() => setModal(null)} wsId={wsId} onPick={openPhoto} />
+      <OpenPhotoModal open={modal === 'calref'} onClose={() => setModal(null)} wsId={wsId} onPick={calibrateToRef} />
+      <OpenPhotoModal open={modal === 'refpick'} onClose={() => setModal(null)} wsId={wsId} onPick={pickRefPhoto} />
       <MontageModal open={modal === 'montage'} onClose={() => setModal(null)} wsId={wsId} onCreate={openMontage} />
+      <SheetModal open={modal === 'sheet'} onClose={() => setModal(null)} wsId={wsId} onCompose={composeSheet} />
       <ExportModal open={modal === 'export'} onClose={() => setModal(null)}
         docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
     </Flex>

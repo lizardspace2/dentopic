@@ -6,6 +6,7 @@ import { Card, Modal, SearchInput, Select, Tag, isTestName } from '../../compone
 import { C } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
+import { SHEET_SLOTS } from './constants'
 
 // ---- Ouvrir : photo du workspace (ou import local géré par la page) -------------
 
@@ -182,6 +183,103 @@ export function MontageModal({ open, onClose, wsId, onCreate }) {
               </Box>
             )
           })}
+        </SimpleGrid>
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Planche du référentiel : 8 vues nommées composées sur une image -----------
+// Cliquer une photo l'assigne au prochain emplacement vide ; cliquer un
+// emplacement occupé le libère. `onCompose(slots)` reçoit [{label, photo}].
+
+export function SheetModal({ open, onClose, wsId, onCompose }) {
+  const [photos, setPhotos] = useState([])
+  const [slots, setSlots] = useState(SHEET_SLOTS.map((label) => ({ label, photo: null })))
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (open && wsId) {
+      listPhotos(wsId, { limit: 120 }).then(setPhotos)
+      setSlots(SHEET_SLOTS.map((label) => ({ label, photo: null })))
+    }
+  }, [open, wsId])
+
+  const filled = slots.filter((s) => s.photo).length
+  const assign = (p) => {
+    const i = slots.findIndex((s) => !s.photo)
+    if (i < 0 || slots.some((s) => s.photo?.id === p.id)) return
+    setSlots((sl) => sl.map((s, j) => (j === i ? { ...s, photo: p } : s)))
+  }
+  const clear = (i) => setSlots((sl) => sl.map((s, j) => (j === i ? { ...s, photo: null } : s)))
+
+  // grille 3×3 : le slot i va en position order[i], centre = titre
+  const order = [0, 1, 2, 3, 5, 6, 7, 8]
+
+  return (
+    <Modal open={open} onClose={onClose} title="Planche du référentiel"
+      subtitle="Les 8 vues du protocole composées sur une seule image — cliquez les photos dans l'ordre" width="760px"
+      footer={
+        <>
+          <Text fontSize="xs" color="gray.500">{filled}/8 vues</Text>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            disabled={!filled} loading={busy}
+            onClick={async () => { setBusy(true); await onCompose(slots); setBusy(false) }}>
+            Composer la planche
+          </Button>
+        </>
+      }>
+      <VStack align="stretch" gap="4">
+        {/* aperçu des emplacements 3×3 */}
+        <SimpleGrid columns={3} gap="1.5" w="360px" alignSelf="center">
+          {Array.from({ length: 9 }, (_, pos) => {
+            const i = order.indexOf(pos)
+            if (i < 0) return (
+              <Box key="c" h="52px" borderRadius="md" bg={C.primary} opacity="0.85"
+                display="flex" alignItems="center" justifyContent="center">
+                <Text fontSize="2xs" fontWeight="700" color="#ffffff">DentoPic</Text>
+              </Box>
+            )
+            const s = slots[i]
+            return (
+              <Box key={i} position="relative" cursor={s.photo ? 'pointer' : 'default'}
+                onClick={() => s.photo && clear(i)}>
+                <PhotoImg storagePath={s.photo?.storage_path} ratio="4/3" />
+                {!s.photo && (
+                  <Box position="absolute" inset="0" display="flex" alignItems="center"
+                    justifyContent="center" bg="gray.50" borderRadius="md"
+                    border="1.5px dashed" borderColor="gray.300">
+                    <Text fontSize="2xs" color="gray.400" textAlign="center" px="1">{s.label}</Text>
+                  </Box>
+                )}
+                {s.photo && (
+                  <Text position="absolute" bottom="0.5" left="1" right="1" fontSize="2xs"
+                    color="#ffffff" textShadow="0 1px 3px rgba(0,0,0,0.9)" isTruncated>
+                    {s.label}
+                  </Text>
+                )}
+              </Box>
+            )
+          })}
+        </SimpleGrid>
+        <Text fontSize="2xs" color="gray.400" textAlign="center">
+          Cliquez un emplacement occupé pour le libérer
+        </Text>
+        <SimpleGrid columns={{ base: 4, md: 6 }} gap="2" maxH="220px" overflowY="auto">
+          {photos.map((p) => {
+            const used = slots.some((s) => s.photo?.id === p.id)
+            return (
+              <Box key={p.id} cursor={used ? 'default' : 'pointer'} opacity={used ? 0.35 : 1}
+                onClick={() => !used && assign(p)}>
+                <PhotoImg storagePath={p.storage_path} ratio="1/1" />
+              </Box>
+            )
+          })}
+          {photos.length === 0 && (
+            <Text fontSize="sm" color="gray.500" gridColumn="1/-1" textAlign="center" py="6">
+              Aucune photo — capturez ou importez d'abord.
+            </Text>
+          )}
         </SimpleGrid>
       </VStack>
     </Modal>

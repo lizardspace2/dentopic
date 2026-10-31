@@ -104,3 +104,25 @@ export const BLEND_MODES = [
 export const CURVE_CHANNELS = [
   ['rgb', 'RGB'], ['r', 'Rouge'], ['g', 'Vert'], ['b', 'Bleu'],
 ]
+
+// ---- Onglet Dentaire -------------------------------------------------------------
+
+// Guide de teinte VITA classique (couleurs approximatives pour l'affichage)
+export const VITA_SHADES = [
+  { code: 'A1', color: '#efe0bd' }, { code: 'A2', color: '#e8d5ac' },
+  { code: 'A3', color: '#dfc79a' }, { code: 'A3.5', color: '#d9bc8f' },
+  { code: 'A4', color: '#d0b183' },
+  { code: 'B1', color: '#f0e3c4' }, { code: 'B2', color: '#e9d9b4' },
+  { code: 'B3', color: '#ddc89b' }, { code: 'B4', color: '#d4bc8d' },
+  { code: 'C1', color: '#ded8c9' }, { code: 'C2', color: '#d3ccba' },
+  { code: 'C3', color: '#c6bfab' }, { code: 'C4', color: '#b5ae97' },
+  { code: 'D2', color: '#e3dcc4' }, { code: 'D3', color: '#d8d0b4' },
+  { code: 'D4', color: '#cbc2a4' },
+]
+
+// Les 8 vues du référentiel — planche 3×3 (cellule centrale = titre)
+export const SHEET_SLOTS = [
+  'Portrait de face', 'Portrait sourire', 'Portrait de profil',
+  'Intra-orale de face', 'Intra-orale droite', 'Intra-orale gauche',
+  'Occlusale maxillaire', 'Occlusale mandibulaire',
+]

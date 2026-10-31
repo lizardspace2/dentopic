@@ -10,7 +10,7 @@ import {
 import { LuRedo2, LuUndo2 } from 'react-icons/lu'
 import { Tip } from '../../components/ui'
 import { C } from '../../theme'
-import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS } from './constants'
+import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
 import { curveLUT, histogram } from './engine'
 
 const D = C // alias lisibilité
@@ -644,6 +644,170 @@ export function CurvesPanel({ editor, version, onChange }) {
   )
 }
 
+// ---- Panneau droit : Dentaire (fonctions métier) ----------------------------------
+// Regroupe : avant/après, redressage, calibrage, prise de teinte VITA,
+// photo de référence incrustée, planche du référentiel.
+
+const DBtn = ({ children, onClick, active, disabled, tip }) => (
+  <Tip label={tip || ''} display="block">
+    <Box as="button" px="2" py="1.5" fontSize="2xs" borderRadius="sm" cursor={disabled ? 'default' : 'pointer'}
+      bg={active ? '#f2c200' : 'whiteAlpha.100'} color={active ? '#111827' : fg}
+      fontWeight={active ? '700' : '400'} opacity={disabled ? 0.45 : 1}
+      _hover={disabled ? {} : { bg: active ? '#f2c200' : 'whiteAlpha.200' }}
+      onClick={disabled ? undefined : onClick}>
+      {children}
+    </Box>
+  </Tip>
+)
+
+export function DentalPanel({ editor, version, onChange, dental }) {
+  const {
+    comparing, onCompare, onMontage,
+    straighten, setStraighten, onApplyStraighten,
+    wbPick, onWbPick, onAutoWB, onCalRef,
+    shade, onShade, srcPhoto,
+    steps, refStep, onRefStep, refImg, refOverlay, onToggleOverlay, onPickRef,
+    onSheet,
+  } = dental
+  const st = straighten // null | {angle, ruler, line}
+  return (
+    <VStack align="stretch" gap="2.5" px="3" py="3" flex="1" overflowY="auto">
+
+      {/* Avant / après */}
+      <Section title="Avant / Après">
+        <VStack align="stretch" gap="1.5">
+          <DBtn tip="Assembler 2 photos en une image AVANT|APRÈS (montage sauvegardable)" onClick={onMontage}>
+            Montage avant / après…
+          </DBtn>
+          <DBtn tip="Séparateur jaune draggable : original à gauche, retouche à droite — Q"
+            active={comparing} onClick={onCompare}>
+            {comparing ? '⬅ AVANT | APRÈS ➡' : 'Comparer sur le canevas'}
+          </DBtn>
+        </VStack>
+      </Section>
+
+      {/* Redresser */}
+      <Section title="Redresser">
+        {!st ? (
+          <DBtn tip="Trace une droite sur le plan occlusal (ou règle l'angle) puis applique"
+            onClick={() => setStraighten({ angle: 0, ruler: false, line: null })}>
+            Redresser l'image…
+          </DBtn>
+        ) : (
+          <VStack align="stretch" gap="1.5">
+            <DBtn tip="Tracez la droite qui doit devenir horizontale (plan occlusal, horizon)"
+              active={st.ruler}
+              onClick={() => setStraighten({ ...st, ruler: !st.ruler })}>
+              {st.ruler ? '📏 Tracez la droite sur la photo' : 'Tracer la droite de référence'}
+            </DBtn>
+            <Tip label={`Angle de rotation : ${st.angle.toFixed(1)}°`} display="block">
+              <HStack gap="2">
+                <Input type="range" min="-20" max="20" step="0.1" h="16px" flex="1"
+                  value={st.angle}
+                  onChange={(e) => setStraighten({ ...st, angle: +e.target.value })} />
+                <Text fontSize="2xs" color={fg} w="38px" textAlign="right">{st.angle.toFixed(1)}°</Text>
+              </HStack>
+            </Tip>
+            <HStack gap="1.5">
+              <DBtn tip="Appliquer la rotation au document" onClick={onApplyStraighten}>Appliquer</DBtn>
+              <DBtn tip="Annuler le redressage" onClick={() => setStraighten(null)}>Annuler</DBtn>
+            </HStack>
+          </VStack>
+        )}
+      </Section>
+
+      {/* Calibrer */}
+      <Section title="Calibrer">
+        <VStack align="stretch" gap="1.5">
+          <DBtn tip="Balance des blancs automatique — la dominante couleur est neutralisée"
+            onClick={() => { editor.snapshot(); editor.autoWB(); onChange() }}>
+            BB auto (gris moyen)
+          </DBtn>
+          <DBtn tip="Cliquez une zone neutre de la photo (carte grise, rétracteur…)"
+            active={wbPick} onClick={onWbPick}>
+            {wbPick ? '🎯 Cliquez une zone neutre' : 'Pipette balance des blancs'}
+          </DBtn>
+          <DBtn tip="Assortit BB + exposition à une photo de référence — rendu avant/après homogène"
+            onClick={onCalRef}>
+            Étalonner sur une référence…
+          </DBtn>
+        </VStack>
+      </Section>
+
+      {/* Prise de teinte */}
+      <Section title="Prise de teinte">
+        {srcPhoto ? (
+          <>
+            <HStack justify="space-between">
+              <Text fontSize="2xs" color={muted}>Teinte de la photo</Text>
+              <Tip label="Teinte VITA enregistrée sur la fiche photo">
+                <Text fontSize="xs" fontWeight="700" color={shade ? '#f2c200' : muted}>
+                  {shade || '—'}
+                </Text>
+              </Tip>
+            </HStack>
+            <HStack gap="1" flexWrap="wrap">
+              {VITA_SHADES.map((s) => (
+                <Tip key={s.code} label={`Teinte ${s.code} — enregistrée sur la photo`}>
+                  <Box as="button" w="26px" h="26px" borderRadius="sm" cursor="pointer"
+                    bg={s.color} border="2px solid"
+                    borderColor={shade === s.code ? '#f2c200' : 'transparent'}
+                    color="#111827" fontSize="2xs" fontWeight="700" lineHeight="22px" textAlign="center"
+                    onClick={() => onShade(s.code)}>
+                    {s.code}
+                  </Box>
+                </Tip>
+              ))}
+            </HStack>
+          </>
+        ) : (
+          <Text fontSize="2xs" color={muted}>
+            Ouvrez une photo du dossier pour enregistrer sa teinte VITA.
+          </Text>
+        )}
+      </Section>
+
+      {/* Photo de référence */}
+      <Section title="Photo de référence">
+        <VStack align="stretch" gap="1.5">
+          {(steps || []).length > 0 && (
+            <Tip label="Vue de référence du protocole DentoPic">
+              <Box as="select" w="100%" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+                border="1px solid" borderColor={panelBorder} h="24px" px="1" cursor="pointer"
+                value={refStep || ''} onChange={(e) => onRefStep(e.target.value || null)}>
+                <option value="">Référence du protocole…</option>
+                {steps.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Box>
+            </Tip>
+          )}
+          <HStack gap="1.5">
+            <DBtn tip="Utiliser une photo du dossier comme référence" onClick={onPickRef}>
+              Choisir une photo…
+            </DBtn>
+            <DBtn tip="Incruste la référence en bas à droite du canevas (guide de cadrage)"
+              active={refOverlay} disabled={!refImg} onClick={onToggleOverlay}>
+              {refOverlay ? 'Incrustée ✓' : 'Incruster'}
+            </DBtn>
+          </HStack>
+          {refImg && (
+            <Box borderRadius="sm" overflow="hidden" border="1px solid" borderColor={panelBorder} maxH="90px">
+              <img src={refImg.src} alt="" style={{ width: '100%', height: '90px', objectFit: 'cover' }} />
+            </Box>
+          )}
+        </VStack>
+      </Section>
+
+      {/* Planche du référentiel */}
+      <Section title="Planche référentiel">
+        <DBtn tip="8 vues du protocole (portraits, sourire, intra-orales, occlusales) composées sur une seule image éditable"
+          onClick={onSheet}>
+          Composer la planche…
+        </DBtn>
+      </Section>
+    </VStack>
+  )
+}
+
 // ---- Panneau droit : Infos --------------------------------------------------------
 
 export function InfoPanel({ editor, zoom, cursor }) {
@@ -706,9 +870,10 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
 
 // ---- Panneau latéral à onglets -------------------------------------------------------
 
-export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare }) {
-  const [tab, setTab] = useState('layers')
+export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental }) {
+  const [tab, setTab] = useState('dental')
   const TABS = [
+    ['dental', 'Dentaire', 'Avant/après, redresser, calibrer, teinte, référence, planche'],
     ['layers', 'Calques', 'Empilement, fusion, opacité, effets fx'],
     ['adjust', 'Réglages', 'Exposition, balance des blancs, niveaux, effets'],
     ['curves', 'Courbes', 'Tonalité par canal RGB/R/V/B'],
@@ -729,6 +894,7 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
         ))}
       </HStack>
       <Flex flex="1" direction="column" overflow="hidden">
+        {tab === 'dental' && <DentalPanel editor={editor} version={version} onChange={onChange} dental={dental} />}
         {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} />}
         {tab === 'adjust' && <AdjustPanel editor={editor} onChange={onChange}
           wbPick={wbPick} onWbPick={onWbPick} comparing={comparing} onCompare={onCompare} />}
