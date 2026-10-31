@@ -1,9 +1,10 @@
 // Modals de la route Acquisition — toutes les interactions restent en popup.
 // Composants « contrôlés » : la page (index.jsx) détient l'état et passe
 // open/onClose + les données ; les modals remontent les actions via props.
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { Link } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiExternalLink, FiFolder, FiFolderPlus,
   FiHardDrive, FiMonitor, FiPlus, FiSmartphone, FiUpload, FiWifi,
@@ -179,22 +180,32 @@ export function DossierModal({ open, onClose, dossiers, target, onPick, onCreate
 // ---- 4. Capture mobile (QR) -----------------------------------------------------
 
 export function MobileModal({ open, onClose, target, onStart }) {
+  const [token, setToken] = useState(null)
+  const [copied, setCopied] = useState(false)
+  // un token frais à chaque ouverture — transmis à la session au démarrage
+  useEffect(() => { if (open) setToken(crypto.randomUUID()) }, [open])
+  const url = token ? `${window.location.origin}/capture/${token}` : ''
+  const copy = () => {
+    navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+  }
   return (
     <Modal open={open} onClose={onClose}
-      title="Connexion smartphone / tablette" subtitle="Scanner le QR code depuis l'app" width="400px">
-      <Center mb="4">
-        <Box p="4" bg="#ffffff" border="2px solid" borderColor={C.cardBorder} borderRadius="lg">
-          <Box display="grid" gridTemplateColumns="repeat(9, 14px)" gap="2px">
-            {Array.from({ length: 81 }, (_, i) => (
-              <Box key={i} w="14px" h="14px" bg={(i * 7 + Math.floor(i / 9) * 3) % 5 < 2 ? '#111827' : '#ffffff'} />
-            ))}
-          </Box>
+      title="Connexion smartphone / tablette" subtitle="Scanner le QR code avec l'appareil photo" width="400px">
+      <Center mb="3">
+        <Box p="3" bg="#ffffff" border="2px solid" borderColor={C.cardBorder} borderRadius="lg">
+          {token && <QRCodeSVG value={url} size={156} level="M" fgColor="#111827" />}
         </Box>
       </Center>
+      <HStack mb="4" gap="2" justify="center">
+        <Text fontSize="2xs" color="gray.400" isTruncated maxW="240px">{url}</Text>
+        <Box as="button" fontSize="2xs" color={C.primary} fontWeight="600" cursor="pointer" onClick={copy}>
+          {copied ? 'Copié ✓' : 'Copier'}
+        </Box>
+      </HStack>
       <VStack align="stretch" gap="2" mb="4">
         {[
-          'Ouvrez l’app DentoPic Capture sur votre smartphone (même Wi-Fi).',
-          'Scannez ce code : la page de capture s’ouvre.',
+          'Scannez ce QR avec l’appareil photo de votre smartphone.',
+          'La page de capture s’ouvre — connectez-vous si besoin.',
           'Chaque cliché arrive directement dans le dossier sélectionné.',
         ].map((t, i) => (
           <HStack key={i} gap="2.5">
@@ -210,7 +221,7 @@ export function MobileModal({ open, onClose, target, onStart }) {
         </HStack>
       )}
       <Button mt="4" w="100%" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
-        onClick={onStart}>
+        onClick={() => onStart(token)}>
         Démarrer la session de capture
       </Button>
     </Modal>

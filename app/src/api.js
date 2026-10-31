@@ -143,7 +143,7 @@ export function listActiveSessions(wsId) {
 }
 
 /** Démarre une session de capture réelle (visible dans le bandeau "en écoute") */
-export function createCaptureSession(wsId, userId, dossierId = null, deviceId = null) {
+export function createCaptureSession(wsId, userId, dossierId = null, deviceId = null, mobileToken = crypto.randomUUID()) {
   return supabase
     .from('capture_sessions')
     .insert({
@@ -153,7 +153,7 @@ export function createCaptureSession(wsId, userId, dossierId = null, deviceId = 
       device_id: deviceId,
       status: 'active',
       started_at: new Date().toISOString(),
-      mobile_token: crypto.randomUUID(),
+      mobile_token: mobileToken,
     })
     .select()
     .single()
@@ -161,6 +161,25 @@ export function createCaptureSession(wsId, userId, dossierId = null, deviceId = 
       if (error) console.warn('createCaptureSession:', error.message)
       return data
     })
+}
+
+/** Session de capture trouvée par son mobile_token (lien QR /capture/<token>) */
+export function getSessionByToken(token) {
+  return supabase
+    .from('capture_sessions')
+    .select('*')
+    .eq('mobile_token', token)
+    .maybeSingle()
+    .then(({ data }) => data)
+}
+
+export function getDossier(id) {
+  return supabase
+    .from('dossiers')
+    .select('id, name')
+    .eq('id', id)
+    .maybeSingle()
+    .then(({ data }) => data)
 }
 
 /** Termine une session ouverte */

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import {
   Box, Button, Center, HStack, IconButton, Input, InputGroup, Text, VStack,
 } from '@chakra-ui/react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi'
 import Logo from '../components/Logo'
 import { C } from '../theme'
@@ -17,6 +17,7 @@ export default function Login() {
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
   const nav = useNavigate()
+  const loc = useLocation()
 
   const submit = async (e) => {
     e.preventDefault()
@@ -31,7 +32,8 @@ export default function Login() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        nav('/', { replace: true })
+        // préserve le lien profond (ex. /capture/<token> scanné par QR)
+        nav(loc.pathname === '/login' ? '/' : loc.pathname, { replace: true })
       }
     } catch (err) {
       setError(err.message || 'Une erreur est survenue')

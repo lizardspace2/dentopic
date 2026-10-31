@@ -4,6 +4,7 @@ import { useApp } from './context/AppContext'
 import { C } from './theme'
 import AppShell from './components/AppShell'
 import Login from './pages/Login'
+import Capture from './pages/Capture'
 import Dashboard from './pages/Dashboard'
 import Recherche from './pages/Recherche'
 import Acquisition from './pages/acquisition'
@@ -31,6 +32,7 @@ export default function App() {
   if (!session) {
     return (
       <Routes>
+        <Route path="/capture/:token" element={<Capture />} />
         <Route path="*" element={<Login />} />
       </Routes>
     )
@@ -38,6 +40,7 @@ export default function App() {
 
   return (
     <Routes>
+      <Route path="/capture/:token" element={<Capture />} />
       <Route element={<AppShell />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/recherche" element={<Recherche />} />

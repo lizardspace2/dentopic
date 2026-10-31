@@ -78,8 +78,10 @@ export default function Acquisition() {
 
   // ---- Actions ----------------------------------------------------------------
 
-  const startSession = async () => {
-    await createCaptureSession(wsId, session.user.id, target?.id || null, source?.deviceId || null)
+  const startSession = async (mobileToken) => {
+    // mobileToken : uuid du QR (modal mobile) ; les autres modals passent un event
+    const token = typeof mobileToken === 'string' ? mobileToken : undefined
+    await createCaptureSession(wsId, session.user.id, target?.id || null, source?.deviceId || null, token)
     close()
     await reload()
   }
