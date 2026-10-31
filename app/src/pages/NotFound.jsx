@@ -7,13 +7,13 @@ export default function NotFound() {
     <Center minH="100vh" bg={C.pageBg}>
       <VStack gap="3">
         <Text fontSize="6xl" fontWeight="800" color={C.ink} letterSpacing="-0.03em">404</Text>
-        <Text fontSize="lg" fontWeight="600" color={C.ink}>Page not found</Text>
+        <Text fontSize="lg" fontWeight="600" color={C.ink}>Page introuvable</Text>
         <Text fontSize="sm" color="gray.500">
-          The page you're looking for doesn't exist or has been moved.
+          Cette page n'existe pas ou a été déplacée.
         </Text>
         <Link to="/">
           <Button bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }} size="sm" mt="2">
-            Go home
+            Retour à l'accueil
           </Button>
         </Link>
       </VStack>
