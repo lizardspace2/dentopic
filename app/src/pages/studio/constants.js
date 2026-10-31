@@ -21,26 +21,59 @@ export const TOOLS = [
   { key: 'zoom', icon: FiZoomIn, label: 'Zoom', hint: 'Cliquer = +, Alt+clic = − — Z' },
 ]
 
-// Réglages du calque « Réglages » (sliders → ctx.filter)
-export const ADJUST_DEFS = [
-  { key: 'brightness', label: 'Luminosité', min: 0, max: 200, unit: '%' },
-  { key: 'contrast', label: 'Contraste', min: 0, max: 200, unit: '%' },
-  { key: 'saturate', label: 'Saturation', min: 0, max: 200, unit: '%' },
-  { key: 'hue', label: 'Teinte', min: -180, max: 180, unit: '°' },
-  { key: 'blur', label: 'Flou', min: 0, max: 10, unit: 'px', step: 0.5 },
-  { key: 'grayscale', label: 'Niveaux de gris', min: 0, max: 100, unit: '%' },
-  { key: 'sepia', label: 'Sépia', min: 0, max: 100, unit: '%' },
-  { key: 'invert', label: 'Inversion', min: 0, max: 100, unit: '%' },
+// Réglages groupés façon Lightroom/Photoshop (panneau « Réglages »)
+export const ADJUST_GROUPS = [
+  {
+    title: 'Exposition',
+    defs: [
+      { key: 'exposure', label: 'Exposition', min: -3, max: 3, step: 0.05, fmt: (v) => `${v > 0 ? '+' : ''}${v.toFixed(2)} EV` },
+      { key: 'brightness', label: 'Luminosité', min: 0, max: 200, unit: '%' },
+      { key: 'contrast', label: 'Contraste', min: 0, max: 200, unit: '%' },
+      { key: 'saturate', label: 'Saturation', min: 0, max: 200, unit: '%' },
+    ],
+  },
+  {
+    title: 'Balance des blancs', wb: true,
+    defs: [
+      { key: 'temp', label: 'Température', min: -100, max: 100, fmt: (v) => (v > 0 ? '+' : '') + v },
+      { key: 'tint', label: 'Teinte', min: -100, max: 100, fmt: (v) => (v > 0 ? '+' : '') + v },
+    ],
+  },
+  {
+    title: 'Niveaux', levels: true,
+    defs: [
+      { key: 'inBlack', label: 'Noirs entrée', min: 0, max: 254 },
+      { key: 'gamma', label: 'Gamma', min: 10, max: 400, fmt: (v) => (v / 100).toFixed(2) },
+      { key: 'inWhite', label: 'Blancs entrée', min: 1, max: 255 },
+    ],
+  },
+  {
+    title: 'Détails',
+    defs: [
+      { key: 'sharp', label: 'Netteté', min: 0, max: 100 },
+      { key: 'blur', label: 'Flou', min: 0, max: 10, unit: 'px', step: 0.5 },
+    ],
+  },
+  {
+    title: 'Effets',
+    defs: [
+      { key: 'hue', label: 'Teinte', min: -180, max: 180, unit: '°' },
+      { key: 'grayscale', label: 'Niveaux de gris', min: 0, max: 100, unit: '%' },
+      { key: 'sepia', label: 'Sépia', min: 0, max: 100, unit: '%' },
+      { key: 'invert', label: 'Inversion', min: 0, max: 100, unit: '%' },
+    ],
+  },
 ]
 
-// Presets rapides du panneau Réglages
+// Presets rapides du panneau Réglages (+ presets utilisateur en localStorage)
 export const PRESETS = [
   { name: 'Défaut', adjust: {} },
   { name: 'N&B', adjust: { grayscale: 100 } },
   { name: 'Sépia', adjust: { sepia: 85 } },
-  { name: 'Vif', adjust: { saturate: 145, contrast: 112 } },
+  { name: 'Vif', adjust: { saturate: 145, contrast: 112, sharp: 30 } },
   { name: 'Doux', adjust: { brightness: 108, contrast: 92, saturate: 90, blur: 0.4 } },
-  { name: 'Froid', adjust: { hue: -14, saturate: 92, brightness: 102 } },
+  { name: 'Froid', adjust: { temp: -35, tint: 8, saturate: 95 } },
+  { name: 'Écarteur', adjust: { exposure: 0.25, contrast: 118, sharp: 40 } },
 ]
 
 export const SWATCHES = [

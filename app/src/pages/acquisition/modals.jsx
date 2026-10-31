@@ -13,7 +13,7 @@ import {
   Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, isTestName,
 } from '../../components/ui'
 import { C } from '../../theme'
-import { HELP_STEPS, SOURCE_DEFS, CONNECTION_TYPES } from './constants'
+import { HELP_STEPS, SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS } from './constants'
 
 // ---- Petits morceaux partagés ------------------------------------------------
 
@@ -234,6 +234,12 @@ export function CameraModal({ open, onClose, devices, selectedId, onPick, onCrea
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({ name: '', manufacturer: '', model: '', connectionType: 'wifi' })
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const pickBrand = (b) => setForm((f) => ({
+    ...f,
+    manufacturer: b.manufacturer,
+    connectionType: b.connectionType,
+    name: f.name || (b.manufacturer ? `${b.manufacturer} — Salle 1` : f.name),
+  }))
   const save = async () => {
     const ok = await onCreate({ ...form })
     if (ok) { setAdding(false); setForm({ name: '', manufacturer: '', model: '', connectionType: 'wifi' }) }
@@ -261,6 +267,21 @@ export function CameraModal({ open, onClose, devices, selectedId, onPick, onCrea
       ) : (
         <Card p="4" mt="4">
           <VStack align="stretch" gap="3">
+            {/* Marques rapides — comme « Canon / Nikon WiFi » de la concurrence */}
+            <Field label="Connexion rapide">
+              <HStack gap="1.5" flexWrap="wrap">
+                {BRAND_PRESETS.map((b) => (
+                  <Box as="button" key={b.label} px="2.5" py="1" fontSize="2xs" borderRadius="full"
+                    cursor="pointer" border="1.5px solid"
+                    borderColor={form.manufacturer === b.manufacturer && b.manufacturer ? C.primary : 'gray.200'}
+                    color={form.manufacturer === b.manufacturer && b.manufacturer ? C.primary : 'gray.600'}
+                    fontWeight={form.manufacturer === b.manufacturer && b.manufacturer ? '600' : '400'}
+                    onClick={() => pickBrand(b)}>
+                    {b.label}
+                  </Box>
+                ))}
+              </HStack>
+            </Field>
             <Field label="Nom de l'appareil *">
               <Input fontSize="sm" placeholder="ex. Canon R6 — Salle 1" value={form.name} onChange={set('name')} />
             </Field>

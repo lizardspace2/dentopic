@@ -6,6 +6,12 @@
 export const DEFAULT_ADJUST = {
   brightness: 100, contrast: 100, saturate: 100,
   hue: 0, blur: 0, grayscale: 0, sepia: 0, invert: 0,
+  // Niveaux : in-black 0..254, gamma x100 (100=1.0), in-white 1..255
+  inBlack: 0, gamma: 100, inWhite: 255,
+  // Exposition en EV (-3..+3) et balance des blancs (temp/teinte -100..+100)
+  exposure: 0, temp: 0, tint: 0,
+  // Netteté (unsharp 0..100)
+  sharp: 0,
 }
 
 export const filterString = (a) =>
@@ -69,6 +75,54 @@ export function histogram(cv, step = 8) {
   return { h, max }
 }
 
+// ---- Niveaux / exposition / balance des blancs : LUTs par canal -----------------
+const IDENTITY = (() => { const l = new Uint8ClampedArray(256); for (let i = 0; i < 256; i++) l[i] = i; return l })()
+
+const composeLUT = (l1, l2) => { // applique l1 puis l2
+  const o = new Uint8ClampedArray(256)
+  for (let i = 0; i < 256; i++) o[i] = l2[l1[i]]
+  return o
+}
+
+/** LUT « niveaux » : remap in-black/in-white puis courbe gamma. */
+export function levelsLUT(inBlack, inWhite, gamma100) {
+  const lut = new Uint8ClampedArray(256)
+  const g = Math.max(10, gamma100) / 100
+  const span = Math.max(1, inWhite - inBlack)
+  for (let i = 0; i < 256; i++) {
+    let v = Math.min(1, Math.max(0, (i - inBlack) / span))
+    lut[i] = Math.pow(v, 1 / g) * 255
+  }
+  return lut
+}
+
+/** LUT linéaire par canal : out = in * mul + add (balance des blancs). */
+const chanLUT = (mul, add = 0) => {
+  const o = new Uint8ClampedArray(256)
+  for (let i = 0; i < 256; i++) o[i] = Math.min(255, Math.max(0, i * mul + add))
+  return o
+}
+
+/** Netteté : convolution 3x3 (unsharp) sur le canvas en place. amount 0..1. */
+export function unsharp(cv, amount) {
+  const ctx = cv.getContext('2d')
+  const { width: W, height: H } = cv
+  const d = ctx.getImageData(0, 0, W, H)
+  const px = d.data, src = new Uint8ClampedArray(px)
+  const a = amount
+  for (let y = 1; y < H - 1; y++) {
+    for (let x = 1; x < W - 1; x++) {
+      const i = (y * W + x) * 4
+      for (let c = 0; c < 3; c++) {
+        px[i + c] = src[i + c] * (1 + 4 * a)
+          - a * (src[i - 4 + c] + src[i + 4 + c] + src[i - W * 4 + c] + src[i + W * 4 + c])
+      }
+    }
+  }
+  ctx.putImageData(d, 0, 0)
+  return cv
+}
+
 const mkCanvas = (w, h) => {
   const cv = document.createElement('canvas')
   cv.width = Math.max(1, Math.round(w))
@@ -92,6 +146,7 @@ export class Editor {
   sel = null          // [x, y, w, h] en coordonnées image, ou null
   isMontage = false   // vrai si le doc vient du montage avant/après
   curves = { rgb: null, r: null, g: null, b: null } // points de contrôle par canal
+  wb = null           // gains {r,g,b} posés par la pipette balance des blancs
   _cf = null          // cache du composite filtré
 
   // ---- Document ---------------------------------------------------------------
@@ -106,6 +161,8 @@ export class Editor {
     this.adjust = { ...DEFAULT_ADJUST }
     this.adjustVisible = true
     this.sel = null
+    this.curves = { rgb: null, r: null, g: null, b: null }
+    this.wb = null
 
     const base = this._mkLayer('Arrière-plan')
     base.ctx.drawImage(img, 0, 0)
@@ -252,26 +309,66 @@ export class Editor {
     return cv
   }
 
-  /** Composite avec filtres + courbes (cache : recalculé seulement après markDirty) */
+  /** Composite avec filtres + niveaux + exposition + BB + courbes + netteté (caché). */
   compositeFiltered() {
     if (this._cf) return this._cf
     const src = this.composite()
-    const hasCurves = this.curves.rgb || this.curves.r || this.curves.g || this.curves.b
-    if (!this.adjustVisible && !hasCurves) { this._cf = src; return src }
+    const a = this.adjust, cv0 = this.curves
+    const hasCurves = cv0.rgb || cv0.r || cv0.g || cv0.b
+    const hasLevels = a.inBlack > 0 || a.inWhite < 255 || a.gamma !== 100
+    const hasExp = a.exposure !== 0
+    const hasWB = a.temp !== 0 || a.tint !== 0 || (this.wb && (this.wb.r !== 1 || this.wb.g !== 1 || this.wb.b !== 1))
+    const hasPx = hasCurves || hasLevels || hasExp || hasWB
+    if (!this.adjustVisible && !hasPx && !a.sharp) { this._cf = src; return src }
+
     const cv = mkCanvas(this.w, this.h)
     const ctx = cv.getContext('2d')
-    if (this.adjustVisible) ctx.filter = filterString(this.adjust)
+    if (this.adjustVisible) ctx.filter = filterString(a)
     ctx.drawImage(src, 0, 0)
-    if (hasCurves) {
-      applyLUTs(cv, {
-        rgb: this.curves.rgb ? curveLUT(this.curves.rgb) : null,
-        r: this.curves.r ? curveLUT(this.curves.r) : null,
-        g: this.curves.g ? curveLUT(this.curves.g) : null,
-        b: this.curves.b ? curveLUT(this.curves.b) : null,
-      })
+
+    if (hasPx) {
+      // LUT RGB : niveaux -> exposition -> courbe RGB
+      let rgb = null
+      if (hasLevels) rgb = levelsLUT(a.inBlack, a.inWhite, a.gamma)
+      if (hasExp) {
+        const m = Math.pow(2, a.exposure)
+        const base = rgb || IDENTITY
+        const lut = new Uint8ClampedArray(256)
+        for (let i = 0; i < 256; i++) lut[i] = Math.min(255, base[i] * m)
+        rgb = lut
+      }
+      if (cv0.rgb) rgb = rgb ? composeLUT(rgb, curveLUT(cv0.rgb)) : curveLUT(cv0.rgb)
+      // LUTs par canal : temp/teinte -> gains pipette BB -> courbe de canal
+      const t = a.temp * 0.4, ti = a.tint * 0.4
+      const chan = (key, add) => {
+        const mul = this.wb ? this.wb[key] : 1
+        let l = null
+        if (add || mul !== 1) l = chanLUT(mul, add)
+        if (cv0[key]) l = l ? composeLUT(l, curveLUT(cv0[key])) : curveLUT(cv0[key])
+        return l
+      }
+      applyLUTs(cv, { rgb, r: chan('r', t), g: chan('g', ti), b: chan('b', -t) })
     }
+    if (a.sharp > 0) unsharp(cv, Math.min(1, a.sharp / 100) * 0.6)
     this._cf = cv
     return cv
+  }
+
+  /** Pipette balance des blancs : fixe les gains pour que le pixel cliqué devienne neutre. */
+  whiteBalanceAt(ix, iy) {
+    const src = this.compositeFiltered()
+    const W = src.width, H = src.height
+    ix = Math.max(0, Math.min(W - 1, Math.floor(ix))); iy = Math.max(0, Math.min(H - 1, Math.floor(iy)))
+    // moyenne 5x5 pour limiter le bruit
+    const d = src.getContext('2d').getImageData(Math.max(0, ix - 2), Math.max(0, iy - 2), Math.min(5, W), Math.min(5, H)).data
+    let r = 0, g = 0, b = 0, n = d.length / 4
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2] }
+    r /= n; g /= n; b /= n
+    const m = (r + g + b) / 3
+    const clamp = (v) => Math.min(2.5, Math.max(0.4, v))
+    this.wb = { r: clamp(m / (r || 1)), g: clamp(m / (g || 1)), b: clamp(m / (b || 1)) }
+    this.markDirty()
+    return this.wb
   }
 
   /** Sélection « baguette magique » : bbox de la région contiguë de couleur proche. */
@@ -317,8 +414,9 @@ export class Editor {
    * showOriginal : n'affiche que l'image de base sans calques/filtres (comparer).
    * cropRect : rectangle de recadrage en cours (coordonnées image).
    * handles : calque dont on affiche les poignées de transformation.
+   * compare : fraction 0..1 — écran partagé original (gauche) / édité (droite).
    */
-  render(target, view, { showOriginal = false, cropRect = null, handles = null } = {}) {
+  render(target, view, { showOriginal = false, cropRect = null, handles = null, compare = null } = {}) {
     const ctx = target.getContext('2d')
     ctx.clearRect(0, 0, target.width, target.height)
     if (!this.w) return
@@ -338,6 +436,41 @@ export class Editor {
     ctx.fillStyle = this._checker
     ctx.fillRect(0, 0, this.w, this.h)
     ctx.drawImage(src, 0, 0)
+    // comparaison écran partagé : original à gauche du séparateur
+    if (compare != null && !showOriginal) {
+      const sx = Math.max(0.02, Math.min(0.98, compare)) * this.w
+      const orig = this.original()
+      if (orig) {
+        ctx.save()
+        ctx.beginPath(); ctx.rect(0, 0, sx, this.h); ctx.clip()
+        ctx.drawImage(orig, 0, 0)
+        ctx.restore()
+        // séparateur jaune + poignée + étiquettes AVANT/APRÈS
+        ctx.strokeStyle = '#f2c200'
+        ctx.lineWidth = 2 / view.scale
+        ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, this.h); ctx.stroke()
+        const kr = 11 / view.scale, ky = this.h / 2
+        ctx.fillStyle = '#f2c200'
+        ctx.beginPath(); ctx.arc(sx, ky, kr, 0, Math.PI * 2); ctx.fill()
+        ctx.strokeStyle = '#111827'; ctx.lineWidth = 1.5 / view.scale
+        ctx.beginPath()
+        ctx.moveTo(sx - kr * 0.45, ky - kr * 0.4); ctx.lineTo(sx - kr * 0.85, ky); ctx.lineTo(sx - kr * 0.45, ky + kr * 0.4)
+        ctx.moveTo(sx + kr * 0.45, ky - kr * 0.4); ctx.lineTo(sx + kr * 0.85, ky); ctx.lineTo(sx + kr * 0.45, ky + kr * 0.4)
+        ctx.stroke()
+        const tag = (txt, x, anchor) => {
+          ctx.font = `700 ${Math.max(13, 15 / view.scale)}px 'Inter Tight', sans-serif`
+          const tw = ctx.measureText(txt).width, pad = 8 / view.scale, bh = 24 / view.scale, by = this.h - bh - 8 / view.scale
+          const bx = anchor === 'l' ? x + 8 / view.scale : x - tw - pad * 2 - 8 / view.scale
+          ctx.fillStyle = 'rgba(17,24,39,0.8)'
+          ctx.beginPath(); ctx.roundRect(bx, by, tw + pad * 2, bh, 4 / view.scale); ctx.fill()
+          ctx.fillStyle = txt === 'AVANT' ? '#f2c200' : '#ffffff'
+          ctx.textBaseline = 'middle'
+          ctx.fillText(txt, bx + pad, by + bh / 2)
+        }
+        tag('AVANT', 0, 'l')
+        tag('APRÈS', this.w, 'r')
+      }
+    }
     // cadre du document
     ctx.strokeStyle = 'rgba(255,255,255,0.25)'
     ctx.lineWidth = 1 / view.scale
@@ -454,6 +587,7 @@ export class Editor {
     return {
       w: this.w, h: this.h, adjust: this.adjust,
       adjustVisible: this.adjustVisible, activeId: this.activeId,
+      wb: this.wb, curves: this.curves,
       layers: this.layers.map((l) => ({
         id: l.id, name: l.name, visible: l.visible, opacity: l.opacity,
         dx: l.dx, dy: l.dy, locked: l.locked, png: l.cv.toDataURL('image/png'),
@@ -466,6 +600,9 @@ export class Editor {
     this.w = d.w; this.h = d.h
     this.adjust = d.adjust; this.adjustVisible = d.adjustVisible
     this.activeId = d.activeId
+    this.wb = d.wb || null
+    this.curves = d.curves || { rgb: null, r: null, g: null, b: null }
+    this._cf = null
     this.layers = await Promise.all(d.layers.map(async (l) => {
       const cv = mkCanvas(this.w, this.h)
       const img = await loadImg(l.png)
@@ -555,5 +692,30 @@ export function buildMontage(imgA, imgB, { layout = 'side', labels = true, gap =
     tag(labelA, aRect[0], aRect[1])
     tag(labelB, bRect[0], bRect[1])
   }
+  return cv
+}
+
+// ---- Planche contact -------------------------------------------------------------
+//
+// Grille de `cols` colonnes : chaque photo recadrée en « cover » dans une cellule
+// cellW × cellW/ratio, fond `bg`, espacement `gap`. Retourne un canvas.
+
+export function buildContactSheet(imgs, { cols = 4, cellW = 800, ratio = 4 / 3, gap = 8, bg = '#0b0e14' } = {}) {
+  const cellH = Math.round(cellW / ratio)
+  const rows = Math.ceil(imgs.length / cols)
+  const w = cols * cellW + (cols + 1) * gap
+  const h = rows * cellH + (rows + 1) * gap
+  const cv = mkCanvas(w, h)
+  const ctx = cv.getContext('2d')
+  ctx.fillStyle = bg
+  ctx.fillRect(0, 0, w, h)
+  imgs.forEach((img, i) => {
+    const col = i % cols, row = Math.floor(i / cols)
+    const dx = gap + col * (cellW + gap), dy = gap + row * (cellH + gap)
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height
+    const s = Math.max(cellW / iw, cellH / ih) // cover
+    const sw = cellW / s, sh = cellH / s
+    ctx.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, dx, dy, cellW, cellH)
+  })
   return cv
 }

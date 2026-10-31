@@ -54,8 +54,17 @@ export const sourceIcon = (key) => SOURCE_DEFS.find((s) => s.key === key)?.icon 
 
 // Types de connexion proposés dans le formulaire « Ajouter un appareil »
 export const CONNECTION_TYPES = [
-  ['wifi', 'Wi-Fi / bridge (EOS Utility, Nikon Transfer…)'],
+  ['wifi', 'Wi-Fi direct (Canon, Sony…)'],
+  ['ptp', 'Wi-Fi PTP/IP (Nikon Z6 II, Z7 II, Z8, Z9…)'],
   ['ftp', 'FTP'],
   ['sd', 'Carte SD'],
   ['watch_folder', 'Dossier surveillé'],
+]
+
+// Marques rapides dans « Ajouter un appareil » — pré-remplissent fabricant + connexion
+export const BRAND_PRESETS = [
+  { label: 'Canon WiFi', manufacturer: 'Canon', connectionType: 'wifi', hint: 'Connexion WiFi directe à l’appareil' },
+  { label: 'Nikon WiFi', manufacturer: 'Nikon', connectionType: 'ptp', hint: 'Pairing PTP/IP direct (Z6 II, Z7 II, Z8, Z9…)' },
+  { label: 'Sony WiFi', manufacturer: 'Sony', connectionType: 'wifi', hint: 'Transfert WiFi / Imaging Edge' },
+  { label: 'Autre', manufacturer: '', connectionType: 'wifi', hint: 'Saisie libre' },
 ]

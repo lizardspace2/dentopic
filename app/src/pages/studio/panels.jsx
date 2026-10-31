@@ -10,7 +10,7 @@ import {
 import { LuRedo2, LuUndo2 } from 'react-icons/lu'
 import { Tip } from '../../components/ui'
 import { C } from '../../theme'
-import { ADJUST_DEFS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS } from './constants'
+import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS } from './constants'
 import { curveLUT, histogram } from './engine'
 
 const D = C // alias lisibilité
@@ -312,37 +312,140 @@ export function LayersPanel({ editor, version, onChange }) {
   )
 }
 
-// ---- Panneau droit : Réglages (sliders → filtres) --------------------------------
+// ---- Panneau droit : Réglages (groupés façon Lightroom) ----------------------------
 
-export function AdjustPanel({ editor, onChange }) {
+function Section({ title, right, children }) {
   return (
-    <VStack align="stretch" gap="3" px="3" py="3" flex="1" overflowY="auto">
-      <HStack gap="1.5" flexWrap="wrap">
-        {PRESETS.map((p) => (
-          <Box key={p.name} as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm"
-            bg="whiteAlpha.100" color={fg} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
-            onClick={() => { editor.snapshot(); editor.adjust = { ...editor.adjust, ...p.adjust }; onChange() }}>
-            {p.name}
-          </Box>
-        ))}
-        <Box as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm" ml="auto"
-          bg="whiteAlpha.100" color={muted} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
-          onClick={() => { editor.snapshot(); editor.resetAdjust?.(); onChange() }}>
-          Reset
-        </Box>
+    <Box borderBottom="1px solid" borderColor="whiteAlpha.50" pb="2.5">
+      <HStack justify="space-between" mb="1.5">
+        <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">{title}</Text>
+        {right}
       </HStack>
-      {ADJUST_DEFS.map((d) => (
-        <Box key={d.key}>
-          <HStack justify="space-between" mb="0.5">
-            <Text fontSize="2xs" color={muted}>{d.label}</Text>
-            <Text fontSize="2xs" color={fg}>{editor.adjust[d.key]}{d.unit}</Text>
-          </HStack>
-          <Input type="range" min={d.min} max={d.max} step={d.step || 1} h="18px"
-            value={editor.adjust[d.key]}
-            onChange={(e) => { editor.adjust[d.key] = +e.target.value; onChange() }}
-            onPointerDown={() => editor.snapshot()} />
+      <VStack align="stretch" gap="1.5">{children}</VStack>
+    </Box>
+  )
+}
+
+function Slider({ d, value, onChange, onStart }) {
+  const disp = d.fmt ? d.fmt(value) : `${value}${d.unit || ''}`
+  return (
+    <Box>
+      <HStack justify="space-between" mb="0.5">
+        <Text fontSize="2xs" color={muted}>{d.label}</Text>
+        <Text fontSize="2xs" color={fg} w="52px" textAlign="right">{disp}</Text>
+      </HStack>
+      <Input type="range" min={d.min} max={d.max} step={d.step || 1} h="16px"
+        value={value} onPointerDown={onStart}
+        onChange={(e) => onChange(+e.target.value)} />
+    </Box>
+  )
+}
+
+const LS_PRESETS = 'dp_studio_presets'
+const loadUserPresets = () => { try { return JSON.parse(localStorage.getItem(LS_PRESETS) || '[]') } catch { return [] } }
+
+export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onCompare }) {
+  const [userPresets, setUserPresets] = useState(loadUserPresets)
+  const set = (k) => (v) => { editor.adjust[k] = v; onChange() }
+  const snap = () => editor.snapshot()
+
+  const applyPreset = (p) => {
+    editor.snapshot()
+    editor.adjust = { ...editor.adjust, ...p.adjust }
+    onChange()
+  }
+  const savePreset = () => {
+    const name = window.prompt('Nom du préréglage ?', 'Mon réglage')
+    if (!name) return
+    const a = editor.adjust
+    const keep = ['exposure', 'brightness', 'contrast', 'saturate', 'temp', 'tint',
+      'inBlack', 'gamma', 'inWhite', 'sharp', 'hue', 'grayscale', 'sepia']
+    const adjust = {}
+    for (const k of keep) adjust[k] = a[k]
+    const next = [...userPresets, { name, adjust }]
+    setUserPresets(next)
+    localStorage.setItem(LS_PRESETS, JSON.stringify(next))
+  }
+  // Niveaux auto : quantiles 1% / 99% de l'histogramme de luminance
+  const autoLevels = () => {
+    try {
+      const { h } = histogram(editor.compositeFiltered())
+      const total = h.reduce((s, v) => s + v, 0)
+      let lo = 0, hi = 255, acc = 0
+      for (let i = 0; i < 256; i++) { acc += h[i]; if (acc >= total * 0.01) { lo = i; break } }
+      acc = 0
+      for (let i = 255; i >= 0; i--) { acc += h[i]; if (acc >= total * 0.01) { hi = i; break } }
+      editor.snapshot()
+      editor.adjust.inBlack = lo
+      editor.adjust.inWhite = Math.max(lo + 1, hi)
+      onChange()
+    } catch { /* doc pas prêt */ }
+  }
+
+  return (
+    <VStack align="stretch" gap="2.5" px="3" py="3" flex="1" overflowY="auto">
+      {/* Comparaison avant/après sur le canevas */}
+      <Section title="Comparaison">
+        <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm" cursor="pointer"
+          bg={comparing ? '#f2c200' : 'whiteAlpha.100'} color={comparing ? '#111827' : fg}
+          fontWeight={comparing ? '700' : '400'} onClick={onCompare}>
+          {comparing ? '⬅ AVANT | APRÈS ➡ (glisser le séparateur)' : 'Comparer AVANT / APRÈS'}
         </Box>
+      </Section>
+
+      {/* Préréglages */}
+      <Section title="Préréglages"
+        right={<Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" onClick={savePreset}>+ Sauver</Box>}>
+        <HStack gap="1.5" flexWrap="wrap">
+          {[...PRESETS, ...userPresets].map((p) => (
+            <Box key={p.name} as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm"
+              bg="whiteAlpha.100" color={fg} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
+              onClick={() => applyPreset(p)}>
+              {p.name}
+            </Box>
+          ))}
+        </HStack>
+      </Section>
+
+      {ADJUST_GROUPS.map((g) => (
+        <Section key={g.title} title={g.title}
+          right={g.levels && (
+            <Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" onClick={autoLevels}>Auto</Box>
+          )}>
+          {g.wb && (
+            <HStack gap="2">
+              <Box as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                bg={wbPick ? '#f2c200' : 'whiteAlpha.100'} color={wbPick ? '#111827' : fg}
+                onClick={onWbPick}>
+                {wbPick ? '🎯 Cliquez une zone neutre' : 'Pipette balance des blancs'}
+              </Box>
+              {editor.wb && (
+                <Box as="button" fontSize="2xs" color={muted} cursor="pointer"
+                  onClick={() => { editor.snapshot(); editor.wb = null; onChange() }}>
+                  Reset BB
+                </Box>
+              )}
+            </HStack>
+          )}
+          {g.defs.map((d) => (
+            <Slider key={d.key} d={d} value={editor.adjust[d.key]}
+              onChange={set(d.key)} onStart={snap} />
+          ))}
+        </Section>
       ))}
+
+      <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm"
+        bg="whiteAlpha.100" color={muted} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
+        onClick={() => {
+          editor.snapshot()
+          editor.adjust = { brightness: 100, contrast: 100, saturate: 100, hue: 0, blur: 0,
+            grayscale: 0, sepia: 0, invert: 0, inBlack: 0, gamma: 100, inWhite: 255,
+            exposure: 0, temp: 0, tint: 0, sharp: 0 }
+          editor.wb = null
+          onChange()
+        }}>
+        Réinitialiser tous les réglages
+      </Box>
     </VStack>
   )
 }
@@ -538,7 +641,7 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
 
 // ---- Panneau latéral à onglets -------------------------------------------------------
 
-export function RightPanel({ editor, version, zoom, cursor, onChange }) {
+export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare }) {
   const [tab, setTab] = useState('layers')
   const TABS = [['layers', 'Calques'], ['adjust', 'Réglages'], ['curves', 'Courbes'], ['info', 'Infos']]
   return (
@@ -555,7 +658,8 @@ export function RightPanel({ editor, version, zoom, cursor, onChange }) {
       </HStack>
       <Flex flex="1" direction="column" overflow="hidden">
         {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} />}
-        {tab === 'adjust' && <AdjustPanel editor={editor} onChange={onChange} />}
+        {tab === 'adjust' && <AdjustPanel editor={editor} onChange={onChange}
+          wbPick={wbPick} onWbPick={onWbPick} comparing={comparing} onCompare={onCompare} />}
         {tab === 'curves' && <CurvesPanel editor={editor} version={version} onChange={onChange} />}
         {tab === 'info' && <InfoPanel editor={editor} zoom={zoom} cursor={cursor} />}
       </Flex>

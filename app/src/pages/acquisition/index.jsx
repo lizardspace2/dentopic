@@ -18,6 +18,7 @@ import {
   listCaptureDevices, listDossiers, listActiveSessions,
   createCaptureSession, endCaptureSession, createDossier,
   createCaptureDevice, updateCaptureDevice, importPhotos, countSessionPhotos,
+  listProtocolSteps, listPhotosByDossier,
 } from '../../api'
 import { SOURCE_DEFS, sourceLabel, sourceIcon } from './constants'
 import {
@@ -44,6 +45,12 @@ export default function Acquisition() {
   const [helpStep, setHelpStep] = useState(null)
   const [checklistHidden, setChecklistHidden] = useState(() => localStorage.getItem('dentopic.acq.checklist') === '1')
   const [dragging, setDragging] = useState(false)
+  // Protocole de prise de vues : étapes attendues + étape active pour taguer les photos
+  const [protoSteps, setProtoSteps] = useState([])
+  const [activeStep, setActiveStep] = useState(null)
+  const [stepCounts, setStepCounts] = useState({})
+
+  const active = d.active[0]
 
   const close = () => setModal(null)
 
@@ -69,6 +76,27 @@ export default function Acquisition() {
     }
   }
   useEffect(() => { reload() }, [wsId])
+
+  // Référentiel de prise : on prend le protocole le plus complet
+  useEffect(() => {
+    listProtocolSteps().then((rows) => {
+      const byProto = {}
+      rows.forEach((s) => { (byProto[s.protocol_id] ||= []).push(s) })
+      const best = Object.values(byProto).sort((a, b) => b.length - a.length)[0] || []
+      setProtoSteps(best.sort((a, b) => a.position - b.position))
+    })
+  }, [])
+
+  // Compte des photos déjà taguées par étape dans le dossier cible
+  useEffect(() => {
+    const did = target?.id || active?.dossier_id
+    if (!did) { setStepCounts({}); return }
+    listPhotosByDossier(did).then((ph) => {
+      const c = {}
+      ph.forEach((p) => { if (p.protocol_step_id) c[p.protocol_step_id] = (c[p.protocol_step_id] || 0) + 1 })
+      setStepCounts(c)
+    })
+  }, [target?.id, active?.dossier_id, received])
 
   // « Capturer » depuis une carte dossier : pré-sélectionne la destination + ouvre la modal
   useEffect(() => {
@@ -122,7 +150,8 @@ export default function Acquisition() {
   }
 
   const doImport = async (files) => {
-    await importPhotos(wsId, files, target?.id || null, d.active[0]?.id || null)
+    await importPhotos(wsId, files, target?.id || null, d.active[0]?.id || null, activeStep)
+    setActiveStep(null)
     reload()
   }
 
@@ -137,7 +166,6 @@ export default function Acquisition() {
     setChecklistHidden(true)
   }
 
-  const active = d.active[0]
   const steps = [
     { done: !!target, label: 'Dossier de destination', desc: 'la destination des photos' },
     { done: !!source, label: 'Source choisie', desc: 'mobile, boîtier, FTP, dossier…' },
@@ -252,6 +280,49 @@ export default function Acquisition() {
               </Button>
             </Tip>
           </HStack>
+        </Card>
+      )}
+
+      {/* ---- Protocole de prise de vues (référentiel DentoPic) ---- */}
+      {protoSteps.length > 0 && (active || target) && (
+        <Card px="5" py="4" mb="4">
+          <HStack justify="space-between" mb="3">
+            <HStack gap="2">
+              <Text fontSize="sm" fontWeight="600" color={C.ink}>Protocole de prise de vues</Text>
+              <Tag color="gray">{protoSteps.length} vues attendues</Tag>
+            </HStack>
+            {activeStep && (
+              <Text fontSize="xs" color={C.primary} cursor="pointer" onClick={() => setActiveStep(null)}>
+                Étape active : {protoSteps.find((s) => s.id === activeStep)?.name} — désactiver
+              </Text>
+            )}
+          </HStack>
+          <HStack gap="2" flexWrap="wrap">
+            {protoSteps.map((s) => {
+              const n = stepCounts[s.id] || 0
+              const done = n > 0
+              const isActive = activeStep === s.id
+              return (
+                <Tip key={s.id} label={s.instructions || s.name}>
+                  <HStack as="button" px="3" py="1.5" gap="2" borderRadius="md" cursor="pointer"
+                    fontSize="xs" border="1.5px solid"
+                    bg={isActive ? C.softBlue : done ? C.greenBg : 'white'}
+                    borderColor={isActive ? C.primary : done ? C.greenBorder : 'gray.200'}
+                    color={done ? C.greenText : C.ink}
+                    onClick={() => setActiveStep(isActive ? null : s.id)}>
+                    <Box w="6px" h="6px" borderRadius="full"
+                      bg={done ? '#22c55e' : isActive ? C.primary : 'gray.300'} />
+                    <Text fontWeight={done || isActive ? '600' : '400'}>{s.name}</Text>
+                    {s.required && <Text fontSize="2xs" color="gray.400">req.</Text>}
+                    {done && <Text fontSize="2xs" color={C.greenText}>×{n}</Text>}
+                  </HStack>
+                </Tip>
+              )
+            })}
+          </HStack>
+          <Text fontSize="2xs" color="gray.400" mt="2">
+            Cliquez une étape : les prochaines photos importées y seront rattachées (protocol_step_id).
+          </Text>
         </Card>
       )}
 

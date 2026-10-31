@@ -45,6 +45,8 @@ export default function Studio() {
   const [textInput, setTextInput] = useState(null) // {sx, sy, ix, iy}
   const [cursor, setCursor] = useState(null)
   const [showOriginal, setShowOriginal] = useState(false)
+  const [compare, setCompare] = useState(null) // fraction 0..1 du séparateur avant/après
+  const [wbPick, setWbPick] = useState(false)  // pipette balance des blancs armée
 
   const bump = useCallback(() => { editor.markDirty(); setVersion((v) => v + 1) }, [editor])
   const toImg = useCallback(
@@ -63,6 +65,7 @@ export default function Studio() {
     setSrcPhoto(p)
     setDocOpen(true)
     setModal(null)
+    setCompare(null); setWbPick(false)
     fitView()
     bump()
   }
@@ -76,6 +79,7 @@ export default function Studio() {
     setSrcPhoto(null)
     setDocOpen(true)
     setModal(null)
+    setCompare(null); setWbPick(false)
     fitView()
     bump()
     e.target.value = ''
@@ -104,10 +108,10 @@ export default function Studio() {
   const render = useCallback(() => {
     const cv = canvasRef.current
     if (cv) editor.render(cv, view, {
-      showOriginal, cropRect,
+      showOriginal, cropRect, compare,
       handles: tool === 'move' && opts.transform ? editor.active : null,
     })
-  }, [editor, view, showOriginal, cropRect, tool, opts.transform, version])
+  }, [editor, view, showOriginal, cropRect, compare, tool, opts.transform, version])
 
   useEffect(render, [render, version])
 
@@ -145,6 +149,7 @@ export default function Studio() {
     setSrcPhoto(null)
     setDocOpen(true)
     setModal(null)
+    setCompare(null); setWbPick(false)
     fitView()
     bump()
   }
@@ -155,6 +160,21 @@ export default function Studio() {
     if (!docOpen) return
     e.currentTarget.setPointerCapture(e.pointerId)
     const [ix, iy] = toImg(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
+
+    // pipette balance des blancs : le clic suivant pose les gains
+    if (wbPick) {
+      editor.snapshot()
+      editor.whiteBalanceAt(ix, iy)
+      setWbPick(false)
+      bump()
+      return
+    }
+    // comparaison : tout drag déplace le séparateur
+    if (compare != null) {
+      stroke.current = { kind: 'divider' }
+      setCompare(clamp(ix / editor.w, 0.02, 0.98))
+      return
+    }
 
     switch (tool) {
       case 'move': {
@@ -264,6 +284,7 @@ export default function Studio() {
     const s = stroke.current
     if (!s) return
     if (s.kind === 'stroke') paint(ix, iy, s.l)
+    else if (s.kind === 'divider') setCompare(clamp(ix / editor.w, 0.02, 0.98))
     else if (s.kind === 'move') {
       editor.active.dx = s.dx + (ix - s.ox)
       editor.active.dy = s.dy + (iy - s.oy)
@@ -383,6 +404,9 @@ export default function Studio() {
       { label: 'Zoom −', shortcut: '−', onClick: () => zoomAt(0.8) },
       { label: 'Ajuster à l\'écran', shortcut: '0', disabled: !docOpen, onClick: fitView },
       { label: 'Taille réelle (100 %)', shortcut: '1', disabled: !docOpen, onClick: () => setView({ scale: 1, ox: 60, oy: 60 }) },
+      '-',
+      { label: compare != null ? 'Quitter la comparaison' : 'Comparer AVANT / APRÈS', shortcut: 'Q', disabled: !docOpen,
+        onClick: () => setCompare(compare != null ? null : 0.5) },
     ]},
   ]
 
@@ -407,6 +431,7 @@ export default function Studio() {
       else if (k === '-') zoomAt(0.8)
       else if (k === '0') fitView()
       else if (k === 'x') setOpts((o) => ({ ...o, fg: o.bg, bg: o.fg }))
+      else if (k === 'q' && docOpen) setCompare((c) => (c != null ? null : 0.5))
       else if (k === 'delete' || k === 'backspace') { if (docOpen) { if (editor.active?.locked) editor.addLayer(); editor.snapshot(); editor.deleteContent(); bump() } }
       else if (k === 'escape') { editor.deselect(); setCropRect(null); bump() }
     }
@@ -478,7 +503,9 @@ export default function Studio() {
             />
           )}
         </Box>
-        {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump} />}
+        {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump}
+          wbPick={wbPick} onWbPick={() => setWbPick((v) => !v)}
+          comparing={compare != null} onCompare={() => setCompare((c) => (c != null ? null : 0.5))} />}
       </Flex>
       <StatusBar editor={editor} zoom={view.scale} tool={tool} onZoom={(f) => zoomAt(f)} />
 

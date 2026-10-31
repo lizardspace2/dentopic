@@ -270,10 +270,10 @@ export function updateCaptureDevice(id, fields) {
 
 // ---- Création d'entités -----------------------------------------------------------
 
-export function createDossier(wsId, name) {
+export function createDossier(wsId, name, extra = {}) {
   return supabase
     .from('dossiers')
-    .insert({ workspace_id: wsId, name })
+    .insert({ workspace_id: wsId, name, ...extra })
     .select()
     .single()
     .then(({ data, error }) => {
@@ -282,8 +282,44 @@ export function createDossier(wsId, name) {
     })
 }
 
+/** Fiche patient rattachée à un dossier (nom, prénom, naissance…). */
+export function createPatient(wsId, dossierId, p) {
+  return supabase
+    .from('patients')
+    .insert({ workspace_id: wsId, dossier_id: dossierId, ...p })
+    .select()
+    .single()
+    .then(({ data, error }) => {
+      if (error) console.warn('createPatient:', error.message)
+      return data
+    })
+}
+
+/** Patient d'un dossier (ou null). */
+export function getPatient(dossierId) {
+  return supabase
+    .from('patients')
+    .select('*')
+    .eq('dossier_id', dossierId)
+    .is('deleted_at', null)
+    .limit(1)
+    .then(({ data }) => data?.[0] || null)
+}
+
+/** Étapes du protocole de prise de vues (référentiel DentoPic). */
+export function listProtocolSteps() {
+  return supabase
+    .from('protocol_steps')
+    .select('id,protocol_id,position,name,expected_photo_class,required,instructions')
+    .order('position', { ascending: true })
+    .then(({ data, error }) => {
+      if (error) console.warn('listProtocolSteps:', error.message)
+      return data || []
+    })
+}
+
 /** Upload + enregistre des fichiers dans le bucket privé `photos` (rangés au dossier/session si fournis) */
-export async function importPhotos(wsId, files, dossierId = null, sessionId = null) {
+export async function importPhotos(wsId, files, dossierId = null, sessionId = null, protocolStepId = null) {
   const out = []
   for (const file of files) {
     const ext = (file.name.split('.').pop() || 'jpg').toLowerCase()
@@ -301,6 +337,7 @@ export async function importPhotos(wsId, files, dossierId = null, sessionId = nu
         source: 'import',
         dossier_id: dossierId,
         capture_session_id: sessionId,
+        protocol_step_id: protocolStepId,
       })
       .select()
       .single()
@@ -349,7 +386,7 @@ export async function saveEditedPhoto(wsId, blob, filename, dossierId = null) {
       original_filename: filename,
       mime: 'image/png',
       bytes: blob.size,
-      source: 'edit',
+      source: 'montage',
       dossier_id: dossierId,
     })
     .select()
