@@ -4,8 +4,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Center, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
-  FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiGrid, FiLayers, FiLock,
-  FiMove, FiPlus, FiRefreshCw, FiTrash2, FiEdit2,
+  FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiGrid, FiImage, FiLayers, FiLock,
+  FiMove, FiPlus, FiRefreshCw, FiTrash2, FiEdit2, FiType, FiZap,
+  FiAlignLeft, FiAlignCenter, FiAlignRight,
 } from 'react-icons/fi'
 import { LuContrast, LuHistory, LuRedo2, LuUndo2 } from 'react-icons/lu'
 import { TbMask } from 'react-icons/tb'
@@ -325,6 +326,26 @@ export function OptionsBar({
       )}
       {tool === 'move' && (
         <>
+          {/* Sélection auto + portée — comme « Auto-Select: Layer » de Photoshop */}
+          <Tip label="Cliquer sur le document sélectionne directement le calque sous le curseur">
+            <HStack gap="1.5" cursor="pointer" onClick={() => setOpts({ ...opts, autoSelect: !opts.autoSelect })}>
+              <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+                borderColor={opts.autoSelect ? '#4f8fe8' : 'gray.500'}
+                bg={opts.autoSelect ? '#4f8fe8' : 'transparent'}
+                color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+                {opts.autoSelect ? '✓' : ''}
+              </Box>
+              <Text {...row}>Sélection auto :</Text>
+            </HStack>
+          </Tip>
+          <Box as="select" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+            border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+            disabled={!opts.autoSelect} opacity={opts.autoSelect ? 1 : 0.5}
+            value={opts.autoScope || 'layer'}
+            onChange={(e) => setOpts({ ...opts, autoScope: e.target.value })}>
+            <option value="layer">Calque</option>
+            <option value="group">Groupe</option>
+          </Box>
           <Tip label="Affiche les poignées pour redimensionner le calque">
             <HStack gap="1.5" cursor="pointer" onClick={() => setOpts({ ...opts, transform: !opts.transform })}>
               <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
@@ -412,11 +433,36 @@ function SwatchPicker({ value, onChange, onCustom }) {
 // ---- Panneau droit : Calques ----------------------------------------------------
 
 export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
-  const layers = [...editor.layers].reverse()
-  const fxList = (l) => l.fx ? Object.entries(l.fx).filter(([, f]) => f?.on).map(([k]) => FX_NAMES[k] || k) : []
+  const [kind, setKind] = useState('all') // filtre « Genre » façon Photoshop
+  // effets listés sous le calque : activés ou masqués par l'œil (_listed)
+  const fxKeys = (l) => l.fx ? Object.keys(l.fx).filter((k) => l.fx[k]?.on || l.fx[k]?._listed) : []
+  const match = (l) =>
+    kind === 'all' ? true
+      : kind === 'text' ? l.type === 'text'
+        : kind === 'adjust' ? l.type === 'adjust'
+          : kind === 'fx' ? fxKeys(l).some((k) => l.fx[k]?.on)
+            : (l.type || 'pixel') === 'pixel'
+  const layers = [...editor.layers].reverse().filter(match)
   const act = editor.active
-  // rangée « Lock » façon Photoshop : pixels transparents, pixels, position, tout
-  const lockBtn = (key, icon, label, off) => (
+
+  const num = (value, title, cb) => (
+    <Tip label={title}>
+      <Input type="number" w="42px" h="18px" fontSize="2xs" px="1" bg="#1c2433" color={fg}
+        border="1px solid" borderColor={panelBorder} min="0" max="100"
+        value={Math.round(value * 100)}
+        onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) cb(Math.min(1, Math.max(0, v / 100))) }} />
+    </Tip>
+  )
+  const kindBtn = (k, icon, label) => (
+    <Tip key={k} label={label}>
+      <Center w="20px" h="20px" borderRadius="sm" cursor="pointer" fontSize="11px"
+        color={kind === k ? '#ffffff' : muted} bg={kind === k ? C.primary : 'transparent'}
+        _hover={{ color: fg }} onClick={() => setKind(k)}>
+        <Box as={icon} />
+      </Center>
+    </Tip>
+  )
+  const lockBtn = (key, icon, label) => (
     <Tip key={key} label={label}>
       <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="12px"
         color={act?.[key] ? '#f2c200' : muted} bg={act?.[key] ? 'whiteAlpha.100' : 'transparent'}
@@ -428,7 +474,29 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
   )
   return (
     <VStack align="stretch" gap="0" flex="1" overflowY="auto">
-      {/* Rangée Lock — les 4 verrous de Photoshop */}
+      {/* Genre — filtres de calques (Tous / pixels / texte / réglage / effets) */}
+      <HStack px="2.5" py="1" gap="1" borderBottom="1px solid" borderColor={panelBorder}>
+        <Text fontSize="2xs" color={muted} flexShrink={0}>Genre :</Text>
+        {kindBtn('all', FiLayers, 'Tous les calques')}
+        {kindBtn('pixel', FiImage, 'Calques de pixels')}
+        {kindBtn('text', FiType, 'Calques de texte')}
+        {kindBtn('adjust', LuContrast, 'Calques de réglage')}
+        {kindBtn('fx', FiZap, 'Calques avec des styles (effets)')}
+      </HStack>
+      {/* Fusion + Opacité — en haut comme Photoshop */}
+      <HStack px="2.5" py="1" gap="2" borderBottom="1px solid" borderColor={panelBorder}>
+        <Box as="select" flex="1" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+          border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+          value={act?.blend || 'source-over'} disabled={!act}
+          onChange={(e) => { editor.snapshot(); act.blend = e.target.value; onChange() }}>
+          {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+        </Box>
+        <Text fontSize="2xs" color={muted} flexShrink={0}>Opacité :</Text>
+        {act ? num(act.opacity, 'Opacité — affecte le calque ET ses effets', (v) => { editor.snapshot(); act.opacity = v; onChange() })
+          : <Input w="42px" h="18px" fontSize="2xs" px="1" bg="#1c2433" border="1px solid" borderColor={panelBorder} disabled />}
+        <Text fontSize="2xs" color={muted}>%</Text>
+      </HStack>
+      {/* Verrou + Remplissage */}
       <HStack px="2.5" py="1" gap="1" borderBottom="1px solid" borderColor={panelBorder}>
         <Text fontSize="2xs" color={muted} flexShrink={0}>Verrou :</Text>
         {lockBtn('lockAlpha', FiGrid, 'Verrouiller les pixels transparents — le pinceau ne peint que sur l\'existant')}
@@ -436,6 +504,11 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
         {lockBtn('lockPos', FiMove, 'Verrouiller la position — l\'outil Déplacement est inactif')}
         {lockBtn('locked', FiLock, 'Tout verrouiller')}
         {act?.locked && <Text fontSize="2xs" color="#f2c200" ml="1">calque verrouillé</Text>}
+        <Box flex="1" />
+        <Text fontSize="2xs" color={muted} flexShrink={0}>Rempl. :</Text>
+        {act ? num(act.fill ?? 1, 'Remplissage — affecte les pixels seuls (les effets fx restent visibles)', (v) => { editor.snapshot(); act.fill = v; onChange() })
+          : <Input w="42px" h="18px" fontSize="2xs" px="1" bg="#1c2433" border="1px solid" borderColor={panelBorder} disabled />}
+        <Text fontSize="2xs" color={muted}>%</Text>
       </HStack>
       {/* Calque de réglage global */}
       <HStack px="2.5" py="1.5" gap="2" fontSize="xs" color={fg}
@@ -450,7 +523,7 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
         </Tip>
       </HStack>
       {layers.map((l) => {
-        const fxs = fxList(l)
+        const fxs = fxKeys(l)
         const isAdjust = l.type === 'adjust'
         return (
           <Box key={l.id}>
@@ -468,11 +541,16 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
                 <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
                   onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
               </Tip>
-              <Tip label={isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
+              <Tip label={isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.type === 'text' ? 'Calque de texte — éditable dans Propriétés' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
                 {isAdjust ? (
                   <Center w="42px" h="30px" flexShrink={0} borderRadius="sm" bg="#2a3140"
                     border="1px solid" borderColor="#7c3aed" color="#c4b5fd" fontSize="15px">
                     <Box as={LuContrast} />
+                  </Center>
+                ) : l.type === 'text' ? (
+                  <Center w="42px" h="30px" flexShrink={0} borderRadius="sm" bg="#2a3140"
+                    border="1px solid" borderColor="#b45309" color="#fcd34d" fontSize="15px" fontWeight="700">
+                    T
                   </Center>
                 ) : (
                   <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
@@ -493,7 +571,7 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
               )}
               <Text flex="1" isTruncated>{l.name}{l.locked ? ' 🔒' : ''}</Text>
               {fxs.length > 0 && (
-                <Tip label="Styles de calque actifs — double-clic pour éditer">
+                <Tip label="Style de calque — clic pour éditer">
                   <Text fontSize="2xs" color={C.primary} fontWeight="700" flexShrink={0}
                     onClick={(e) => { e.stopPropagation(); editor.setActive(l.id); onFx?.() }}>fx</Text>
                 </Tip>
@@ -519,92 +597,80 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
                 </HStack>
               )}
             </HStack>
+            {/* Sous-liste des effets — façon Photoshop : groupe « Effets » + œil par effet */}
             {fxs.length > 0 && (
-              <VStack align="stretch" gap="0" pl="14" pb="1">
-                {fxs.map((n) => (
-                  <Tip key={n} label={`Effet « ${n} » — clic pour éditer`}>
-                    <Text fontSize="2xs" color={muted} cursor="pointer" _hover={{ color: fg }}
-                      onClick={() => { editor.setActive(l.id); onFx?.() }}>{n}</Text>
+              <VStack align="stretch" gap="0" pl="8" pb="1">
+                <HStack gap="1.5" py="0.5">
+                  <Tip label={l.fxOff ? 'Afficher tous les effets' : 'Masquer tous les effets'}>
+                    <Box as={l.fxOff ? FiEyeOff : FiEye} color={l.fxOff ? 'whiteAlpha.300' : muted}
+                      fontSize="11px" cursor="pointer" flexShrink={0}
+                      onClick={() => { editor.snapshot('Effets'); l.fxOff = !l.fxOff; onChange() }} />
                   </Tip>
-                ))}
+                  <Text fontSize="2xs" color={l.fxOff ? 'whiteAlpha.300' : fg} fontStyle="italic">Effets</Text>
+                </HStack>
+                {fxs.map((k) => {
+                  const f = l.fx[k]
+                  return (
+                    <HStack key={k} gap="1.5" pl="4" py="0.5">
+                      <Tip label={f.on ? `Masquer « ${FX_NAMES[k] || k} »` : `Afficher « ${FX_NAMES[k] || k} »`}>
+                        <Box as={f.on ? FiEye : FiEyeOff} color={f.on ? muted : 'whiteAlpha.300'}
+                          fontSize="11px" cursor="pointer" flexShrink={0}
+                          onClick={() => { editor.snapshot('Effet'); f.on = !f.on; f._listed = true; onChange() }} />
+                      </Tip>
+                      <Tip label="Modifier cet effet">
+                        <Text fontSize="2xs" color={f.on ? fg : 'whiteAlpha.300'} cursor="pointer"
+                          _hover={{ color: '#ffffff' }} isTruncated
+                          onClick={() => { editor.setActive(l.id); onFx?.(k) }}>{FX_NAMES[k] || k}</Text>
+                      </Tip>
+                    </HStack>
+                  )
+                })}
               </VStack>
             )}
             <Box h="1px" bg="whiteAlpha.50" />
           </Box>
         )
       })}
-      {editor.active && (
-        <HStack px="2.5" py="1.5" gap="2" borderTop="1px solid" borderColor={panelBorder}>
-          <Tip label="Mode de fusion du calque avec ceux du dessous">
-            <Text fontSize="2xs" color={muted} flexShrink="0">Fusion</Text>
-          </Tip>
-          <Box as="select" flex="1" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
-            border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
-            value={editor.active.blend || 'source-over'}
-            onChange={(e) => { editor.snapshot(); editor.active.blend = e.target.value; onChange() }}>
-            {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
-          </Box>
-          <Tip label="Style de calque — ombres, lueurs, contour, incrustations…">
-            <Box as="button" px="1.5" h="20px" fontSize="2xs" borderRadius="sm" cursor="pointer"
-              bg={fxList(editor.active).length ? C.primary : 'whiteAlpha.100'} color="#ffffff"
-              onClick={onFx}>fx</Box>
-          </Tip>
-        </HStack>
-      )}
-      <HStack px="2.5" py="2" gap="2" mt="auto" borderTop="1px solid" borderColor={panelBorder}>
-        <Tip label="Calque transparent au-dessus — pour dessiner ou annoter sans toucher l'image" flex="1">
-          <HStack flex="1" gap="1.5" cursor="pointer" color={C.primary} fontSize="xs"
-            onClick={() => { editor.snapshot('Nouveau calque'); editor.addLayer(); onChange() }}>
-            <FiPlus /> <Text>Nouveau calque</Text>
-          </HStack>
+      {/* Barre d'icônes en bas — façon Photoshop */}
+      <HStack px="2.5" py="1.5" gap="1" mt="auto" borderTop="1px solid" borderColor={panelBorder} justify="flex-end">
+        <Tip label="Style de calque — ombres, lueurs, contour, incrustations…">
+          <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="11px" fontWeight="700"
+            color={fxKeys(act || {}).some((k) => act?.fx?.[k]?.on) ? C.primary : muted}
+            _hover={{ color: fg }} onClick={() => act && onFx?.()}>fx</Center>
         </Tip>
-        <Tip label="Calque de réglage non destructif (teinte, niveaux, N&B…)">
-          <Box as={LuContrast} fontSize="14px" color={muted} cursor="pointer" _hover={{ color: fg }}
-            onClick={() => { editor.snapshot('Calque de réglage'); const l = editor.addAdjustLayer('bc'); onChange(); onAdjust?.(l) }} />
-        </Tip>
-        {editor.active && !editor.active.locked && editor.active.type !== 'adjust' && (
-          <Tip label={editor.active.mask ? 'Supprimer le masque de fusion' : 'Ajouter un masque de fusion (depuis la sélection si elle existe)'}>
-            <Box as={TbMask} fontSize="15px" color={editor.active?.mask ? C.primary : muted}
-              cursor="pointer" _hover={{ color: fg }}
+        {act && !act.locked && act.type !== 'adjust' && (
+          <Tip label={act.mask ? 'Supprimer le masque de fusion' : 'Ajouter un masque de fusion (depuis la sélection si elle existe)'}>
+            <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="14px"
+              color={act.mask ? C.primary : muted} _hover={{ color: fg }}
               onClick={() => {
-                const l = editor.active
-                if (!l) return
                 editor.snapshot('Masque de fusion')
-                if (l.mask) editor.removeMask(l)
-                else editor.addMask(l, !!(editor.sel || editor.selPoly))
+                if (act.mask) editor.removeMask(act)
+                else editor.addMask(act, !!(editor.sel || editor.selPoly))
                 onChange()
-              }} />
+              }}>
+              <Box as={TbMask} />
+            </Center>
           </Tip>
         )}
-        {editor.active && (
-          <>
-            <Tip label="Opacité — affecte le calque ET ses effets" flex="1">
-              <HStack gap="1" flex="1">
-                <Text fontSize="2xs" color={muted}>Opacité</Text>
-                <Input type="range" min="0" max="1" step="0.05" h="16px" flex="1"
-                  value={editor.active.opacity}
-                  onPointerDown={() => editor.snapshot()}
-                  onChange={(e) => { editor.active.opacity = +e.target.value; onChange() }} />
-                <Input type="number" w="46px" h="18px" fontSize="2xs" px="1" bg="#1c2433" color={fg}
-                  border="1px solid" borderColor={panelBorder} min="0" max="100"
-                  value={Math.round(editor.active.opacity * 100)}
-                  onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) { editor.active.opacity = Math.min(1, Math.max(0, v / 100)); onChange() } }} />
-              </HStack>
-            </Tip>
-            <Tip label="Remplissage — affecte les pixels seuls (les effets fx restent visibles)" flex="1">
-              <HStack gap="1" flex="1">
-                <Text fontSize="2xs" color={muted}>Rempl.</Text>
-                <Input type="range" min="0" max="1" step="0.05" h="16px" flex="1"
-                  value={editor.active.fill ?? 1}
-                  onPointerDown={() => editor.snapshot()}
-                  onChange={(e) => { editor.active.fill = +e.target.value; onChange() }} />
-                <Input type="number" w="46px" h="18px" fontSize="2xs" px="1" bg="#1c2433" color={fg}
-                  border="1px solid" borderColor={panelBorder} min="0" max="100"
-                  value={Math.round((editor.active.fill ?? 1) * 100)}
-                  onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) { editor.active.fill = Math.min(1, Math.max(0, v / 100)); onChange() } }} />
-              </HStack>
-            </Tip>
-          </>
+        <Tip label="Calque de réglage non destructif (teinte, niveaux, N&B…)">
+          <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="14px" color={muted} _hover={{ color: fg }}
+            onClick={() => { editor.snapshot('Calque de réglage'); const l = editor.addAdjustLayer('bc'); onChange(); onAdjust?.(l) }}>
+            <Box as={LuContrast} />
+          </Center>
+        </Tip>
+        <Tip label="Nouveau calque transparent au-dessus">
+          <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="14px" color={muted} _hover={{ color: fg }}
+            onClick={() => { editor.snapshot('Nouveau calque'); editor.addLayer(); onChange() }}>
+            <Box as={FiPlus} />
+          </Center>
+        </Tip>
+        {act && !act.locked && (
+          <Tip label="Supprimer le calque">
+            <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="13px" color={muted} _hover={{ color: '#f87171' }}
+              onClick={() => { editor.snapshot('Supprimer'); editor.removeLayer(act.id); onChange() }}>
+              <Box as={FiTrash2} />
+            </Center>
+          </Tip>
         )}
       </HStack>
     </VStack>
@@ -1185,8 +1251,149 @@ function MiniHist({ editor, version, w = 150, h = 56 }) {
 // ---- Propriétés du calque de réglage sélectionné — façon Photoshop -----------------
 // (le panneau « Propriétés » de Ps affiche les paramètres du réglage + l'histogramme)
 
-export function AdjustLayerProps({ editor, layer, onChange }) {
-  const adj = layer?.adj
+// ---- Propriétés d'un calque de texte (Caractère + Paragraphe, façon Photoshop) ------
+
+function NumXY({ label, value, onChange, min = -9999, max = 9999 }) {
+  return (
+    <VStack align="stretch" gap="0" flex="1">
+      <Text fontSize="2xs" color={muted}>{label}</Text>
+      <Input type="number" h="20px" fontSize="2xs" px="1" bg="#1c2433" color={fg}
+        border="1px solid" borderColor={panelBorder} min={min} max={max}
+        value={Math.round(value)} onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) onChange(v) }} />
+    </VStack>
+  )
+}
+
+/** Champs X / Y / L / H + Opacité / Remplissage communs (haut du panneau Propriétés). */
+function LayerBox({ editor, layer, onChange, w, h }) {
+  return (
+    <VStack align="stretch" gap="2">
+      <HStack gap="1.5">
+        <NumXY label="X" value={layer.dx || 0} onChange={(v) => { editor.snapshot('Déplacer'); layer.dx = v; onChange() }} />
+        <NumXY label="Y" value={layer.dy || 0} onChange={(v) => { editor.snapshot('Déplacer'); layer.dy = v; onChange() }} />
+      </HStack>
+      <HStack gap="1.5">
+        <VStack align="stretch" gap="0" flex="1"><Text fontSize="2xs" color={muted}>L</Text>
+          <Input h="20px" fontSize="2xs" px="1" bg="#151a26" color={muted} border="1px solid" borderColor={panelBorder} value={`${Math.round(w)} px`} readOnly /></VStack>
+        <VStack align="stretch" gap="0" flex="1"><Text fontSize="2xs" color={muted}>H</Text>
+          <Input h="20px" fontSize="2xs" px="1" bg="#151a26" color={muted} border="1px solid" borderColor={panelBorder} value={`${Math.round(h)} px`} readOnly /></VStack>
+      </HStack>
+      {[{ l: 'Opacité', k: 'opacity' }, { l: 'Remplissage', k: 'fill' }].map(({ l: lb, k }) => (
+        <VStack key={k} align="stretch" gap="0.5">
+          <HStack justify="space-between">
+            <Text fontSize="2xs" color={muted}>{lb}</Text>
+            <Text fontSize="2xs" color={fg}>{Math.round((layer[k] ?? 1) * 100)} %</Text>
+          </HStack>
+          <Input type="range" min="0" max="1" step="0.01" h="16px" value={layer[k] ?? 1}
+            onPointerDown={() => editor.snapshot(lb)}
+            onChange={(e) => { layer[k] = +e.target.value; onChange() }} />
+        </VStack>
+      ))}
+    </VStack>
+  )
+}
+
+/** Calque de texte : Caractère (police, style, taille, crénage, couleur) + Paragraphe. */
+function TextLayerProps({ editor, layer, onChange }) {
+  const t = layer.text || {}
+  const up = (patch) => { editor.updateText(layer, patch); onChange() }
+  const snap = () => editor.snapshot('Texte')
+  const tgl = (k) => { snap(); up({ [k]: !t[k] }) }
+  const alignBtn = (a, label) => (
+    <Tip key={a} label={label}>
+      <Center w="24px" h="20px" borderRadius="sm" cursor="pointer" fontSize="12px"
+        bg={(t.align || 'left') === a ? C.primary : 'whiteAlpha.100'} color="#ffffff"
+        onClick={() => { snap(); up({ align: a }) }}>
+        <Box as={a === 'center' ? FiAlignCenter : a === 'right' ? FiAlignRight : FiAlignLeft} />
+      </Center>
+    </Tip>
+  )
+  const tNum = (label, key, val, min, max, step) => (
+    <VStack align="stretch" gap="0" flex="1"><Text fontSize="2xs" color={muted}>{label}</Text>
+      <Input type="number" h="20px" fontSize="2xs" px="1" bg="#1c2433" color={fg} step={step}
+        border="1px solid" borderColor={panelBorder} min={min} max={max} value={val}
+        onFocus={snap}
+        onChange={(e) => { const v = +e.target.value; if (!isNaN(v) && v >= min) up({ [key]: Math.min(max, v) }) }} /></VStack>
+  )
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3" overflowY="auto" flex="1">
+      <Text fontSize="2xs" color={muted}>Calque de texte</Text>
+      <LayerBox editor={editor} layer={layer} onChange={onChange}
+        w={t.box?.w || 0} h={t.box?.h || 0} />
+      <Box h="1px" bg="whiteAlpha.50" />
+      <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">Caractère</Text>
+      <Box as="select" w="100%" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+        border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+        value={t.font || 'Arial'}
+        onChange={(e) => { snap(); up({ font: e.target.value }) }}>
+        {TEXT_FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+      </Box>
+      <HStack gap="1.5" align="end">
+        {tNum('Taille', 'size', t.size || 48, 1, 400, 1)}
+        {tNum('Crénage', 'tracking', t.tracking || 0, -20, 100, 1)}
+        <HStack gap="1">
+          <Box as="button" w="20px" h="20px" fontSize="xs" fontWeight="700" borderRadius="sm" cursor="pointer"
+            bg={t.bold ? C.primary : 'whiteAlpha.100'} color="#ffffff" onClick={() => tgl('bold')}>B</Box>
+          <Box as="button" w="20px" h="20px" fontSize="xs" fontStyle="italic" borderRadius="sm" cursor="pointer"
+            bg={t.italic ? C.primary : 'whiteAlpha.100'} color="#ffffff" onClick={() => tgl('italic')}>I</Box>
+        </HStack>
+      </HStack>
+      <HStack gap="1.5" align="end">
+        {tNum('Interligne ×', 'leading', t.leading || 1.2, 0.5, 4, 0.1)}
+        <VStack align="stretch" gap="0"><Text fontSize="2xs" color={muted}>Couleur</Text>
+          <Input type="color" w="44px" h="22px" p="0" value={t.color || '#ffffff'}
+            onPointerDown={snap}
+            onChange={(e) => up({ color: e.target.value })} /></VStack>
+      </HStack>
+      <Box h="1px" bg="whiteAlpha.50" />
+      <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">Paragraphe</Text>
+      <HStack gap="1">
+        {alignBtn('left', 'Aligner à gauche')}
+        {alignBtn('center', 'Centrer')}
+        {alignBtn('right', 'Aligner à droite')}
+      </HStack>
+      <Box h="1px" bg="whiteAlpha.50" />
+      <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">Contenu</Text>
+      <Box as="textarea" rows="3" fontSize="xs" bg="#1c2433" color={fg} borderRadius="sm"
+        border="1px solid" borderColor={panelBorder} px="2" py="1.5" resize="vertical"
+        value={t.value || ''} onFocus={snap}
+        onChange={(e) => up({ value: e.target.value })} />
+      <Text fontSize="2xs" color={muted}>
+        Texte pleinement éditable — comme un calque « T » de Photoshop.
+      </Text>
+    </VStack>
+  )
+}
+
+/** Calque de pixels : position, taille du document, opacité/remplissage, hint fx. */
+function PixelLayerProps({ editor, layer, onChange, onFx }) {
+  if (!layer) {
+    return (
+      <VStack align="stretch" gap="2" px="3" py="3">
+        <Text fontSize="2xs" color={muted}>
+          Sélectionnez un calque pour voir ses propriétés ici
+          (comme le panneau Propriétés de Photoshop).
+        </Text>
+      </VStack>
+    )
+  }
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3" overflowY="auto" flex="1">
+      <Text fontSize="2xs" color={muted}>Calque de pixels</Text>
+      <LayerBox editor={editor} layer={layer} onChange={onChange} w={editor.w} h={editor.h} />
+      <Box h="1px" bg="whiteAlpha.50" />
+      <Text fontSize="2xs" color={muted}>
+        {layer.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher.'
+          : 'Double-cliquez sur « fx » dans le panneau Calques pour les styles (ombre, lueur, contour…).'}
+      </Text>
+    </VStack>
+  )
+}
+
+export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
+  if (layer?.type === 'text') return <TextLayerProps editor={editor} layer={layer} onChange={onChange} />
+  if (layer?.type !== 'adjust') return <PixelLayerProps editor={editor} layer={layer} onChange={onChange} onFx={onFx} />
+  const adj = layer.adj
   const p = adj?.params || {}
   const setP = (k, v) => { p[k] = v; onChange() }
   const setKind = (kind) => {
@@ -1431,19 +1638,21 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
   const [midTab, setMidTab] = useState('nav')
   const [botTab, setBotTab] = useState('layers')
   const isAdj = editor.active?.type === 'adjust'
+  const isText = editor.active?.type === 'text'
+  const propsTab = (isAdj || isText) ? 'props' : topTab // Propriétés suit le calque actif
   return (
     <Flex w="252px" direction="column" bg={panelBg} borderLeft="1px solid" borderColor={panelBorder} flexShrink={0}>
       {/* Groupe haut : Propriétés (réglage du calque actif) / Réglages / Courbes / Dentaire */}
       <Flex direction="column" flex="1.25" minH="0" borderBottom="1px solid" borderColor={panelBorder}>
-        <TabRow value={isAdj ? 'props' : topTab} onChange={setTopTab} tabs={[
+        <TabRow value={propsTab} onChange={setTopTab} tabs={[
           ['props', 'Propriétés', 'Paramètres du calque de réglage actif — façon Photoshop'],
           ['adjust', 'Réglages', 'Exposition, balance des blancs, niveaux, effets'],
           ['curves', 'Courbes', 'Tonalité par canal RGB/R/V/B'],
           ['dental', 'Dentaire', 'Avant/après, redresser, calibrer, teinte, référence, planche'],
         ]} />
         <Flex flex="1" direction="column" overflow="hidden" overflowY="auto">
-          {topTab === 'props' || isAdj ? (
-            <AdjustLayerProps editor={editor} layer={editor.active} onChange={() => { editor.markDirty(); onChange() }} />
+          {propsTab === 'props' ? (
+            <AdjustLayerProps editor={editor} layer={editor.active} onChange={() => { editor.markDirty(); onChange() }} onFx={onFx} />
           ) : topTab === 'adjust' ? (
             <AdjustPanel editor={editor} onChange={onChange}
               wbPick={wbPick} onWbPick={onWbPick} comparing={comparing} onCompare={onCompare} />

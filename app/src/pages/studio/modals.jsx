@@ -353,6 +353,17 @@ function FxParams({ sel, fx, setFx, layer, setLayer }) {
   const f = fx[sel] || {}
   return (
     <VStack align="stretch" gap="3">
+      {'blend' in f && (
+        <HStack gap="2">
+          <Text {...lbl}>Mode de fusion</Text>
+          <Box as="select" flex="1" fontSize="xs" bg="#1c2433" color="gray.100" borderRadius="sm"
+            border="1px solid" borderColor="whiteAlpha.200" h="24px" px="1"
+            value={f.blend || 'source-over'} onChange={(e) => set('blend', e.target.value)}>
+            {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+          </Box>
+        </HStack>
+      )}
+      {'opacity' in f && <FxSlider label="Opacité" value={f.opacity} min={0} max={100} unit=" %" onChange={(v) => set('opacity', v)} />}
       {'color' in f && <FxColor label="Couleur" value={f.color} onChange={(v) => set('color', v)} />}
       {'from' in f && (
         <>
@@ -360,15 +371,16 @@ function FxParams({ sel, fx, setFx, layer, setLayer }) {
           <FxColor label="Fin" value={f.to} onChange={(v) => set('to', v)} />
         </>
       )}
-      {'opacity' in f && <FxSlider label="Opacité" value={f.opacity} min={0} max={100} unit=" %" onChange={(v) => set('opacity', v)} />}
       {'angle' in f && <FxSlider label="Angle" value={f.angle} min={0} max={360} unit="°" onChange={(v) => set('angle', v)} />}
       {'dist' in f && <FxSlider label="Distance" value={f.dist} min={0} max={100} unit=" px" onChange={(v) => set('dist', v)} />}
+      {'spread' in f && <FxSlider label="Étendue" value={f.spread} min={0} max={100} unit=" %" onChange={(v) => set('spread', v)} />}
       {'size' in f && <FxSlider label="Taille" value={f.size} min={0} max={120} unit=" px" onChange={(v) => set('size', v)} />}
+      {'range' in f && <FxSlider label="Plage" value={f.range} min={1} max={100} unit=" %" onChange={(v) => set('range', v)} />}
     </VStack>
   )
 }
 
-export function LayerStyleModal({ open, onClose, layer, onApply }) {
+export function LayerStyleModal({ open, onClose, layer, onApply, initial }) {
   const [sel, setSel] = useState('shadow')
   const [fx, setFx] = useState(null)       // brouillon des effets
   const [lOpt, setLOpt] = useState(null)   // brouillon opacity/fill/blend
@@ -380,13 +392,13 @@ export function LayerStyleModal({ open, onClose, layer, onApply }) {
       for (const k of Object.keys(base)) if (cur[k]) base[k] = { ...base[k], ...cur[k] }
       setFx(base)
       setLOpt({ opacity: layer.opacity ?? 1, fill: layer.fill ?? 1, blend: layer.blend || 'source-over' })
-      setSel('shadow')
+      setSel(initial && initial in base ? initial : 'shadow')
     }
-  }, [open, layer])
+  }, [open, layer, initial])
 
   if (!open || !layer || !fx) return null
 
-  const toggle = (k, on) => setFx({ ...fx, [k]: { ...fx[k], on } })
+  const toggle = (k, on) => setFx({ ...fx, [k]: { ...fx[k], on, _listed: on } })
   const apply = () => { onApply(fx, lOpt); onClose() }
 
   return (

@@ -19,15 +19,15 @@ export const DEFAULT_ADJUST = {
 // Styles de calque (fx) — copie du dialogue « Style de calque » de Photoshop.
 // Chaque effet : on + paramètres ; rendu non destructif au composite.
 export const DEFAULT_FX = {
-  shadow: { on: false, color: '#000000', opacity: 65, angle: 120, dist: 8, size: 10 },
-  innerShadow: { on: false, color: '#000000', opacity: 60, angle: 120, dist: 6, size: 12 },
-  glow: { on: false, color: '#4f8fe8', opacity: 80, size: 18 },
-  innerGlow: { on: false, color: '#ffffff', opacity: 60, size: 16 },
+  shadow: { on: false, blend: 'multiply', color: '#000000', opacity: 65, angle: 120, dist: 8, spread: 0, size: 10 },
+  innerShadow: { on: false, blend: 'multiply', color: '#000000', opacity: 60, angle: 120, dist: 6, spread: 0, size: 12 },
+  glow: { on: false, blend: 'screen', color: '#4f8fe8', opacity: 80, spread: 0, size: 18, range: 60 },
+  innerGlow: { on: false, blend: 'screen', color: '#ffffff', opacity: 60, spread: 0, size: 16, range: 60 },
   bevel: { on: false, size: 6, opacity: 60 },
   satin: { on: false, opacity: 40, size: 14 },
-  colorOverlay: { on: false, color: '#dc2626', opacity: 60 },
-  gradientOverlay: { on: false, from: '#111827', to: '#ffffff', angle: 90, opacity: 60 },
-  stroke: { on: false, color: '#4f8fe8', size: 4, opacity: 100 },
+  colorOverlay: { on: false, blend: 'source-over', color: '#dc2626', opacity: 60 },
+  gradientOverlay: { on: false, blend: 'source-over', from: '#111827', to: '#ffffff', angle: 90, opacity: 60 },
+  stroke: { on: false, blend: 'source-over', color: '#4f8fe8', size: 4, opacity: 100 },
 }
 
 // ---- Calques de réglage (non destructifs, façon photocraft/Photoshop) -----------
@@ -459,6 +459,8 @@ export class Editor {
     copy.dx = l.dx; copy.dy = l.dy; copy.opacity = l.opacity; copy.fill = l.fill ?? 1
     copy.blend = l.blend
     copy.fx = l.fx ? JSON.parse(JSON.stringify(l.fx)) : null
+    copy.fxOff = !!l.fxOff
+    copy.text = l.text ? JSON.parse(JSON.stringify(l.text)) : null
     if (l.mask) {
       copy.mask = mkCanvas(this.w, this.h)
       copy.maskCtx = copy.mask.getContext('2d')
@@ -466,6 +468,72 @@ export class Editor {
     }
     this.layers.splice(this.layers.indexOf(l) + 1, 0, copy)
     this.activeId = copy.id
+  }
+
+  /** Calque le plus haut dont les pixels recouvrent le point image (Sélection auto). */
+  layerAtPoint(ix, iy) {
+    for (let i = this.layers.length - 1; i >= 0; i--) {
+      const l = this.layers[i]
+      if (!l.visible || l.type === 'adjust' || !l.cv) continue
+      const x = ix - l.dx, y = iy - l.dy
+      if (x < 0 || y < 0 || x >= this.w || y >= this.h) continue
+      if (l.cv.getContext('2d').getImageData(x | 0, y | 0, 1, 1).data[3] > 12) return l
+    }
+    return null
+  }
+
+  // ---- Calques de texte (éditables, façon Photoshop) ------------------------------
+
+  /** Crée un calque de texte à la position image (ix, iy). */
+  addTextLayer(value, meta = {}, ix = 0, iy = 0) {
+    const l = this._mkLayer(`T — ${String(value).split('\n')[0].slice(0, 24)}`)
+    l.type = 'text'
+    l.text = {
+      value: String(value),
+      font: meta.font || 'Arial',
+      size: meta.size || 48,
+      bold: !!meta.bold,
+      italic: !!meta.italic,
+      tracking: meta.tracking || 0,
+      color: meta.color || '#ffffff',
+      align: meta.align || 'left',
+      leading: meta.leading || 1.2,
+    }
+    l.dx = Math.round(ix)
+    l.dy = Math.round(iy) - l.text.size // le clic vise la ligne de base
+    this.drawTextLayer(l)
+    this.layers.push(l)
+    this.activeId = l.id
+    return l
+  }
+
+  /** (Re)dessine le calque de texte avec ses paramètres courants. */
+  drawTextLayer(l) {
+    const t = l.text
+    if (!t) return
+    const x = l.ctx
+    x.save()
+    x.clearRect(0, 0, this.w, this.h)
+    x.font = `${t.italic ? 'italic ' : ''}${t.bold ? '700' : '400'} ${t.size}px '${t.font}', sans-serif`
+    try { x.letterSpacing = `${t.tracking || 0}px` } catch { /* navigateur sans support */ }
+    x.fillStyle = t.color
+    x.textBaseline = 'alphabetic'
+    const lines = String(t.value).split('\n')
+    const lh = t.size * (t.leading || 1.2)
+    const maxW = Math.max(...lines.map((ln) => x.measureText(ln).width), 1)
+    x.textAlign = t.align || 'left'
+    const ax = t.align === 'center' ? maxW / 2 : t.align === 'right' ? maxW : 0
+    lines.forEach((ln, i) => x.fillText(ln, ax, t.size + i * lh))
+    x.restore()
+    t.box = { w: Math.ceil(maxW), h: Math.ceil(t.size * 0.3 + lh * (lines.length - 1) + t.size) }
+  }
+
+  /** Met à jour les paramètres du texte et redessine. */
+  updateText(l, patch) {
+    if (!l?.text) return
+    Object.assign(l.text, patch)
+    if ('value' in patch) l.name = `T — ${String(l.text.value).split('\n')[0].slice(0, 24)}`
+    this.drawTextLayer(l)
   }
 
   flatten() {
@@ -776,7 +844,7 @@ export class Editor {
         continue
       }
       const fx = l.fx || {}
-      const hasFx = Object.values(fx).some((f) => f?.on)
+      const hasFx = !l.fxOff && Object.values(fx).some((f) => f?.on)
       const fill = l.fill ?? 1
       // pixels effectifs = calque × masque de fusion
       let eff = l.cv
@@ -800,48 +868,74 @@ export class Editor {
       if (hasFx) {
         const sil = this._silCache[l.id] || (this._silCache[l.id] = this._sil(l, eff))
         ctx.globalAlpha = l.opacity
+        // dessine la silhouette teintée dilatée de `r` px autour de (ox, oy)
+        const ring = (t, r, ox, oy) => {
+          if (r <= 0) { ctx.drawImage(t, l.dx + ox, l.dy + oy); return }
+          const n = r > 6 ? 20 : 12
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2
+            ctx.drawImage(t, l.dx + ox + Math.cos(a) * r, l.dy + oy + Math.sin(a) * r)
+          }
+        }
         if (fx.stroke?.on && fx.stroke.size > 0) {
           const t = this._tint(sil, fx.stroke.color)
           const s = Math.max(1, fx.stroke.size)
-          const n = s > 6 ? 20 : 12
+          ctx.globalCompositeOperation = fx.stroke.blend || 'source-over'
           ctx.globalAlpha = l.opacity * (fx.stroke.opacity / 100)
-          for (let i = 0; i < n; i++) {
-            const a = (i / n) * Math.PI * 2
-            ctx.drawImage(t, l.dx + Math.cos(a) * s, l.dy + Math.sin(a) * s)
-          }
+          ring(t, s, 0, 0)
+          ctx.globalCompositeOperation = l.blend || 'source-over'
           ctx.globalAlpha = l.opacity
         }
         if (fx.glow?.on && fx.glow.size > 0) {
-          const t = this._tint(sil, fx.glow.color)
-          ctx.filter = `blur(${fx.glow.size}px)`
-          ctx.globalAlpha = l.opacity * (fx.glow.opacity / 100)
+          const g = fx.glow
+          const t = this._tint(sil, g.color)
+          ctx.globalCompositeOperation = g.blend || 'screen'
+          const dil = Math.round((g.size * (g.spread || 0)) / 100)  // partie dure (étendue)
+          if (dil > 0) { ctx.globalAlpha = l.opacity * (g.opacity / 100); ring(t, dil, 0, 0) }
+          ctx.filter = `blur(${Math.max(1, g.size - dil)}px)`
+          ctx.globalAlpha = l.opacity * (g.opacity / 100) * ((g.range ?? 100) / 100)
           ctx.drawImage(t, l.dx, l.dy)
           ctx.filter = 'none'
+          ctx.globalCompositeOperation = l.blend || 'source-over'
           ctx.globalAlpha = l.opacity
         }
         if (fx.shadow?.on) {
-          const t = this._tint(sil, fx.shadow.color)
-          const [ox, oy] = off(fx.shadow)
-          ctx.filter = `blur(${Math.max(0, fx.shadow.size) / 2}px)`
-          ctx.globalAlpha = l.opacity * (fx.shadow.opacity / 100)
+          const s = fx.shadow
+          const t = this._tint(sil, s.color)
+          const [ox, oy] = off(s)
+          ctx.globalCompositeOperation = s.blend || 'multiply'
+          const dil = Math.round((s.size * (s.spread || 0)) / 100)
+          ctx.globalAlpha = l.opacity * (s.opacity / 100)
+          if (dil > 0) ring(t, dil, ox, oy)
+          ctx.filter = `blur(${Math.max(1, s.size - dil) / 2}px)`
           ctx.drawImage(t, l.dx + ox, l.dy + oy)
           ctx.filter = 'none'
+          ctx.globalCompositeOperation = l.blend || 'source-over'
           ctx.globalAlpha = l.opacity
         }
       }
 
       // --- Pixels du calque : alpha = remplissage (+ incrustations) ---
       let drawn = eff
-      if (fx.colorOverlay?.on || fx.gradientOverlay?.on) {
+      if (hasFx && (fx.colorOverlay?.on || fx.gradientOverlay?.on)) {
         const ov = mkCanvas(W, H)
         const x = ov.getContext('2d')
         x.drawImage(eff, 0, 0)
-        x.globalCompositeOperation = 'source-atop'
-        if (fx.colorOverlay?.on) {
-          x.globalAlpha = fx.colorOverlay.opacity / 100
-          x.fillStyle = fx.colorOverlay.color
-          x.fillRect(0, 0, W, H)
+        // applique un remplissage écrêté à la forme, avec le mode de fusion de l'effet
+        const lay = (fill, blend, alpha) => {
+          const c = mkCanvas(W, H)
+          const cx = c.getContext('2d')
+          cx.fillStyle = fill
+          cx.fillRect(0, 0, W, H)
+          cx.globalCompositeOperation = 'destination-in'
+          cx.drawImage(eff, 0, 0)
+          x.globalCompositeOperation = blend || 'source-over'
+          x.globalAlpha = alpha
+          x.drawImage(c, 0, 0)
+          x.globalCompositeOperation = 'source-over'
+          x.globalAlpha = 1
         }
+        if (fx.colorOverlay?.on) lay(fx.colorOverlay.color, fx.colorOverlay.blend, fx.colorOverlay.opacity / 100)
         if (fx.gradientOverlay?.on) {
           const g = fx.gradientOverlay
           const a = ((g.angle ?? 90) * Math.PI) / 180
@@ -849,9 +943,7 @@ export class Editor {
           const lg = x.createLinearGradient(cx - Math.cos(a) * r, cy - Math.sin(a) * r, cx + Math.cos(a) * r, cy + Math.sin(a) * r)
           lg.addColorStop(0, g.from)
           lg.addColorStop(1, g.to)
-          x.globalAlpha = g.opacity / 100
-          x.fillStyle = lg
-          x.fillRect(0, 0, W, H)
+          lay(lg, g.blend, g.opacity / 100)
         }
         drawn = ov
       }
@@ -867,10 +959,12 @@ export class Editor {
         if (fx.innerShadow?.on) {
           const [ox, oy] = off(fx.innerShadow)
           const m = this._tint(this._innerRing(sil, ox, oy), fx.innerShadow.color)
+          ctx.globalCompositeOperation = fx.innerShadow.blend || 'multiply'
           ctx.filter = `blur(${Math.max(1, fx.innerShadow.size / 2)}px)`
           ctx.globalAlpha = l.opacity * (fx.innerShadow.opacity / 100)
           ctx.drawImage(m, l.dx, l.dy)
           ctx.filter = 'none'
+          ctx.globalCompositeOperation = l.blend || 'source-over'
         }
         if (fx.innerGlow?.on && fx.innerGlow.size > 0) {
           // silhouette floutée écrêtée à l'intérieur = halo interne
@@ -882,8 +976,10 @@ export class Editor {
           x.globalCompositeOperation = 'destination-in'
           x.drawImage(eff, 0, 0)
           const t = this._tint(m, fx.innerGlow.color)
-          ctx.globalAlpha = l.opacity * (fx.innerGlow.opacity / 100)
+          ctx.globalCompositeOperation = fx.innerGlow.blend || 'screen'
+          ctx.globalAlpha = l.opacity * (fx.innerGlow.opacity / 100) * ((fx.innerGlow.range ?? 100) / 100)
           ctx.drawImage(t, l.dx, l.dy)
+          ctx.globalCompositeOperation = l.blend || 'source-over'
         }
         if (fx.bevel?.on && fx.bevel.size > 0) {
           const s = Math.max(1, fx.bevel.size / 2)
@@ -1331,6 +1427,7 @@ export class Editor {
         mask: l.mask ? l.mask.toDataURL('image/png') : null,
         maskActive: l.mask ? !!l.maskActive : false,
         lockAlpha: !!l.lockAlpha, lockPx: !!l.lockPx, lockPos: !!l.lockPos,
+        fxOff: !!l.fxOff, text: l.text || null,
       })),
     }
   }

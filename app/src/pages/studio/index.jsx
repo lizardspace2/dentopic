@@ -51,7 +51,7 @@ export default function Studio() {
   const [opts, setOpts] = useState({
     fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, brushHard: 0.9, eraserSize: 30, eraserHard: 0.85, eraserOpacity: 1,
     textSize: 32, textFont: 'Inter Tight', textBold: true, textItalic: false, textTracking: 0,
-    tol: 32, transform: false, cloneSize: 48, cloneOpacity: 1,
+    tol: 32, transform: false, autoSelect: false, autoScope: 'layer', cloneSize: 48, cloneOpacity: 1,
     // photocraft : nouveaux outils
     pencilSize: 3, pencilOpacity: 1, selShape: 'rect', selFeather: 0,
     toneMode: 'dodge', toneSize: 48, toneStrength: 0.3,
@@ -60,6 +60,7 @@ export default function Studio() {
     redeyeSize: 24, shapeKind: 'rect', shapeStrokeOn: false, shapeStroke: 4,
   })
   const [view, setView] = useState({ scale: 1, ox: 40, oy: 40 })
+  useEffect(() => { window.__view = view }, [view]) // exposé pour les tests
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
   const [version, setVersion] = useState(0) // bump → re-render canvas + panneaux
   const [docOpen, setDocOpen] = useState(false)
@@ -67,6 +68,7 @@ export default function Studio() {
   const [dossiers, setDossiers] = useState([])
   const [modal, setModal] = useState(null) // 'open' | 'export' | ...
   const [pickColor, setPickColor] = useState(null) // 'fg' | 'bg' | null — sélecteur détaillé
+  const [fxKey, setFxKey] = useState(null) // effet présélectionné dans Style de calque
   const [cropRect, setCropRect] = useState(null)
   const [textInput, setTextInput] = useState(null) // {sx, sy, ix, iy}
   const [cursor, setCursor] = useState(null)
@@ -471,6 +473,11 @@ export default function Studio() {
 
     switch (tool) {
       case 'move': {
+        // Sélection auto (Photoshop) : cliquer prend le calque sous le curseur
+        if (opts.autoSelect) {
+          const hit = editor.layerAtPoint(ix, iy)
+          if (hit && hit.id !== editor.activeId) { editor.setActive(hit.id); bump() }
+        }
         const l = editor.active
         if (!l) break
         // poignées de transformation : coin proche -> redimensionnement
@@ -913,14 +920,11 @@ export default function Studio() {
 
   const commitText = (value) => {
     if (!textInput || !value.trim()) { setTextInput(null); return }
-    const l = editor.active?.locked ? editor.addLayer('Texte') : editor.active || editor.addLayer('Texte')
-    editor.snapshot()
-    const style = `${opts.textItalic ? 'italic ' : ''}${opts.textBold ? '700' : '400'} ${opts.textSize}px '${opts.textFont}', sans-serif`
-    l.ctx.font = style
-    try { l.ctx.letterSpacing = `${opts.textTracking || 0}px` } catch { /* navigateur sans support */ }
-    l.ctx.fillStyle = opts.fg
-    l.ctx.fillText(value, textInput.ix - l.dx, textInput.iy - l.dy)
-    l.name = `T — ${value.slice(0, 24)}`
+    editor.snapshot('Texte')
+    editor.addTextLayer(value, {
+      font: opts.textFont, size: opts.textSize, bold: opts.textBold,
+      italic: opts.textItalic, tracking: opts.textTracking, color: opts.fg,
+    }, textInput.ix, textInput.iy)
     setTextInput(null)
     bump()
   }
@@ -1350,7 +1354,7 @@ export default function Studio() {
           </Box>
         </Flex>
         {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump}
-          onFx={() => setModal('style')}
+          onFx={(k) => { setFxKey(k || null); setModal('style') }}
           onAdjust={null}
           onJump={async (dir, i) => {
             if (dir === 'undo') await editor.historyJump(i)
@@ -1391,7 +1395,7 @@ export default function Studio() {
         title={pickColor === 'bg' ? 'Sélecteur de couleurs (arrière-plan)' : 'Sélecteur de couleurs (premier plan)'}
         onApply={(v) => setOpts((o) => ({ ...o, [pickColor]: v }))} />
       <LayerStyleModal open={modal === 'style'} onClose={() => setModal(null)}
-        layer={editor.active}
+        layer={editor.active} initial={fxKey}
         onApply={(fx, lOpt) => {
           const l = editor.active
           if (!l) return
