@@ -321,6 +321,14 @@ export function OptionsBar({
           <Tip label="Désélectionner — Ctrl+D">{btn('Désélectionner', onDeselect, true)}</Tip>
         </>
       )}
+      {/* avertissement : la sélection borne les retouches (comportement Photoshop) */}
+      {hasSel && !['rect', 'lasso', 'plasso', 'wand', 'crop', 'move', 'hand', 'zoom'].includes(tool) && (
+        <Tip label="La sélection active limite vos retouches à sa zone — comme dans Photoshop. Ctrl+D pour tout libérer.">
+          <HStack gap="1" px="1.5" h="20px" borderRadius="sm" bg="#7c2d12" color="#fdba74" fontSize="2xs" flexShrink={0}>
+            <Text fontWeight="700">⚠ Retouche limitée à la sélection</Text>
+          </HStack>
+        </Tip>
+      )}
       {tool === 'rotate' && (
         <Tip label="Rotation d'un quart de tour du document">{btn('Pivoter 90°', onRotate, true)}</Tip>
       )}
