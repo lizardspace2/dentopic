@@ -1,30 +1,86 @@
 // Outils et réglages du Studio (layout façon Photoshop).
 import {
-  FiCrop, FiEdit2, FiFeather, FiMove, FiRotateCw,
-  FiSquare, FiType, FiZoomIn, FiZap,
+  FiCrop, FiEdit2, FiEye, FiFeather, FiMove, FiRotateCw,
+  FiSquare, FiSun, FiType, FiZoomIn, FiZap,
 } from 'react-icons/fi'
-import { LuHand, LuPaintBucket, LuStamp } from 'react-icons/lu'
-import { MdGradient } from 'react-icons/md'
-import { TbColorPicker, TbLassoPolygon } from 'react-icons/tb'
+import {
+  LuBandage, LuHand, LuPaintBucket, LuPencil, LuShapes,
+  LuSparkles, LuStamp, LuWaves,
+} from 'react-icons/lu'
+import { MdBlurOn, MdGradient } from 'react-icons/md'
+import { TbColorPicker, TbLassoPolygon, TbPolygon } from 'react-icons/tb'
 
 // Barre d'outils verticale (ordre = affichage)
 export const TOOLS = [
   { key: 'move', icon: FiMove, label: 'Déplacement', hint: 'Déplace le calque actif — V' },
   { key: 'crop', icon: FiCrop, label: 'Recadrage', hint: 'Trace une zone puis valide — C' },
-  { key: 'rect', icon: FiSquare, label: 'Sélection', hint: 'Rectangle de sélection — M' },
+  { key: 'rect', icon: FiSquare, label: 'Sélection', hint: 'Rectangle ou ellipse — M' },
   { key: 'lasso', icon: TbLassoPolygon, label: 'Lasso', hint: 'Sélection à main levée — L' },
+  { key: 'plasso', icon: TbPolygon, label: 'Lasso polygonal', hint: 'Clic = sommet, double-clic ou Entrée = fermer — Maj+L' },
   { key: 'wand', icon: FiZap, label: 'Baguette', hint: 'Sélection par couleur — W' },
   { key: 'brush', icon: FiEdit2, label: 'Pinceau', hint: 'Dessine sur le calque actif — B' },
+  { key: 'pencil', icon: LuPencil, label: 'Crayon', hint: 'Trait à bord franc — Maj+B' },
   { key: 'clone', icon: LuStamp, label: 'Tampon', hint: 'Alt+clic = source, puis duplique — S' },
+  { key: 'heal', icon: LuBandage, label: 'Correcteur', hint: 'Estompe les défauts locaux — J' },
+  { key: 'tone', icon: FiSun, label: 'Éclaircir / Assombrir', hint: 'Dodge & burn locaux — O' },
+  { key: 'blurTool', icon: MdBlurOn, label: 'Flou', hint: 'Floute localement — U' },
+  { key: 'sharpenTool', icon: LuSparkles, label: 'Accentuation', hint: 'Renforce la netteté locale — Maj+U' },
+  { key: 'smudge', icon: LuWaves, label: 'Doigt', hint: 'Étale la matière — Maj+S' },
+  { key: 'redeye', icon: FiEye, label: 'Yeux rouges', hint: 'Désature le rouge sous le pinceau — Y' },
   { key: 'eraser', icon: FiFeather, label: 'Gomme', hint: 'Efface le calque actif — E' },
   { key: 'gradient', icon: MdGradient, label: 'Dégradé', hint: 'Glisser = dégradé 1er plan → arrière-plan — G' },
   { key: 'bucket', icon: LuPaintBucket, label: 'Pot de peinture', hint: 'Remplit la zone contiguë — K' },
+  { key: 'shape', icon: LuShapes, label: 'Forme', hint: 'Rectangle, ellipse, triangle, ligne — Maj+M' },
   { key: 'text', icon: FiType, label: 'Texte', hint: 'Clique puis saisis — T' },
   { key: 'picker', icon: TbColorPicker, label: 'Pipette', hint: 'Prélève une couleur — I' },
   { key: 'rotate', icon: FiRotateCw, label: 'Rotation', hint: 'Pivote le document de 90°' },
   { key: 'hand', icon: LuHand, label: 'Main', hint: 'Déplace la vue — H' },
   { key: 'zoom', icon: FiZoomIn, label: 'Zoom', hint: 'Cliquer = +, Alt+clic = − — Z' },
 ]
+
+// Filtres du menu Filtre — params éditables dans le dialogue avec aperçu live.
+export const FILTER_DEFS = {
+  gaussian: { label: 'Flou gaussien', params: [
+    { key: 'radius', label: 'Rayon', min: 0.5, max: 60, step: 0.5, def: 4, unit: 'px' },
+  ] },
+  motion: { label: 'Flou de mouvement', params: [
+    { key: 'angle', label: 'Angle', min: -180, max: 180, step: 1, def: 0, unit: '°' },
+    { key: 'dist', label: 'Distance', min: 2, max: 200, step: 1, def: 30, unit: 'px' },
+  ] },
+  sharpen: { label: 'Accentuation (net masqué)', params: [
+    { key: 'amount', label: 'Gain', min: 5, max: 200, step: 5, def: 60, unit: '%' },
+  ] },
+  denoise: { label: 'Réduire le bruit (médiane)', params: [] },
+  pixelate: { label: 'Mosaïque', params: [
+    { key: 'size', label: 'Taille de cellule', min: 2, max: 80, step: 1, def: 12, unit: 'px' },
+  ] },
+  twirl: { label: 'Tourbillon', params: [
+    { key: 'angle', label: 'Angle', min: -720, max: 720, step: 5, def: 240, unit: '°' },
+  ] },
+  wave: { label: 'Onde', params: [
+    { key: 'amp', label: 'Amplitude', min: 1, max: 100, step: 1, def: 20, unit: 'px' },
+    { key: 'len', label: 'Longueur d\'onde', min: 8, max: 400, step: 2, def: 80, unit: 'px' },
+  ] },
+  vignette: { label: 'Vignettage', params: [
+    { key: 'strength', label: 'Intensité', min: 5, max: 100, step: 1, def: 55, unit: '%' },
+  ] },
+  sepia: { label: 'Sépia', params: [
+    { key: 'amount', label: 'Intensité', min: 10, max: 100, step: 5, def: 100, unit: '%' },
+  ] },
+  solarize: { label: 'Solarisation', params: [
+    { key: 'threshold', label: 'Seuil', min: 10, max: 250, step: 1, def: 128 },
+  ] },
+  posterize: { label: 'Postérisation', params: [
+    { key: 'levels', label: 'Niveaux', min: 2, max: 32, step: 1, def: 4 },
+  ] },
+  edge: { label: 'Détection de contours', params: [] },
+  emboss: { label: 'Relief', params: [
+    { key: 'amount', label: 'Hauteur', min: 20, max: 300, step: 10, def: 100, unit: '%' },
+  ] },
+  invert: { label: 'Négatif', params: [] },
+  desaturate: { label: 'Désaturer', params: [] },
+  equalize: { label: 'Égaliser', params: [] },
+}
 
 // Réglages groupés façon Lightroom/Photoshop (panneau « Réglages »)
 export const ADJUST_GROUPS = [

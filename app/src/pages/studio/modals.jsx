@@ -7,7 +7,7 @@ import { C } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
 import { BLEND_MODES, SHEET_SLOTS } from './constants'
-import { DEFAULT_FX, hexToRgb, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
+import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_FX, hexToRgb, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
 
 // ---- Ouvrir : photo du workspace (ou import local géré par la page) -------------
 
@@ -547,6 +547,145 @@ export function ColorPickerModal({ open, onClose, color, onApply, title = 'Séle
           </HStack>
         </VStack>
       </HStack>
+    </Modal>
+  )
+}
+
+// ---- Filtre : paramètres + aperçu live sur le canevas (façon photocraft) ---------
+// Le parent (index.jsx) mémorise l'état avant ouverture : chaque changement de
+// paramètre restaure cet état puis ré-applique → aperçu temps réel réversible.
+
+export function FilterModal({ open, onClose, def, onPreview, onApply, onCancel }) {
+  const [params, setParams] = useState({})
+  useEffect(() => {
+    if (open && def) {
+      const p = {}
+      for (const d of def.params || []) p[d.key] = d.def
+      setParams(p)
+    }
+  }, [open, def])
+  const set = (k, v) => {
+    const p = { ...params, [k]: v }
+    setParams(p)
+    onPreview?.(p)
+  }
+  if (!def) return null
+  return (
+    <Modal open={open} onClose={onCancel} title={def.label}
+      subtitle="Aperçu appliqué au calque actif — limité à la sélection s'il y en a une"
+      width="380px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onCancel}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => onApply(params)}>Appliquer</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="3">
+        {(def.params || []).length === 0 && (
+          <Text fontSize="xs" color="gray.500">Filtre sans paramètre — il s'applique directement.</Text>
+        )}
+        {(def.params || []).map((d) => (
+          <VStack key={d.key} align="stretch" gap="1">
+            <HStack justify="space-between">
+              <Text fontSize="xs" color="gray.600">{d.label}</Text>
+              <HStack gap="1">
+                <Input type="number" w="64px" h="24px" fontSize="xs" px="1.5"
+                  min={d.min} max={d.max} step={d.step} value={params[d.key] ?? d.def}
+                  onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) set(d.key, Math.min(d.max, Math.max(d.min, v))) }} />
+                {d.unit && <Text fontSize="2xs" color="gray.400">{d.unit}</Text>}
+              </HStack>
+            </HStack>
+            <Input type="range" min={d.min} max={d.max} step={d.step} h="20px"
+              value={params[d.key] ?? d.def}
+              onChange={(e) => set(d.key, +e.target.value)} />
+          </VStack>
+        ))}
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Calque de réglage : création (choix du type) + édition des paramètres -------
+// Non destructif : les changements modifient l'objet adj du calque, le composite
+// est recalculé à chaque rendu — pas de « Appliquer » nécessaire.
+
+export function AdjustLayerModal({ open, onClose, editor, layer, onChange }) {
+  const adj = layer?.adj
+  const p = adj?.params || {}
+  const setP = (k, v) => { p[k] = v; onChange() }
+  const setKind = (kind) => {
+    layer.adj = { kind, params: JSON.parse(JSON.stringify(ADJUST_PARAMS[kind] || {})) }
+    layer.name = ADJUST_KINDS.find((k) => k.key === kind)?.label || layer.name
+    onChange()
+  }
+  const sl = (label, key, min, max, step = 1, unit = '') => (
+    <VStack key={key} align="stretch" gap="0.5">
+      <HStack justify="space-between">
+        <Text fontSize="xs" color="gray.600">{label}</Text>
+        <Input type="number" w="64px" h="22px" fontSize="xs" px="1.5"
+          min={min} max={max} step={step} value={p[key] ?? 0}
+          onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setP(key, Math.min(max, Math.max(min, v))) }} />
+      </HStack>
+      <Input type="range" min={min} max={max} step={step} h="18px"
+        value={p[key] ?? 0} onChange={(e) => setP(key, +e.target.value)} />
+    </VStack>
+  )
+  return (
+    <Modal open={open} onClose={onClose} title={layer ? `Calque de réglage — ${layer.name}` : 'Calque de réglage'}
+      subtitle="Non destructif : transforme les calques situés dessous. Masquez-le ou réordonnez-le à tout moment."
+      width="400px">
+      <VStack align="stretch" gap="3">
+        <HStack gap="2">
+          <Text fontSize="xs" color="gray.500" w="70px">Type</Text>
+          <Select flex="1" value={adj?.kind || 'bc'} onChange={(e) => setKind(e.target.value)}>
+            {ADJUST_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+          </Select>
+        </HStack>
+        <Box h="1px" bg="gray.100" />
+        {adj?.kind === 'bc' && (<>
+          {sl('Luminosité', 'brightness', -100, 100)}
+          {sl('Contraste', 'contrast', -100, 100)}
+        </>)}
+        {adj?.kind === 'hsl' && (<>
+          {sl('Teinte', 'hue', -180, 180, 1, '°')}
+          {sl('Saturation', 'sat', -100, 100)}
+          {sl('Luminosité', 'light', -100, 100)}
+        </>)}
+        {adj?.kind === 'levels' && (<>
+          {sl('Noirs entrée', 'inBlack', 0, 254)}
+          {sl('Gamma', 'gamma', 10, 400)}
+          {sl('Blancs entrée', 'inWhite', 1, 255)}
+          {sl('Noirs sortie', 'outBlack', 0, 254)}
+          {sl('Blancs sortie', 'outWhite', 1, 255)}
+        </>)}
+        {adj?.kind === 'curves' && (
+          <Text fontSize="xs" color="gray.500">
+            Éditez la courbe de ce calque dans l'onglet <b>Courbes</b> du panneau — elle
+            s'applique au calque de réglage actif.
+          </Text>
+        )}
+        {adj?.kind === 'invert' && <Text fontSize="xs" color="gray.500">Inverse toutes les couleurs — sans paramètre.</Text>}
+        {adj?.kind === 'bw' && (<>
+          {sl('Rouge', 'r', 0, 200)}
+          {sl('Vert', 'g', 0, 200)}
+          {sl('Bleu', 'b', 0, 200)}
+        </>)}
+        {adj?.kind === 'threshold' && sl('Seuil', 'level', 0, 255)}
+        {adj?.kind === 'photoFilter' && (<>
+          <HStack gap="2">
+            <Text fontSize="xs" color="gray.600" w="90px">Couleur</Text>
+            <Input type="color" w="48px" h="26px" p="0" value={p.color || '#c8872a'}
+              onChange={(e) => setP('color', e.target.value)} />
+          </HStack>
+          {sl('Densité', 'density', 0, 100)}
+        </>)}
+        {adj?.kind === 'vibrance' && (<>
+          {sl('Vibrance', 'amount', -100, 100)}
+          {sl('Saturation', 'sat', -100, 100)}
+        </>)}
+        {adj?.kind === 'posterize' && sl('Niveaux', 'levels', 2, 32)}
+      </VStack>
     </Modal>
   )
 }

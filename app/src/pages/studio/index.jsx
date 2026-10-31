@@ -14,12 +14,14 @@ import {
 import { photoUrl } from '../../media'
 import {
   Editor, buildMontage, buildProtocolSheet, fetchImg, loadImg, rgbToHex,
-  DEFAULT_ADJUST,
+  DEFAULT_ADJUST, applyFilterRegion, conv3x3, equalize, gaussianBlur, medianFilter,
+  motionBlur, pixelate, twirl, unsharp, vignette, wave, applyLUTs, curveLUT,
 } from './engine'
+import { FILTER_DEFS } from './constants'
 import {
   MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas,
 } from './panels'
-import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal } from './modals'
+import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal, FilterModal, AdjustLayerModal } from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 
@@ -34,6 +36,8 @@ export default function Studio() {
     e.resetAdjust = () => { e.adjust = { ...DEFAULT_ADJUST } }
     return e
   }, [])
+  // référence pour le debug/tests (dans un effet = la vraie instance StrictMode)
+  useEffect(() => { window.__editor = editor }, [editor])
 
   const canvasRef = useRef(null)
   const containerRef = useRef(null)
@@ -48,6 +52,12 @@ export default function Studio() {
     fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, brushHard: 0.9, eraserSize: 30, eraserHard: 0.85, eraserOpacity: 1,
     textSize: 32, textFont: 'Inter Tight', textBold: true, textItalic: false, textTracking: 0,
     tol: 32, transform: false, cloneSize: 48, cloneOpacity: 1,
+    // photocraft : nouveaux outils
+    pencilSize: 3, pencilOpacity: 1, selShape: 'rect', selFeather: 0,
+    toneMode: 'dodge', toneSize: 48, toneStrength: 0.3,
+    healSize: 40, healRadius: 8, blurSize: 48, blurRadius: 6,
+    sharpenSize: 48, sharpenAmount: 60, smudgeSize: 36, smudgeStrength: 0.85,
+    redeyeSize: 24, shapeKind: 'rect', shapeStrokeOn: false, shapeStroke: 4,
   })
   const [view, setView] = useState({ scale: 1, ox: 40, oy: 40 })
   const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
@@ -76,6 +86,11 @@ export default function Studio() {
   const [guidesOn, setGuidesOn] = useState(true)
   const [guides, setGuides] = useState({ v: [], h: [] }) // positions en coords doc
   const [snapOn, setSnapOn] = useState(false)
+  const [filterKey, setFilterKey] = useState(null)   // clé FILTER_DEFS ouverte
+  const [editAdj, setEditAdj] = useState(null)        // calque de réglage édité
+  const [shapePrev, setShapePrev] = useState(null)    // aperçu de forme en cours
+  const plassoRef = useRef(null)                      // sommets du lasso polygonal
+  const filterBase = useRef(null)                     // dump avant ouverture du filtre (aperçu live)
   const ovlRef = useRef(null)
   const ruleTopRef = useRef(null)
   const ruleLeftRef = useRef(null)
@@ -205,6 +220,22 @@ export default function Studio() {
     stroke.current = null
   }
 
+  // Lasso polygonal : double-clic ou Entrée ferme la sélection
+  const commitPlasso = () => {
+    const p = plassoRef.current
+    if (!p) return
+    plassoRef.current = null
+    if (p.pts.length >= 3) editor.lassoSelect(p.pts)
+    else editor.deselect()
+    bump()
+  }
+  const cancelPlasso = () => {
+    if (!plassoRef.current) return
+    plassoRef.current = null
+    editor.deselect()
+    bump()
+  }
+
   // ---- Rendu ----------------------------------------------------------------------
 
   const render = useCallback(() => {
@@ -255,7 +286,21 @@ export default function Studio() {
         ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(cv.width, sy); ctx.stroke()
       }
     }
-  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor])
+    // aperçu de la forme en cours de tracé (outil Forme)
+    if (shapePrev) {
+      const [x1, y1, x2, y2] = shapePrev
+      const toS = (x, y) => [x * scale + ox, y * scale + oy]
+      const [sx1, sy1] = toS(x1, y1), [sx2, sy2] = toS(x2, y2)
+      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5
+      ctx.setLineDash([5, 4]); ctx.beginPath()
+      const w = sx2 - sx1, h = sy2 - sy1
+      if (opts.shapeKind === 'rect') ctx.rect(sx1, sy1, w, h)
+      else if (opts.shapeKind === 'ellipse') ctx.ellipse(sx1 + w / 2, sy1 + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2)
+      else if (opts.shapeKind === 'triangle') { ctx.moveTo(sx1 + w / 2, sy1); ctx.lineTo(sx2, sy2); ctx.lineTo(sx1, sy2); ctx.closePath() }
+      else { ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2) }
+      ctx.stroke(); ctx.setLineDash([])
+    }
+  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor, shapePrev, opts.shapeKind])
 
   // Règles : graduations en px document + repère de curseur
   useEffect(() => {
@@ -458,15 +503,31 @@ export default function Studio() {
         break
       }
       case 'wand':
-        editor.snapshot()
+        editor.snapshot('Baguette')
+        editor.selEllipse = false; editor.selInverted = false
         editor.wandSelect(ix, iy, opts.tol)
         bump()
         break
       case 'lasso':
         stroke.current = { kind: 'lasso', pts: [[ix, iy]] }
+        editor.selEllipse = false; editor.selInverted = false
         editor.lassoSelect([[ix, iy], [ix, iy], [ix, iy]])
         bump()
         break
+      case 'plasso': {
+        // lasso polygonal : chaque clic ajoute un sommet, double-clic / Entrée ferme
+        if (!plassoRef.current) {
+          plassoRef.current = { pts: [[ix, iy]], hover: [ix, iy] }
+          editor.selEllipse = false; editor.selInverted = false
+        } else {
+          const p = plassoRef.current
+          const last = p.pts[p.pts.length - 1]
+          if (Math.hypot(ix - last[0], iy - last[1]) > 2 / view.scale) p.pts.push([ix, iy])
+        }
+        editor.lassoSelect([...plassoRef.current.pts, plassoRef.current.hover || plassoRef.current.pts[0]])
+        bump()
+        break
+      }
       case 'bucket':
         editor.snapshot()
         editor.bucketFill(ix, iy, opts.fg, opts.tol)
@@ -496,11 +557,46 @@ export default function Studio() {
       case 'hand':
         stroke.current = { kind: 'pan', sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ox: view.ox, oy: view.oy }
         break
-      case 'brush': {
+      case 'brush':
+      case 'pencil':
+      case 'tone': {
         const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
-        editor.snapshot()
+        editor.snapshot({ brush: 'Pinceau', pencil: 'Crayon', tone: 'Éclaircir/Assombrir' }[tool])
         stroke.current = { kind: 'stroke', l, last: [ix, iy] }
         paint(ix, iy, l)
+        break
+      }
+      case 'heal':
+      case 'blurTool':
+      case 'sharpenTool': {
+        // tampon filtré : copie floutée/accentuée du calque, peinte par touches
+        const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
+        editor.snapshot({ heal: 'Correcteur', blurTool: 'Flou', sharpenTool: 'Accentuation' }[tool])
+        const s = { kind: 'stroke', l, last: [ix, iy] }
+        if (tool === 'blurTool') { s.stamp = editor._mkLayer().cv; s.stamp.getContext('2d').drawImage(l.cv, 0, 0); gaussianBlur(s.stamp, opts.blurRadius) }
+        if (tool === 'sharpenTool') { s.stamp = editor._mkLayer().cv; s.stamp.getContext('2d').drawImage(l.cv, 0, 0); unsharp(s.stamp, Math.min(1, opts.sharpenAmount / 100) * 0.8) }
+        if (tool === 'heal') { s.stamp = editor._mkLayer().cv; s.stamp.getContext('2d').drawImage(l.cv, 0, 0); gaussianBlur(s.stamp, opts.healRadius) }
+        stroke.current = s
+        paint(ix, iy, l)
+        break
+      }
+      case 'smudge': {
+        const l = editor.active || editor.addLayer()
+        editor.snapshot('Doigt')
+        if (l.locked) l.locked = false
+        stroke.current = { kind: 'stroke', l, last: [ix, iy] }
+        break
+      }
+      case 'redeye': {
+        const l = editor.active || editor.addLayer()
+        editor.snapshot('Yeux rouges')
+        if (l.locked) l.locked = false
+        stroke.current = { kind: 'stroke', l, last: [ix, iy] }
+        paint(ix, iy, l)
+        break
+      }
+      case 'shape': {
+        stroke.current = { kind: 'shapeDrag', x0: ix, y0: iy }
         break
       }
       case 'eraser': {
@@ -527,6 +623,8 @@ export default function Studio() {
       }
       case 'rect': {
         editor.selPoly = null
+        editor.selEllipse = opts.selShape === 'ellipse'
+        editor.selInverted = false
         const [sx, sy] = snapPair(ix, iy)
         editor.sel = [sx, sy, 0, 0]
         stroke.current = { kind: 'sel', x0: sx, y0: sy }
@@ -547,18 +645,39 @@ export default function Studio() {
   const paint = (ix, iy, l) => {
     const s = stroke.current
     if (!s) return
+    // Édition du masque de fusion : le pinceau écrit l'alpha du masque
+    // (blanc révèle, noir masque, gris = partiel) — mode 'copy' = valeur exacte.
+    if (l.mask && l.maskActive && (tool === 'brush' || tool === 'pencil' || tool === 'eraser')) {
+      const mc = l.maskCtx
+      const [r, g, b] = [parseInt(opts.fg.slice(1, 3), 16), parseInt(opts.fg.slice(3, 5), 16), parseInt(opts.fg.slice(5, 7), 16)]
+      const lum = tool === 'eraser' ? 1 : (0.299 * r + 0.587 * g + 0.114 * b) / 255
+      mc.save()
+      mc.lineCap = 'round'; mc.lineJoin = 'round'
+      mc.globalCompositeOperation = 'copy'
+      mc.strokeStyle = `rgba(255,255,255,${lum * (opts.brushOpacity ?? 1)})`
+      mc.lineWidth = tool === 'pencil' ? opts.pencilSize : opts.brushSize
+      const soft = (1 - (opts.brushHard ?? 1)) * mc.lineWidth * 0.6
+      if (soft > 0.5) { mc.shadowColor = mc.strokeStyle; mc.shadowBlur = soft }
+      mc.beginPath()
+      mc.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
+      mc.lineTo(ix - l.dx, iy - l.dy)
+      mc.stroke()
+      mc.restore()
+      s.last = [ix, iy]
+      bump()
+      return
+    }
     const ctx = l.ctx
     ctx.save()
-    // clip à la sélection (rectangle ou lasso)
-    ctx.beginPath()
-    if (editor.selPoly) {
-      editor.selPoly.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x - l.dx, y - l.dy))
-      ctx.closePath()
-    } else if (editor.sel) {
-      const [sx, sy, sw, sh] = editor.sel
-      ctx.rect(sx - l.dx, sy - l.dy, sw, sh)
-    } else ctx.rect(0, 0, editor.w, editor.h)
-    ctx.clip()
+    // clip à la sélection (rectangle, ellipse ou lasso — inversable)
+    if (editor.selInverted && (editor.sel || editor.selPoly)) {
+      ctx.beginPath(); ctx.rect(0, 0, editor.w, editor.h)
+      editor._selPath(ctx, l.dx, l.dy, true)
+      ctx.clip('evenodd')
+    } else {
+      editor._selPath(ctx, l.dx, l.dy)
+      ctx.clip()
+    }
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     if (tool === 'eraser') {
@@ -580,6 +699,67 @@ export default function Studio() {
       ctx.globalAlpha = opts.cloneOpacity ?? 1
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip()
       ctx.drawImage(s.srcSnap, sx - r, sy - r, opts.cloneSize, opts.cloneSize, cx - r, cy - r, opts.cloneSize, opts.cloneSize)
+    } else if (tool === 'tone') {
+      // éclaircir / assombrir / (dés)saturer — modes de fusion Photoshop
+      const cfg = {
+        dodge: ['screen', 'rgba(255,255,255,1)'],
+        burn: ['multiply', 'rgba(80,80,80,1)'],
+        desat: ['saturation', 'rgb(128,128,128)'],
+        sat: ['saturation', 'rgb(255,0,0)'],
+      }[opts.toneMode] || ['screen', 'rgba(255,255,255,1)']
+      ctx.globalCompositeOperation = cfg[0]
+      ctx.strokeStyle = cfg[1]
+      ctx.globalAlpha = opts.toneStrength ?? 0.3
+      ctx.lineWidth = opts.toneSize
+      ctx.beginPath()
+      ctx.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
+      ctx.lineTo(ix - l.dx, iy - l.dy)
+      ctx.stroke()
+    } else if ((tool === 'blurTool' || tool === 'sharpenTool' || tool === 'heal') && s.stamp) {
+      // tampon filtré : la copie floutée/accentuée est peinte par touches rondes
+      const r = (tool === 'blurTool' ? opts.blurSize : tool === 'sharpenTool' ? opts.sharpenSize : opts.healSize) / 2
+      const cx = ix - l.dx, cy = iy - l.dy
+      ctx.globalAlpha = tool === 'heal' ? 0.75 : 1
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip()
+      ctx.drawImage(s.stamp, 0, 0)
+    } else if (tool === 'smudge') {
+      // doigt : la matière sous le curseur est déplacée avec le geste
+      const r = opts.smudgeSize / 2
+      const px = s.last[0] - l.dx, py = s.last[1] - l.dy
+      const dx = ix - s.last[0], dy = iy - s.last[1]
+      ctx.globalAlpha = opts.smudgeStrength ?? 0.85
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.clip()
+      ctx.drawImage(l.cv, dx, dy)
+    } else if (tool === 'redeye') {
+      // neutralise les pixels à dominante rouge dans le disque du pinceau
+      const r = opts.redeyeSize / 2
+      const cx = Math.round(ix - l.dx), cy = Math.round(iy - l.dy)
+      const bx = Math.max(0, cx - r), by = Math.max(0, cy - r)
+      const bw = Math.min(editor.w - bx, r * 2), bh = Math.min(editor.h - by, r * 2)
+      if (bw > 0 && bh > 0) {
+        const d = ctx.getImageData(bx, by, bw, bh)
+        const px = d.data
+        for (let y = 0; y < bh; y++) {
+          for (let x = 0; x < bw; x++) {
+            const ox = bx + x - cx, oy = by + y - cy
+            if (ox * ox + oy * oy > r * r) continue
+            const i = (y * bw + x) * 4
+            if (px[i] > px[i + 1] * 1.25 && px[i] > px[i + 2] * 1.25 && px[i] > 60) {
+              const m = Math.max(px[i + 1], px[i + 2])
+              px[i] = m * 1.1
+            }
+          }
+        }
+        ctx.putImageData(d, bx, by)
+      }
+    } else if (tool === 'pencil') {
+      ctx.strokeStyle = opts.fg
+      ctx.globalAlpha = opts.pencilOpacity ?? 1
+      ctx.lineWidth = opts.pencilSize
+      ctx.beginPath()
+      ctx.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
+      ctx.lineTo(ix - l.dx, iy - l.dy)
+      ctx.stroke()
     } else {
       ctx.strokeStyle = opts.fg
       ctx.globalAlpha = opts.brushOpacity
@@ -609,9 +789,16 @@ export default function Studio() {
         setCursor({ x: ix | 0, y: iy | 0, color: rgbToHex(px[0], px[1], px[2]) })
       }
     }
+    // lasso polygonal : le point flottant suit le curseur entre les sommets
+    if (plassoRef.current && tool === 'plasso') {
+      plassoRef.current.hover = [ix, iy]
+      editor.lassoSelect([...plassoRef.current.pts, plassoRef.current.hover])
+      bump()
+    }
     const s = stroke.current
     if (!s) return
     if (s.kind === 'stroke') paint(ix, iy, s.l)
+    else if (s.kind === 'shapeDrag') setShapePrev([s.x0, s.y0, ix, iy])
     else if (s.kind === 'lasso') {
       s.pts.push([ix, iy])
       editor.lassoSelect(s.pts)
@@ -681,6 +868,33 @@ export default function Studio() {
       }
       bump()
     }
+    if (s?.kind === 'shapeDrag' && shapePrev) {
+      // trace la forme sur le calque actif (nouveau calque si verrouillé)
+      const [x1, y1, x2, y2] = shapePrev
+      if (Math.hypot(x2 - x1, y2 - y1) > 3) {
+        const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
+        editor.snapshot('Forme')
+        const c = l.ctx
+        c.save()
+        const lx1 = x1 - l.dx, ly1 = y1 - l.dy, lx2 = x2 - l.dx, ly2 = y2 - l.dy
+        const w = lx2 - lx1, h = ly2 - ly1
+        c.beginPath()
+        if (opts.shapeKind === 'rect') c.rect(lx1, ly1, w, h)
+        else if (opts.shapeKind === 'ellipse') c.ellipse(lx1 + w / 2, ly1 + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2)
+        else if (opts.shapeKind === 'triangle') { c.moveTo(lx1 + w / 2, ly1); c.lineTo(lx2, ly2); c.lineTo(lx1, ly2); c.closePath() }
+        else if (opts.shapeKind === 'line') { c.moveTo(lx1, ly1); c.lineTo(lx2, ly2) }
+        if (opts.shapeKind !== 'line') { c.fillStyle = opts.fg; c.fill() }
+        if (opts.shapeStrokeOn || opts.shapeKind === 'line') {
+          c.strokeStyle = opts.shapeKind === 'line' ? opts.fg : opts.bg
+          c.lineWidth = opts.shapeStroke
+          c.lineCap = 'round'
+          c.stroke()
+        }
+        c.restore()
+        bump()
+      }
+      setShapePrev(null)
+    }
     if (s?.kind === 'ruler' && straighten?.line) {
       const [x1, y1, x2, y2] = straighten.line
       const dx = x2 - x1, dy = y2 - y1
@@ -746,6 +960,112 @@ export default function Studio() {
     return !!res
   }
 
+  // ---- Filtres : aperçu live (restauration de la base + ré-application) ----------
+
+  const mkCv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c }
+  const cssFiltered = (cv, f) => { const t = mkCv(cv.width, cv.height); const x = t.getContext('2d'); x.filter = f; x.drawImage(cv, 0, 0); cv.getContext('2d').drawImage(t, 0, 0); return cv }
+  const lutRgb = (lut) => (cv) => applyLUTs(cv, { rgb: lut })
+  const FILTER_FNS = {
+    gaussian: (cv, p) => gaussianBlur(cv, p.radius),
+    motion: (cv, p) => motionBlur(cv, p.angle, p.dist),
+    sharpen: (cv, p) => unsharp(cv, Math.min(2, p.amount / 100) * 0.6),
+    denoise: (cv) => medianFilter(cv),
+    pixelate: (cv, p) => pixelate(cv, p.size),
+    twirl: (cv, p) => twirl(cv, p.angle),
+    wave: (cv, p) => wave(cv, p.amp, p.len),
+    vignette: (cv, p) => vignette(cv, p.strength / 100),
+    sepia: (cv, p) => cssFiltered(cv, `sepia(${p.amount}%)`),
+    solarize: (cv, p) => { const l = new Uint8ClampedArray(256); for (let i = 0; i < 256; i++) l[i] = i > p.threshold ? 255 - i : i; applyLUTs(cv, { rgb: l }) },
+    posterize: (cv, p) => { const n = Math.max(2, p.levels); const l = new Uint8ClampedArray(256); for (let i = 0; i < 256; i++) l[i] = Math.round(Math.round(i / 255 * (n - 1)) * 255 / (n - 1)); applyLUTs(cv, { rgb: l }) },
+    edge: (cv) => conv3x3(cv, [-1, -1, -1, -1, 8, -1, -1, -1, -1]),
+    emboss: (cv, p) => { const a = p.amount / 100; conv3x3(cv, [-2 * a, -a, 0, -a, a, a, 0, a, 2 * a], 1, 128) },
+    invert: (cv) => { const l = new Uint8ClampedArray(256); for (let i = 0; i < 256; i++) l[i] = 255 - i; applyLUTs(cv, { rgb: l }) },
+    desaturate: (cv) => cssFiltered(cv, 'grayscale(100%)'),
+    equalize: (cv) => equalize(cv),
+  }
+
+  const runFilter = (key, params) => {
+    const l = editor.active
+    if (!l || l.type === 'adjust') return
+    if (l.locked) l.locked = false
+    applyFilterRegion(editor, l, (cv) => FILTER_FNS[key]?.(cv, params))
+  }
+  const openFilter = (key) => {
+    if (!editor.active || editor.active.type === 'adjust') return
+    filterBase.current = JSON.stringify(editor._dump())
+    setFilterKey(key)
+  }
+  // chaque changement de paramètre : restaure la base puis ré-applique → aperçu réversible
+  const previewT = useRef(null)
+  const previewFilter = (params) => {
+    clearTimeout(previewT.current)
+    previewT.current = setTimeout(async () => {
+      if (!filterBase.current) return
+      await editor._restore(filterBase.current)
+      runFilter(filterKey, params)
+      bump()
+    }, 120)
+  }
+  const applyFilter = async (params) => {
+    if (!filterBase.current) return
+    await editor._restore(filterBase.current)
+    editor.snapshot(FILTER_DEFS[filterKey]?.label || 'Filtre')
+    runFilter(filterKey, params)
+    filterBase.current = null
+    setFilterKey(null)
+    bump()
+  }
+  const cancelFilter = async () => {
+    if (filterBase.current) { await editor._restore(filterBase.current); filterBase.current = null }
+    setFilterKey(null)
+    bump()
+  }
+
+  // ---- Copier / coller (presse-papiers OS + presse-papiers interne en repli) ----------
+
+  const clipRef = useRef(null) // copie interne (canvas) — le clipboard OS peut être refusé
+
+  const copySelection = async () => {
+    const comp = editor.compositeFiltered()
+    const t = mkCv(editor.w, editor.h)
+    const x = t.getContext('2d')
+    x.drawImage(comp, 0, 0)
+    // limite à la sélection : efface le reste via le masque
+    if (editor.sel || editor.selPoly) {
+      x.globalCompositeOperation = 'destination-in'
+      x.drawImage(editor.selMaskCanvas(0), 0, 0)
+    }
+    clipRef.current = t // toujours disponible en interne
+    try {
+      const blob = await new Promise((r) => t.toBlob(r, 'image/png'))
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+    } catch { /* clipboard OS indisponible — le repli interne suffit */ }
+  }
+  const pasteClipboard = async () => {
+    // 1) clipboard OS (permet de coller une image extérieure)
+    try {
+      const items = await navigator.clipboard.read()
+      for (const it of items) {
+        const type = it.types.find((t) => t.startsWith('image/'))
+        if (!type) continue
+        const blob = await it.getType(type)
+        const img = await loadImg(URL.createObjectURL(blob))
+        editor.snapshot('Coller')
+        const l = editor.addLayer('Collé')
+        l.ctx.drawImage(img, (editor.w - img.width) / 2, (editor.h - img.height) / 2)
+        bump()
+        return
+      }
+    } catch { /* pas d'accès — on tente le repli interne */ }
+    // 2) presse-papiers interne (copie faite dans le Studio)
+    if (clipRef.current) {
+      editor.snapshot('Coller')
+      const l = editor.addLayer('Collé')
+      l.ctx.drawImage(clipRef.current, 0, 0)
+      bump()
+    }
+  }
+
   const menus = [
     { label: 'Fichier', tip: 'Document : ouvrir, montage avant/après, exporter', items: [
       { label: 'Ouvrir une photo…', onClick: () => setModal('open') },
@@ -753,37 +1073,106 @@ export default function Studio() {
       { label: 'Montage avant / après…', onClick: () => setModal('montage') },
       '-',
       { label: 'Exporter / Enregistrer…', shortcut: 'Ctrl+S', disabled: !docOpen, onClick: () => setModal('export') },
+      { label: 'Export rapide PNG', disabled: !docOpen, onClick: () => doExport('png') },
       '-',
       { label: 'Fermer le document', disabled: !docOpen, onClick: () => setDocOpen(false) },
     ]},
-    { label: 'Édition', tip: 'Historique et contenu de la sélection', items: [
+    { label: 'Édition', tip: 'Historique, presse-papiers et contenu de la sélection', items: [
       { label: 'Annuler', shortcut: 'Ctrl+Z', disabled: !docOpen, onClick: async () => { await editor.undo(); bump() } },
       { label: 'Rétablir', shortcut: 'Ctrl+Y', disabled: !docOpen, onClick: async () => { await editor.redo(); bump() } },
       '-',
+      { label: 'Copier', shortcut: 'Ctrl+C', disabled: !docOpen, onClick: copySelection },
+      { label: 'Coller en calque', shortcut: 'Ctrl+V', disabled: !docOpen, onClick: pasteClipboard },
+      '-',
       { label: 'Remplir (premier plan)', shortcut: 'Alt+Suppr', disabled: !docOpen, onClick: () => {
         if (editor.active?.locked) editor.addLayer()
-        editor.snapshot(); editor.fill(opts.fg); bump()
+        editor.snapshot('Remplir'); editor.fill(opts.fg, opts.selFeather); bump()
+      } },
+      { label: 'Remplir (arrière-plan)', disabled: !docOpen, onClick: () => {
+        if (editor.active?.locked) editor.addLayer()
+        editor.snapshot('Remplir'); editor.fill(opts.bg, opts.selFeather); bump()
       } },
       { label: 'Effacer le contenu', shortcut: 'Suppr', disabled: !docOpen, onClick: () => {
         if (editor.active?.locked) editor.addLayer()
-        editor.snapshot(); editor.deleteContent(); bump()
+        editor.snapshot('Effacer'); editor.deleteContent(opts.selFeather); bump()
       } },
     ]},
-    { label: 'Sélection', tip: 'Zones de travail (rectangle, baguette)', items: [
+    { label: 'Sélection', tip: 'Zones de travail : créer, modifier, inverser', items: [
       { label: 'Tout sélectionner', shortcut: 'Ctrl+A', disabled: !docOpen, onClick: () => { editor.selectAll(); bump() } },
       { label: 'Désélectionner', shortcut: 'Ctrl+D', disabled: !docOpen || !editor.sel, onClick: () => { editor.deselect(); bump() } },
-    ]},
-    { label: 'Image', tip: 'Transformations du document (rotation, miroir, aplatir)', items: [
-      { label: 'Pivoter 90°', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.rotate90(); bump() } },
-      { label: 'Miroir horizontal', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.flipH(); bump() } },
-      { label: 'Miroir vertical', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.flipV(); bump() } },
+      { label: 'Resélectionner', disabled: !docOpen || !editor.lastSel, onClick: () => { editor.reselect(); bump() } },
+      { label: `${editor.selInverted ? '✓ ' : ''}Inverser`, shortcut: 'Ctrl+Maj+I', disabled: !docOpen || (!editor.sel && !editor.selPoly),
+        onClick: () => { editor.invertSelection(); bump() } },
       '-',
-      { label: 'Aplatir l\'image', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.flatten(); bump() } },
+      { label: `Plume…${opts.selFeather ? ` (${opts.selFeather} px)` : ''}`, disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => {
+        const v = +window.prompt('Rayon de contour progressif (px) :', String(opts.selFeather || 0))
+        if (!isNaN(v)) setOpts((o) => ({ ...o, selFeather: Math.max(0, v) }))
+      } },
+      { label: 'Étendre…', disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => {
+        const v = +window.prompt('Étendre de (px) :', '8')
+        if (v > 0) { editor.snapshot('Étendre'); editor.resizeSelection(v); bump() }
+      } },
+      { label: 'Contracter…', disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => {
+        const v = +window.prompt('Contracter de (px) :', '8')
+        if (v > 0) { editor.snapshot('Contracter'); editor.resizeSelection(-v); bump() }
+      } },
     ]},
-    { label: 'Calque', tip: 'Pile de calques : créer, dupliquer, supprimer', items: [
-      { label: 'Nouveau calque', disabled: !docOpen, onClick: () => { editor.addLayer(); editor.snapshot(); bump() } },
-      { label: 'Dupliquer le calque', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.duplicateLayer(editor.activeId); bump() } },
-      { label: 'Supprimer le calque', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.removeLayer(editor.activeId); bump() } },
+    { label: 'Image', tip: 'Transformations du document (rotation, miroir, taille, aplatir)', items: [
+      { label: 'Pivoter 90°', disabled: !docOpen, onClick: () => { editor.snapshot('Pivoter'); editor.rotate90(); bump() } },
+      { label: 'Miroir horizontal', disabled: !docOpen, onClick: () => { editor.snapshot('Miroir H'); editor.flipH(); bump() } },
+      { label: 'Miroir vertical', disabled: !docOpen, onClick: () => { editor.snapshot('Miroir V'); editor.flipV(); bump() } },
+      '-',
+      { label: 'Recadrer sur la sélection', disabled: !docOpen || !editor.sel, onClick: () => { editor.snapshot('Recadrer'); editor.cropToSelection(); bump(); fitView() } },
+      { label: 'Rogner les pixels transparents', disabled: !docOpen, onClick: () => { editor.snapshot('Rogner'); editor.trim(); bump(); fitView() } },
+      { label: 'Taille de l\'image…', disabled: !docOpen, onClick: () => {
+        const v = +window.prompt(`Taille actuelle : ${editor.w} × ${editor.h} px — nouveau pourcentage :`, '50')
+        if (v > 0) { editor.snapshot('Redimensionner'); editor.resizeDoc(v / 100); bump(); fitView() }
+      } },
+      '-',
+      { label: 'Aplatir l\'image', disabled: !docOpen, onClick: () => { editor.snapshot('Aplatir'); editor.flatten(); bump() } },
+    ]},
+    { label: 'Filtre', tip: 'Filtres avec aperçu sur le canevas — écrêtés à la sélection', items: [
+      { label: 'Flou gaussien…', disabled: !docOpen, onClick: () => openFilter('gaussian') },
+      { label: 'Flou de mouvement…', disabled: !docOpen, onClick: () => openFilter('motion') },
+      { label: 'Accentuation…', disabled: !docOpen, onClick: () => openFilter('sharpen') },
+      { label: 'Réduire le bruit', disabled: !docOpen, onClick: () => openFilter('denoise') },
+      { label: 'Mosaïque…', disabled: !docOpen, onClick: () => openFilter('pixelate') },
+      '-',
+      { label: 'Tourbillon…', disabled: !docOpen, onClick: () => openFilter('twirl') },
+      { label: 'Onde…', disabled: !docOpen, onClick: () => openFilter('wave') },
+      '-',
+      { label: 'Vignettage…', disabled: !docOpen, onClick: () => openFilter('vignette') },
+      { label: 'Sépia…', disabled: !docOpen, onClick: () => openFilter('sepia') },
+      { label: 'Solarisation…', disabled: !docOpen, onClick: () => openFilter('solarize') },
+      { label: 'Postérisation…', disabled: !docOpen, onClick: () => openFilter('posterize') },
+      { label: 'Détection de contours', disabled: !docOpen, onClick: () => openFilter('edge') },
+      { label: 'Relief…', disabled: !docOpen, onClick: () => openFilter('emboss') },
+      '-',
+      { label: 'Négatif', shortcut: 'Ctrl+I', disabled: !docOpen, onClick: () => { editor.snapshot('Négatif'); runFilter('invert', {}); bump() } },
+      { label: 'Désaturer', disabled: !docOpen, onClick: () => { editor.snapshot('Désaturer'); runFilter('desaturate', {}); bump() } },
+      { label: 'Égaliser', disabled: !docOpen, onClick: () => { editor.snapshot('Égaliser'); runFilter('equalize', {}); bump() } },
+    ]},
+    { label: 'Calque', tip: 'Pile de calques, réglages non destructifs, masques', items: [
+      { label: 'Nouveau calque', disabled: !docOpen, onClick: () => { editor.addLayer(); editor.snapshot('Nouveau calque'); bump() } },
+      { label: 'Dupliquer le calque', shortcut: 'Ctrl+J', disabled: !docOpen, onClick: () => { editor.snapshot('Dupliquer'); editor.duplicateLayer(editor.activeId); bump() } },
+      { label: 'Supprimer le calque', disabled: !docOpen, onClick: () => { editor.snapshot('Supprimer'); editor.removeLayer(editor.activeId); bump() } },
+      '-',
+      { label: 'Nouveau via copier', disabled: !docOpen, onClick: () => { editor.snapshot('Via copier'); editor.layerViaCopy(); bump() } },
+      { label: 'Nouveau via couper', disabled: !docOpen, onClick: () => { editor.snapshot('Via couper'); editor.layerViaCut(); bump() } },
+      { label: 'Fusionner les visibles', shortcut: 'Ctrl+Maj+Alt+E', disabled: !docOpen, onClick: () => { editor.snapshot('Fusion'); editor.mergeVisible(); bump() } },
+      '-',
+      { label: 'Nouveau calque de réglage…', disabled: !docOpen, onClick: () => {
+        editor.snapshot('Calque de réglage')
+        const l = editor.addAdjustLayer('bc')
+        bump(); setEditAdj(l)
+      } },
+      '-',
+      { label: 'Ajouter un masque de fusion', disabled: !docOpen || !editor.active || editor.active.locked || editor.active.type === 'adjust' || !!editor.active?.mask,
+        onClick: () => { editor.snapshot('Masque'); editor.addMask(editor.active, false); bump() } },
+      { label: 'Masque depuis la sélection', disabled: !docOpen || !editor.active || editor.active.locked || editor.active.type === 'adjust' || !!editor.active?.mask || (!editor.sel && !editor.selPoly),
+        onClick: () => { editor.snapshot('Masque'); editor.addMask(editor.active, true); bump() } },
+      { label: 'Supprimer le masque', disabled: !docOpen || !editor.active?.mask,
+        onClick: () => { editor.snapshot('Masque'); editor.removeMask(editor.active); bump() } },
     ]},
     { label: 'Affichage', tip: 'Zoom, règles, guides, grille, magnétisme', items: [
       { label: 'Zoom +', shortcut: '+', onClick: () => zoomAt(1.25) },
@@ -824,11 +1213,22 @@ export default function Studio() {
         else if (k === 'd') { e.preventDefault(); editor.deselect(); bump() }
         else if (k === 'r') { e.preventDefault(); setRulers((v) => !v) }
         else if (k === 'g') { e.preventDefault(); setGridOn((v) => !v) }
+        else if (k === 'c') { copySelection() }
+        else if (k === 'v') { pasteClipboard() }
+        else if (k === 'j' && e.shiftKey && docOpen) { e.preventDefault(); editor.snapshot('Via couper'); editor.layerViaCut(); bump() }
+        else if (k === 'j' && docOpen) { e.preventDefault(); editor.snapshot('Via copier'); editor.layerViaCopy(); bump() }
+        else if (k === 'i' && e.shiftKey && docOpen) { e.preventDefault(); editor.invertSelection(); bump() }
+        else if (k === 'i' && docOpen) { e.preventDefault(); editor.snapshot('Négatif'); runFilter('invert', {}); bump() }
+        else if (k === 'e' && e.shiftKey && e.altKey && docOpen) { e.preventDefault(); editor.snapshot('Fusion'); editor.mergeVisible(); bump() }
         else if (k === ';' || k === ':') { e.preventDefault(); setGuidesOn((v) => !v) }
         return
       }
-      const map = { v: 'move', c: 'crop', m: 'rect', l: 'lasso', w: 'wand', b: 'brush', s: 'clone', e: 'eraser', g: 'gradient', k: 'bucket', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate' }
-      if (map[k]) setTool(map[k])
+      if (k === 'enter' && plassoRef.current) { commitPlasso(); return }
+      if (k === 'escape' && plassoRef.current) { cancelPlasso(); return }
+      const shiftMap = { l: 'plasso', b: 'pencil', u: 'sharpenTool', s: 'smudge', m: 'shape' }
+      const map = { v: 'move', c: 'crop', m: 'rect', l: 'lasso', w: 'wand', b: 'brush', s: 'clone', e: 'eraser', g: 'gradient', k: 'bucket', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate', j: 'heal', o: 'tone', u: 'blurTool', y: 'redeye' }
+      if (e.shiftKey && shiftMap[k]) setTool(shiftMap[k])
+      else if (map[k]) setTool(map[k])
       else if (k === '+') zoomAt(1.25)
       else if (k === '-') zoomAt(0.8)
       else if (k === '0') fitView()
@@ -840,7 +1240,7 @@ export default function Studio() {
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [editor, bump])
+  }, [editor, bump, docOpen]) // docOpen : les raccourcis gardés ne doivent pas rester figés
 
   // ---- Rendu --------------------------------------------------------------------------------
 
@@ -852,14 +1252,14 @@ export default function Studio() {
         <OptionsBar tool={tool} opts={opts} setOpts={setOpts}
           cropRect={cropRect} onApplyCrop={applyCrop} onCancelCrop={() => setCropRect(null)}
           onRotate={() => { editor.snapshot(); editor.rotate90(); bump() }}
-          hasSel={!!editor.sel}
+          hasSel={!!(editor.sel || editor.selPoly)}
           onFill={() => {
             if (editor.active?.locked) editor.addLayer()
-            editor.snapshot(); editor.fill(opts.fg); bump()
+            editor.snapshot('Remplir'); editor.fill(opts.fg, opts.selFeather); bump()
           }}
           onDelete={() => {
             if (editor.active?.locked) editor.addLayer()
-            editor.snapshot(); editor.deleteContent(); bump()
+            editor.snapshot('Effacer'); editor.deleteContent(opts.selFeather); bump()
           }}
           onDeselect={() => { editor.deselect(); bump() }}
           canUndo={editor.undoStack.length > 0} canRedo={editor.redoStack.length > 0}
@@ -879,6 +1279,7 @@ export default function Studio() {
           <canvas
             ref={canvasRef} style={{ position: 'absolute', inset: 0 }}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+            onDoubleClick={() => tool === 'plasso' && commitPlasso()}
             onWheel={(e) => zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.nativeEvent.offsetX, e.nativeEvent.offsetY)}
           />
           {docOpen && (
@@ -932,6 +1333,13 @@ export default function Studio() {
         </Box>
         {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump}
           onFx={() => setModal('style')}
+          onAdjust={(l) => setEditAdj(l)}
+          onJump={async (dir, i) => {
+            if (dir === 'undo') await editor.historyJump(i)
+            else await editor.historyJumpForward(i)
+            bump()
+          }}
+          curveTarget={editor.active?.type === 'adjust' && editor.active.adj?.kind === 'curves' ? editor.active.adj.params : null}
           view={view} stageSize={stageSize}
           onNav={(ix, iy) => setView((v) => ({
             ...v, ox: stageSize.w / 2 - ix * v.scale, oy: stageSize.h / 2 - iy * v.scale,
@@ -976,6 +1384,10 @@ export default function Studio() {
         }} />
       <ExportModal open={modal === 'export'} onClose={() => setModal(null)}
         docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
+      <FilterModal open={!!filterKey} def={filterKey ? FILTER_DEFS[filterKey] : null}
+        onPreview={previewFilter} onApply={applyFilter} onCancel={cancelFilter} />
+      <AdjustLayerModal open={!!editAdj} editor={editor} layer={editAdj} onClose={() => setEditAdj(null)}
+        onChange={() => { editor.markDirty(); bump() }} />
     </Flex>
   )
 }

@@ -7,7 +7,8 @@ import {
   FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiLayers, FiPlus,
   FiRefreshCw, FiTrash2,
 } from 'react-icons/fi'
-import { LuRedo2, LuUndo2 } from 'react-icons/lu'
+import { LuContrast, LuHistory, LuRedo2, LuUndo2 } from 'react-icons/lu'
+import { TbMask } from 'react-icons/tb'
 import { Tip } from '../../components/ui'
 import { C } from '../../theme'
 import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
@@ -170,6 +171,88 @@ export function OptionsBar({
           <Tip label="Couleur du trait — « + » : sélecteur détaillé"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} onCustom={() => onPickColor?.('fg')} /></Tip>
         </>
       )}
+      {tool === 'pencil' && (
+        <>
+          <Tip label="Diamètre du crayon (px) — trait à bord franc"><Text {...row}>Taille {opts.pencilSize}px</Text></Tip>{slider('pencilSize', 1, 200)}
+          <Tip label="Transparence du trait"><Text {...row}>Opacité {Math.round((opts.pencilOpacity ?? 1) * 100)}%</Text></Tip>{slider('pencilOpacity', 0.05, 1, 0.05, 100)}
+          <Tip label="Couleur du trait — « + » : sélecteur détaillé"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} onCustom={() => onPickColor?.('fg')} /></Tip>
+        </>
+      )}
+      {tool === 'heal' && (
+        <>
+          <Tip label="Diamètre du correcteur"><Text {...row}>Taille {opts.healSize}px</Text></Tip>{slider('healSize', 8, 300)}
+          <Tip label="Rayon d'estompage — plus grand = fondu plus large"><Text {...row}>Fondu {opts.healRadius}px</Text></Tip>{slider('healRadius', 1, 60)}
+          <Text {...row}>Peignez sur les défauts — la zone est estompée</Text>
+        </>
+      )}
+      {tool === 'tone' && (
+        <>
+          <Tip label="Mode : éclaircit, assombrit ou (dés)sature sous le pinceau">
+            <Box as="select" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+              border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+              value={opts.toneMode} onChange={(e) => setOpts({ ...opts, toneMode: e.target.value })}>
+              <option value="dodge">Éclaircir</option>
+              <option value="burn">Assombrir</option>
+              <option value="desat">Désaturer</option>
+              <option value="sat">Saturer</option>
+            </Box>
+          </Tip>
+          <Tip label="Diamètre"><Text {...row}>Taille {opts.toneSize}px</Text></Tip>{slider('toneSize', 4, 300)}
+          <Tip label="Force de l'effet"><Text {...row}>Force {Math.round((opts.toneStrength ?? 0.3) * 100)}%</Text></Tip>{slider('toneStrength', 0.05, 1, 0.05, 100)}
+        </>
+      )}
+      {tool === 'blurTool' && (
+        <>
+          <Tip label="Diamètre du pinceau flou"><Text {...row}>Taille {opts.blurSize}px</Text></Tip>{slider('blurSize', 8, 300)}
+          <Tip label="Rayon du flou appliqué"><Text {...row}>Rayon {opts.blurRadius}px</Text></Tip>{slider('blurRadius', 1, 40)}
+        </>
+      )}
+      {tool === 'sharpenTool' && (
+        <>
+          <Tip label="Diamètre"><Text {...row}>Taille {opts.sharpenSize}px</Text></Tip>{slider('sharpenSize', 8, 300)}
+          <Tip label="Gain d'accentuation"><Text {...row}>Gain {opts.sharpenAmount}%</Text></Tip>{slider('sharpenAmount', 10, 200, 5)}
+        </>
+      )}
+      {tool === 'smudge' && (
+        <>
+          <Tip label="Diamètre du doigt"><Text {...row}>Taille {opts.smudgeSize}px</Text></Tip>{slider('smudgeSize', 4, 300)}
+          <Tip label="Force de l'étalement"><Text {...row}>Force {Math.round((opts.smudgeStrength ?? 0.85) * 100)}%</Text></Tip>{slider('smudgeStrength', 0.3, 1, 0.05, 100)}
+        </>
+      )}
+      {tool === 'redeye' && (
+        <>
+          <Tip label="Diamètre de correction"><Text {...row}>Taille {opts.redeyeSize}px</Text></Tip>{slider('redeyeSize', 6, 200)}
+          <Text {...row}>Peignez sur la pupille — le rouge est neutralisé</Text>
+        </>
+      )}
+      {tool === 'shape' && (
+        <>
+          <Tip label="Forme à tracer">
+            <Box as="select" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+              border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+              value={opts.shapeKind} onChange={(e) => setOpts({ ...opts, shapeKind: e.target.value })}>
+              <option value="rect">Rectangle</option>
+              <option value="ellipse">Ellipse</option>
+              <option value="triangle">Triangle</option>
+              <option value="line">Ligne</option>
+            </Box>
+          </Tip>
+          <Tip label="Contour (couleur d'arrière-plan)">
+            <HStack gap="1">
+              <Box w="12px" h="12px" borderRadius="sm" border="1px solid" cursor="pointer"
+                borderColor={opts.shapeStrokeOn ? '#4f8fe8' : 'gray.500'}
+                bg={opts.shapeStrokeOn ? '#4f8fe8' : 'transparent'} color="#ffffff"
+                fontSize="2xs" lineHeight="12px" textAlign="center"
+                onClick={() => setOpts({ ...opts, shapeStrokeOn: !opts.shapeStrokeOn })}>
+                {opts.shapeStrokeOn ? '✓' : ''}
+              </Box>
+              <Text {...row}>Contour</Text>
+            </HStack>
+          </Tip>
+          {opts.shapeStrokeOn && <>{slider('shapeStroke', 1, 60)}</>}
+          <Text {...row}>Remplissage = 1er plan · glisser trace la forme</Text>
+        </>
+      )}
       {tool === 'eraser' && (
         <>
           <Tip label="Diamètre de la gomme (px) — saisie libre"><Text {...row}>Taille {opts.eraserSize}px</Text></Tip>{slider('eraserSize', 2, 500)}
@@ -256,12 +339,25 @@ export function OptionsBar({
           <Text {...row}>Cliquer une couleur → sélection de la zone</Text>
         </>
       )}
-      {['hand', 'zoom', 'picker', 'rect', 'lasso', 'gradient'].includes(tool) && !hasSel && (
+      {tool === 'rect' && !hasSel && (
+        <>
+          <Tip label="Forme du cadre de sélection">
+            <Box as="select" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+              border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+              value={opts.selShape} onChange={(e) => setOpts({ ...opts, selShape: e.target.value })}>
+              <option value="rect">Rectangle</option>
+              <option value="ellipse">Ellipse</option>
+            </Box>
+          </Tip>
+          <Text {...row}>Trace une zone de sélection</Text>
+        </>
+      )}
+      {['hand', 'zoom', 'picker', 'lasso', 'plasso', 'gradient'].includes(tool) && !hasSel && (
         <Text {...row}>
           {{ hand: 'Glisser déplace la vue',
             zoom: 'Cliquer pour zoomer (Alt = dézoomer)', picker: 'Cliquer pour prélever la couleur',
-            rect: 'Trace une zone de sélection',
             lasso: 'Trace une sélection à main levée — relâcher ferme la forme',
+            plasso: 'Clic = sommet · double-clic ou Entrée = fermer la sélection',
             gradient: 'Glissez pour tirer un dégradé 1er plan → arrière-plan' }[tool]}
         </Text>
       )}
@@ -309,7 +405,7 @@ function SwatchPicker({ value, onChange, onCustom }) {
 
 // ---- Panneau droit : Calques ----------------------------------------------------
 
-export function LayersPanel({ editor, version, onChange, onFx }) {
+export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
   const layers = [...editor.layers].reverse()
   const fxList = (l) => l.fx ? Object.entries(l.fx).filter(([, f]) => f?.on).map(([k]) => FX_NAMES[k] || k) : []
   return (
@@ -328,24 +424,46 @@ export function LayersPanel({ editor, version, onChange, onFx }) {
       </HStack>
       {layers.map((l) => {
         const fxs = fxList(l)
+        const isAdjust = l.type === 'adjust'
         return (
           <Box key={l.id}>
             <HStack
               px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
               bg={editor.activeId === l.id ? 'whiteAlpha.100' : 'transparent'}
               color={l.visible ? fg : muted}
-              onClick={() => { editor.setActive(l.id); onChange() }}
+              onClick={() => {
+                editor.setActive(l.id)
+                onChange()
+                if (isAdjust) onAdjust?.(l)
+              }}
             >
               <Tip label={l.visible ? 'Masquer le calque' : 'Afficher le calque'}>
                 <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
                   onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
               </Tip>
-              <Tip label={l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
-                <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
-                  bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
-                  <img src={editor.layerThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
-                </Box>
+              <Tip label={isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
+                {isAdjust ? (
+                  <Center w="42px" h="30px" flexShrink={0} borderRadius="sm" bg="#2a3140"
+                    border="1px solid" borderColor="#7c3aed" color="#c4b5fd" fontSize="15px">
+                    <Box as={LuContrast} />
+                  </Center>
+                ) : (
+                  <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
+                    bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
+                    <img src={editor.layerThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
+                  </Box>
+                )}
               </Tip>
+              {l.mask && (
+                <Tip label={l.maskActive ? 'Masque actif — le pinceau édite le masque (noir masque, blanc révèle)' : 'Masque de fusion — clic pour éditer'}>
+                  <Box w="30px" h="22px" flexShrink={0} borderRadius="sm" overflow="hidden"
+                    border="2px solid" borderColor={l.maskActive ? '#22d3ee' : 'whiteAlpha.200'}
+                    cursor="pointer"
+                    onClick={(e) => { e.stopPropagation(); editor.snapshot('Masque'); l.maskActive = !l.maskActive; onChange() }}>
+                    <img src={editor.maskThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
+                  </Box>
+                </Tip>
+              )}
               <Text flex="1" isTruncated>{l.name}{l.locked ? ' 🔒' : ''}</Text>
               {fxs.length > 0 && (
                 <Tip label="Styles de calque actifs — double-clic pour éditer">
@@ -409,10 +527,28 @@ export function LayersPanel({ editor, version, onChange, onFx }) {
       <HStack px="2.5" py="2" gap="2" mt="auto" borderTop="1px solid" borderColor={panelBorder}>
         <Tip label="Calque transparent au-dessus — pour dessiner ou annoter sans toucher l'image" flex="1">
           <HStack flex="1" gap="1.5" cursor="pointer" color={C.primary} fontSize="xs"
-            onClick={() => { editor.snapshot(); editor.addLayer(); onChange() }}>
+            onClick={() => { editor.snapshot('Nouveau calque'); editor.addLayer(); onChange() }}>
             <FiPlus /> <Text>Nouveau calque</Text>
           </HStack>
         </Tip>
+        <Tip label="Calque de réglage non destructif (teinte, niveaux, N&B…)">
+          <Box as={LuContrast} fontSize="14px" color={muted} cursor="pointer" _hover={{ color: fg }}
+            onClick={() => { editor.snapshot('Calque de réglage'); const l = editor.addAdjustLayer('bc'); onChange(); onAdjust?.(l) }} />
+        </Tip>
+        {editor.active && !editor.active.locked && editor.active.type !== 'adjust' && (
+          <Tip label={editor.active.mask ? 'Supprimer le masque de fusion' : 'Ajouter un masque de fusion (depuis la sélection si elle existe)'}>
+            <Box as={TbMask} fontSize="15px" color={editor.active?.mask ? C.primary : muted}
+              cursor="pointer" _hover={{ color: fg }}
+              onClick={() => {
+                const l = editor.active
+                if (!l) return
+                editor.snapshot('Masque de fusion')
+                if (l.mask) editor.removeMask(l)
+                else editor.addMask(l, !!(editor.sel || editor.selPoly))
+                onChange()
+              }} />
+          </Tip>
+        )}
         {editor.active && (
           <>
             <Tip label="Opacité — affecte le calque ET ses effets" flex="1">
@@ -600,14 +736,15 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
 // Zone carrée 216px = [0..255]². Clic près de la courbe : nouveau point.
 // Drag d'un point : déplace. Sortir un point du cadre : supprime.
 
-export function CurvesPanel({ editor, version, onChange }) {
+export function CurvesPanel({ editor, version, onChange, target }) {
+  const curves = target || editor.curves
   const [ch, setCh] = useState('rgb')
   const cvRef = useRef(null)
   const drag = useRef(-1)
   const W = 216, H = 164
   const px2v = (x) => Math.round((x / W) * 255)
   const v2px = (v) => (v / 255) * W
-  const pts = () => editor.curves[ch] || [{ x: 0, y: 0 }, { x: 255, y: 255 }]
+  const pts = () => curves[ch] || [{ x: 0, y: 0 }, { x: 255, y: 255 }]
 
   useEffect(() => {
     const cv = cvRef.current
@@ -633,7 +770,7 @@ export function CurvesPanel({ editor, version, onChange }) {
     ctx.strokeStyle = 'rgba(255,255,255,0.15)'
     ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke()
     // courbe LUT
-    const lut = curveLUT(editor.curves[ch])
+    const lut = curveLUT(curves[ch])
     ctx.strokeStyle = { rgb: '#4f8fe8', r: '#f87171', g: '#4ade80', b: '#60a5fa' }[ch]
     ctx.lineWidth = 1.5
     ctx.beginPath()
@@ -661,7 +798,7 @@ export function CurvesPanel({ editor, version, onChange }) {
     else {
       const p = pts()
       const np = [...p, { x: px2v(mx), y: px2v(H - my) }].sort((a, b) => a.x - b.x)
-      editor.curves[ch] = np
+      curves[ch] = np
       drag.current = np.findIndex((q) => q.x === px2v(mx) && q.y === px2v(H - my))
       onChange()
     }
@@ -675,7 +812,7 @@ export function CurvesPanel({ editor, version, onChange }) {
     // sorti du cadre -> suppression (sauf points extrêmes)
     if ((my < -20 || my > H + 20) && p.length > 2 && drag.current > 0 && drag.current < p.length - 1) {
       p.splice(drag.current, 1)
-      editor.curves[ch] = p.length > 2 ? p : null
+      curves[ch] = p.length > 2 ? p : null
       drag.current = -1
       onChange()
       return
@@ -685,8 +822,8 @@ export function CurvesPanel({ editor, version, onChange }) {
       y: Math.max(0, Math.min(255, px2v(H - my))),
     }
     p[drag.current] = moved
-    editor.curves[ch] = p.sort((a, b) => a.x - b.x)
-    drag.current = editor.curves[ch].indexOf(moved)
+    curves[ch] = p.sort((a, b) => a.x - b.x)
+    drag.current = curves[ch].indexOf(moved)
     onChange()
   }
 
@@ -705,7 +842,7 @@ export function CurvesPanel({ editor, version, onChange }) {
         <Tip label="Réinitialiser la courbe de ce canal">
           <Box as="button" fontSize="2xs" px="2" h="20px" borderRadius="sm"
             bg="whiteAlpha.100" color={muted} cursor="pointer"
-            onClick={() => { editor.snapshot(); editor.curves[ch] = null; onChange() }}>
+            onClick={() => { editor.snapshot(); curves[ch] = null; onChange() }}>
             Reset
           </Box>
         </Tip>
@@ -990,6 +1127,45 @@ export function NavigatorPanel({ editor, version, view, stageSize, onNav }) {
   )
 }
 
+// ---- Panneau droit : Histoire (états nommés, clic = saut) — façon Photoshop ------
+
+export function HistoryPanel({ editor, version, onJump }) {
+  const past = editor.undoStack // [{label, json}]
+  const fut = editor.redoStack
+  return (
+    <VStack align="stretch" gap="0" flex="1" overflowY="auto" px="1" py="1">
+      {past.map((s, i) => (
+        <Tip key={i} label={`Revenir à l'état avant « ${s.label} »`} display="block">
+          <HStack px="2" py="1" gap="2" fontSize="2xs" cursor="pointer" color={muted}
+            _hover={{ bg: 'whiteAlpha.100', color: fg }} borderRadius="sm"
+            onClick={() => onJump('undo', i)}>
+            <Box as={LuHistory} fontSize="11px" flexShrink={0} />
+            <Text isTruncated>{s.label}</Text>
+          </HStack>
+        </Tip>
+      ))}
+      <HStack px="2" py="1.5" gap="2" fontSize="2xs" color="#f2c200" fontWeight="700"
+        bg="whiteAlpha.100" borderRadius="sm">
+        <Box as={LuHistory} fontSize="11px" />
+        <Text>État actuel</Text>
+      </HStack>
+      {fut.map((s, i) => (
+        <Tip key={i} label={`Rétablir (${fut.length - i} étape(s))`} display="block">
+          <HStack px="2" py="1" gap="2" fontSize="2xs" cursor="pointer" color="whiteAlpha.400"
+            _hover={{ bg: 'whiteAlpha.100', color: fg }} borderRadius="sm"
+            onClick={() => onJump('redo', fut.length - i)}>
+            <Box as={LuHistory} fontSize="11px" flexShrink={0} />
+            <Text isTruncated>{s.label}</Text>
+          </HStack>
+        </Tip>
+      ))}
+      {!past.length && !fut.length && (
+        <Text fontSize="2xs" color={muted} px="2" py="2">Aucune action encore — les étapes apparaîtront ici.</Text>
+      )}
+    </VStack>
+  )
+}
+
 // ---- Panneau droit : Infos --------------------------------------------------------
 
 export function InfoPanel({ editor, zoom, cursor }) {
@@ -1052,13 +1228,14 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
 
 // ---- Panneau latéral à onglets -------------------------------------------------------
 
-export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, view, stageSize, onNav }) {
+export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, onAdjust, onJump, view, stageSize, onNav, curveTarget }) {
   const [tab, setTab] = useState('dental')
   const TABS = [
     ['dental', 'Dentaire', 'Avant/après, redresser, calibrer, teinte, référence, planche'],
-    ['layers', 'Calques', 'Empilement, fusion, opacité, remplissage, effets fx'],
+    ['layers', 'Calques', 'Empilement, fusion, opacité, remplissage, effets fx, masques'],
     ['adjust', 'Réglages', 'Exposition, balance des blancs, niveaux, effets'],
     ['curves', 'Courbes', 'Tonalité par canal RGB/R/V/B'],
+    ['hist', 'Hist.', 'États de l\'historique — clic pour sauter'],
     ['nav', 'Nav.', 'Vue d\'ensemble et déplacement du cadre visible'],
     ['histo', 'Histo', 'Histogramme et statistiques de luminance'],
     ['info', 'Infos', 'Document, dimensions, curseur, couleur'],
@@ -1079,10 +1256,11 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
       </HStack>
       <Flex flex="1" direction="column" overflow="hidden">
         {tab === 'dental' && <DentalPanel editor={editor} version={version} onChange={onChange} dental={dental} />}
-        {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} onFx={onFx} />}
+        {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} onFx={onFx} onAdjust={onAdjust} />}
         {tab === 'adjust' && <AdjustPanel editor={editor} onChange={onChange}
           wbPick={wbPick} onWbPick={onWbPick} comparing={comparing} onCompare={onCompare} />}
-        {tab === 'curves' && <CurvesPanel editor={editor} version={version} onChange={onChange} />}
+        {tab === 'curves' && <CurvesPanel editor={editor} version={version} onChange={onChange} target={curveTarget} />}
+        {tab === 'hist' && <HistoryPanel editor={editor} version={version} onJump={onJump} />}
         {tab === 'nav' && <NavigatorPanel editor={editor} version={version} view={view} stageSize={stageSize} onNav={onNav} />}
         {tab === 'histo' && <HistogramPanel editor={editor} version={version} />}
         {tab === 'info' && <InfoPanel editor={editor} zoom={zoom} cursor={cursor} />}
