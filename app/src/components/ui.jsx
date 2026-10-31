@@ -1,5 +1,7 @@
 // Primitives UI partagées — tout motif visuel répété dans les pages vit ici.
 // Palette : ../theme.js (objet C)
+import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Box, Button, Flex, HStack, Input, Text } from '@chakra-ui/react'
 import { FiHelpCircle, FiSearch, FiX } from 'react-icons/fi'
 import { C } from '../theme'
@@ -217,19 +219,65 @@ export function Modal({ open, onClose, title, subtitle, children, width = '480px
 }
 
 // ---- Tooltip (hover) --------------------------------------------------------------
+// Rendu en <body> via portal + position: fixed — jamais clippé par un parent
+// (overflow:hidden / contexte d'empilement). Placement auto : à droite dans les
+// rails étroits (toolbar), en bas près du bord haut, en haut sinon ; clampé au
+// viewport. `place` = 'auto' | 'top' | 'bottom' | 'left' | 'right'.
 
-export function Tip({ label, children, ...rest }) {
+export function Tip({ label, children, place = 'auto', ...rest }) {
+  const [tip, setTip] = useState(null)
+  if (!label) return <>{children}</>
+
+  const show = (e) => {
+    const r = e.currentTarget.getBoundingClientRect()
+    const vw = window.innerWidth
+    const cx = r.left + r.width / 2
+    const cy = r.top + r.height / 2
+    const estW = Math.min(340, 16 + String(label).length * 6)
+
+    let p = place
+    if (p === 'auto') {
+      if (r.left < 280 && r.right + 8 + estW < vw) p = 'right'
+      else if (vw - r.right < 160) p = 'left'
+      else if (r.top < 70) p = 'bottom'
+      else p = 'top'
+    }
+    // Rebascule si la bulle sort de l'écran dans la direction choisie
+    if (p === 'right' && r.right + 8 + estW > vw) p = 'left'
+    if (p === 'left' && r.left - 8 - estW < 0) p = 'right'
+    if (p === 'top' && r.top < 60) p = 'bottom'
+    if (p === 'bottom' && r.bottom > window.innerHeight - 40) p = 'top'
+
+    let style
+    if (p === 'right') style = { left: r.right + 8, top: cy, transform: 'translateY(-50%)' }
+    else if (p === 'left') style = { left: r.left - 8, top: cy, transform: 'translate(-100%, -50%)' }
+    else {
+      const x = Math.min(Math.max(cx, 8 + estW / 2), vw - 8 - estW / 2)
+      style = p === 'bottom'
+        ? { left: x, top: r.bottom + 8, transform: 'translateX(-50%)' }
+        : { left: x, top: r.top - 8, transform: 'translate(-50%, -100%)' }
+    }
+    setTip({ style, long: estW >= 300 })
+  }
+
   return (
-    <Box className="dentip-parent" position="relative" display="inline-flex" {...rest}>
+    <Box
+      className="dentip-parent" position="relative" display="inline-flex" {...rest}
+      onMouseEnter={show} onMouseLeave={() => setTip(null)}
+    >
       {children}
-      <Box
-        className="dentip" position="absolute" bottom="calc(100% + 6px)" left="50%"
-        transform="translateX(-50%)" bg="#1f2937" color="#ffffff" fontSize="2xs"
-        px="2" py="1" borderRadius="md" whiteSpace="nowrap" opacity="0"
-        visibility="hidden" transition="all .15s" pointerEvents="none" zIndex="70"
-      >
-        {label}
-      </Box>
+      {tip && createPortal(
+        <Box
+          className="dentip" position="fixed" {...tip.style}
+          bg="#1f2937" color="#ffffff" fontSize="2xs" px="2" py="1"
+          borderRadius="md" boxShadow="md" maxW="320px"
+          whiteSpace={tip.long ? 'normal' : 'nowrap'} textAlign="left"
+          pointerEvents="none" zIndex="9999"
+        >
+          {label}
+        </Box>,
+        document.body,
+      )}
     </Box>
   )
 }
