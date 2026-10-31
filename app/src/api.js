@@ -25,7 +25,32 @@ export function countTrashDossiers(wsId) {
     .then(({ count }) => count || 0)
 }
 
+export function getPhoto(id) {
+  return supabase
+    .from('patient_photos')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+    .then(({ data }) => data)
+}
+
+export function updateDossier(id, fields) {
+  return supabase.from('dossiers').update(fields).eq('id', id)
+}
+
+/** Met le dossier à la corbeille (soft delete) */
+export function trashDossier(id) {
+  return updateDossier(id, { deleted_at: new Date().toISOString() })
+}
+
 // ---- Photos -----------------------------------------------------------------
+
+export function listPhotosByDossier(dossierId, { limit = 300 } = {}) {
+  return alive(supabase.from('patient_photos').select('*').eq('dossier_id', dossierId))
+    .order('created_at', { ascending: false })
+    .limit(limit)
+    .then(({ data }) => data || [])
+}
 
 export function listPhotos(wsId, { limit = 100, favoritesOnly = false } = {}) {
   let q = alive(supabase.from('patient_photos').select('*').eq('workspace_id', wsId))
@@ -69,6 +94,13 @@ export function photoStatsByDossier(wsId) {
 
 export function listMontages(wsId, { limit = 50 } = {}) {
   return alive(supabase.from('montages').select('*').eq('workspace_id', wsId))
+    .order('updated_at', { ascending: false })
+    .limit(limit)
+    .then(({ data }) => data || [])
+}
+
+export function listMontagesByDossier(dossierId, { limit = 50 } = {}) {
+  return alive(supabase.from('montages').select('*').eq('dossier_id', dossierId))
     .order('updated_at', { ascending: false })
     .limit(limit)
     .then(({ data }) => data || [])

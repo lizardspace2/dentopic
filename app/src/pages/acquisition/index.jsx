@@ -2,6 +2,7 @@
 // Toutes les actions (source, destination, config appareil, FTP, import, session)
 // se font en popups sans quitter la route — voir ./modals.jsx.
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { Box, Button, Center, HStack, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiClock, FiFolder,
@@ -31,6 +32,7 @@ function StatusDot({ ok }) {
 
 export default function Acquisition() {
   const { workspace, session } = useApp()
+  const { id: routeDossierId } = useParams() // /acquisition/capture/<dossierId>
   const wsId = workspace?.id
   const [d, setD] = useState({ devices: [], dossiers: [], active: [] })
   const [received, setReceived] = useState(0)
@@ -67,6 +69,13 @@ export default function Acquisition() {
     }
   }
   useEffect(() => { reload() }, [wsId])
+
+  // « Capturer » depuis une carte dossier : pré-sélectionne la destination + ouvre la modal
+  useEffect(() => {
+    if (!routeDossierId || !d.dossiers.length || target) return
+    const t = d.dossiers.find((x) => x.id === routeDossierId)
+    if (t) { setTarget(t); setModal('new') }
+  }, [routeDossierId, d.dossiers, target])
 
   // Guide au premier passage (comme l'original)
   useEffect(() => {

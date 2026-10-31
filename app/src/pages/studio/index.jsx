@@ -4,9 +4,10 @@
 // ce fichier ne fait que relier événements, menus et rendu.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Flex, Input } from '@chakra-ui/react'
+import { useSearchParams } from 'react-router-dom'
 import { C } from '../../theme'
 import { useApp } from '../../context/AppContext'
-import { createMontage, listDossiers, saveEditedPhoto } from '../../api'
+import { createMontage, getPhoto, listDossiers, saveEditedPhoto } from '../../api'
 import { photoUrl } from '../../media'
 import { Editor, buildMontage, fetchImg, loadImg, rgbToHex, DEFAULT_ADJUST } from './engine'
 import {
@@ -121,6 +122,13 @@ export default function Studio() {
   }, [render])
 
   useEffect(() => { if (wsId) listDossiers(wsId, { limit: 100 }).then(setDossiers) }, [wsId])
+
+  // /studio?edit=<photoId> — ouverture directe depuis un dossier patient
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    const pid = searchParams.get('edit')
+    if (pid && !docOpen) getPhoto(pid).then((p) => p && openPhoto(p))
+  }, [searchParams])
 
   // ---- Montage avant / après ---------------------------------------------------------
 
