@@ -99,3 +99,9 @@ select,
 textarea {
   color-scheme: inherit;
 }
+
+/* Tooltips <Tip> — la règle descendante ne peut pas passer par sx (Chakra v3) */
+.dentip-parent:hover .dentip {
+  opacity: 1;
+  visibility: visible;
+}

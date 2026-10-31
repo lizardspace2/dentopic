@@ -218,9 +218,9 @@ export function Modal({ open, onClose, title, subtitle, children, width = '480px
 
 // ---- Tooltip (hover) --------------------------------------------------------------
 
-export function Tip({ label, children }) {
+export function Tip({ label, children, ...rest }) {
   return (
-    <Box position="relative" display="inline-flex" sx={{ '&:hover .dentip': { opacity: 1, visibility: 'visible' } }}>
+    <Box className="dentip-parent" position="relative" display="inline-flex" {...rest}>
       {children}
       <Box
         className="dentip" position="absolute" bottom="calc(100% + 6px)" left="50%"

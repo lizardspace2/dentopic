@@ -295,6 +295,20 @@ export function createPatient(wsId, dossierId, p) {
     })
 }
 
+/** Met à jour la fiche patient (id = patients.id). */
+export function updatePatient(id, fields) {
+  return supabase
+    .from('patients')
+    .update(fields)
+    .eq('id', id)
+    .select()
+    .single()
+    .then(({ data, error }) => {
+      if (error) console.warn('updatePatient:', error.message)
+      return data
+    })
+}
+
 /** Patient d'un dossier (ou null). */
 export function getPatient(dossierId) {
   return supabase

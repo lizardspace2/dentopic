@@ -8,7 +8,8 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   FiTrash2, FiPlus, FiFolder, FiCamera, FiUpload, FiEye, FiMoreHorizontal,
-  FiImage, FiLayers, FiClock, FiArrowLeft, FiEdit2, FiGrid,
+  FiImage, FiLayers, FiClock, FiArrowLeft, FiEdit2, FiGrid, FiFolderPlus,
+  FiUser,
 } from 'react-icons/fi'
 import {
   Card, Tag, ProgressBar, PageHeader, HelpButton, PrimaryButton,
@@ -22,6 +23,7 @@ import {
   listActiveSessions, photoStatsByDossier, createDossier, createPatient,
   getPatient, importPhotos, saveEditedPhoto, createMontage,
   updateDossier, trashDossier, listPhotosByDossier, listMontagesByDossier,
+  updatePatient,
 } from '../api'
 import { photoUrl } from '../media'
 import { buildContactSheet, fetchImg } from './studio/engine'
@@ -70,8 +72,10 @@ function DossierGrid() {
   const [d, setD] = useState(null)
   const [q, setQ] = useState('')
   const [specFilter, setSpecFilter] = useState(null)
-  const [modal, setModal] = useState(null) // 'new' | 'rename'
+  const [sort, setSort] = useState('recent') // 'recent' | 'name' | 'photos'
+  const [modal, setModal] = useState(null) // 'new' | 'rename' | 'edit' | 'sub'
   const [name, setName] = useState('')
+  const [editForm, setEditForm] = useState(null) // fiche patient en édition
   // formulaire « Nouveau patient »
   const EMPTY_FORM = { last: '', first: '', birth: '', num: '', specs: [] }
   const [form, setForm] = useState(EMPTY_FORM)
@@ -146,6 +150,49 @@ function DossierGrid() {
     reload()
   }
 
+  // « Modifier la fiche » : charge la fiche patient liée puis ouvre le modal d'édition
+  const openEdit = async (ds) => {
+    setMenuFor(null)
+    const pat = await getPatient(ds.id)
+    setEditForm({
+      id: ds.id, patientId: pat?.id || null,
+      name: ds.name,
+      num: ds.patient_dossier_number || '',
+      specs: ds.specialties || [],
+      desc: ds.description || '',
+      last: pat?.last_name || '', first: pat?.first_name || '', birth: pat?.birth_date || '',
+    })
+    setModal({ kind: 'edit' })
+  }
+
+  // Sauvegarde : dossier (n°, spécialités, description) + fiche patient (update ou create)
+  const saveEdit = async () => {
+    const f = editForm
+    if (!f) return
+    setBusy(true)
+    await updateDossier(f.id, {
+      patient_dossier_number: f.num.trim() || null,
+      specialties: f.specs,
+      description: f.desc.trim() || null,
+    })
+    const fields = {
+      last_name: f.last.trim() || null, first_name: f.first.trim() || null,
+      birth_date: f.birth || null,
+    }
+    if (f.patientId) await updatePatient(f.patientId, fields)
+    else if (fields.last_name || fields.first_name || fields.birth_date) {
+      await createPatient(wsId, f.id, fields)
+    }
+    setBusy(false); setModal(null); setEditForm(null); reload()
+  }
+
+  // Sous-dossier : même table, parent_id pointe vers le dossier courant
+  const createSub = async (parentId) => {
+    if (!name.trim()) return
+    await createDossier(wsId, name.trim(), { parent_id: parentId })
+    setName(''); setModal(null); reload()
+  }
+
   const onImportFiles = async (e) => {
     const files = Array.from(e.target.files || [])
     e.target.value = ''
@@ -155,59 +202,88 @@ function DossierGrid() {
     }
   }
 
-  const list = (d?.dossiers || []).filter((ds) =>
-    (!q || ds.name.toLowerCase().includes(q.toLowerCase())
-      || (ds.patient_dossier_number || '').includes(q))
-    && (!specFilter || (ds.specialties || []).includes(specFilter)))
+  const list = (d?.dossiers || [])
+    .filter((ds) =>
+      (!q || ds.name.toLowerCase().includes(q.toLowerCase())
+        || (ds.patient_dossier_number || '').includes(q))
+      && (!specFilter || (ds.specialties || []).includes(specFilter)))
+    .sort((a, b) => {
+      if (sort === 'name') return a.name.localeCompare(b.name, 'fr')
+      if (sort === 'photos') return (d?.byDossier[b.id]?.photos || 0) - (d?.byDossier[a.id]?.photos || 0)
+      return new Date(b.updated_at) - new Date(a.updated_at)
+    })
 
   return (
     <Box w="100%" px="6" py="6">
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={onImportFiles} />
       <PageHeader title="Dossier patient" subtitle="Gérez les dossiers sans informations personnelles.">
         <HelpButton />
-        <Button variant="outline" size="sm" borderRadius="md" color="gray.600">
-          <FiTrash2 /> Corbeille <Tag color="gray">{d?.trash ?? 0}</Tag>
-        </Button>
-        <PrimaryButton icon={FiPlus} onClick={() => { setForm(EMPTY_FORM); setModal({ kind: 'new' }) }}>
-          Nouveau patient
-        </PrimaryButton>
+        <Tip label="Dossiers mis à la corbeille — restauration possible">
+          <Button variant="outline" size="sm" borderRadius="md" color="gray.600">
+            <FiTrash2 /> Corbeille <Tag color="gray">{d?.trash ?? 0}</Tag>
+          </Button>
+        </Tip>
+        <Tip label="Créer un dossier patient : identité, spécialité, n° de dossier">
+          <PrimaryButton icon={FiPlus} onClick={() => { setForm(EMPTY_FORM); setModal({ kind: 'new' }) }}>
+            Nouveau patient
+          </PrimaryButton>
+        </Tip>
       </PageHeader>
 
       <HStack gap="2" mb="4">
-        <Tag color="gray"><FiFolder style={{ marginRight: 4 }} />{d?.dossiers.length ?? 0} dossiers</Tag>
-        <Tag color="gray"><FiImage style={{ marginRight: 4 }} />{d?.photoCount ?? 0} photos</Tag>
-        {d?.listening.size > 0 && <Tag color="teal">{d.listening.size} en écoute</Tag>}
+        <Tip label="Nombre de dossiers actifs">
+          <Tag color="gray"><FiFolder style={{ marginRight: 4 }} />{d?.dossiers.length ?? 0} dossiers</Tag>
+        </Tip>
+        <Tip label="Photos stockées dans tous les dossiers">
+          <Tag color="gray"><FiImage style={{ marginRight: 4 }} />{d?.photoCount ?? 0} photos</Tag>
+        </Tip>
+        {d?.listening.size > 0 && (
+          <Tip label="Dossiers où une session de capture est en cours">
+            <Tag color="teal">{d.listening.size} en écoute</Tag>
+          </Tip>
+        )}
       </HStack>
 
       <HStack gap="3" mb="3">
         <SearchInput placeholder="Rechercher par n° de dossier, nom ou patient…"
           value={q} onChange={(e) => setQ(e.target.value)} />
-        <Select><option>Récents</option></Select>
+        <Tip label="Trier les dossiers">
+          <Select w="160px" value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="recent">Récents</option>
+            <option value="name">Nom A→Z</option>
+            <option value="photos">Nb de photos</option>
+          </Select>
+        </Tip>
       </HStack>
       {/* filtre par spécialité (chips façon « Cas cliniques ») */}
       <HStack gap="1.5" mb="4" flexWrap="wrap">
-        <Box as="button" px="2.5" py="1" fontSize="2xs" borderRadius="full" cursor="pointer"
-          bg={!specFilter ? C.ink : 'transparent'} color={!specFilter ? '#ffffff' : 'gray.500'}
-          border="1.5px solid" borderColor={!specFilter ? C.ink : 'gray.200'}
-          onClick={() => setSpecFilter(null)}>
-          Toutes spécialités
-        </Box>
-        {SPECIALTIES.map((s) => {
-          const n = (d?.dossiers || []).filter((x) => (x.specialties || []).includes(s.label)).length
-          return (
-            <SpecChip key={s.label} label={s.label} active={specFilter === s.label}
-              onClick={() => setSpecFilter(specFilter === s.label ? null : s.label)} />
-          )
-        })}
+        <Tip label="Afficher tous les dossiers">
+          <Box as="button" px="2.5" py="1" fontSize="2xs" borderRadius="full" cursor="pointer"
+            bg={!specFilter ? C.ink : 'transparent'} color={!specFilter ? '#ffffff' : 'gray.500'}
+            border="1.5px solid" borderColor={!specFilter ? C.ink : 'gray.200'}
+            onClick={() => setSpecFilter(null)}>
+            Toutes spécialités
+          </Box>
+        </Tip>
+        {SPECIALTIES.map((s) => (
+          <Tip key={s.label} label={`Filtrer : ${s.label}`}>
+            <span>
+              <SpecChip label={s.label} active={specFilter === s.label}
+                onClick={() => setSpecFilter(specFilter === s.label ? null : s.label)} />
+            </span>
+          </Tip>
+        ))}
       </HStack>
 
-      <Box border="1.5px dashed" borderColor="gray.300" borderRadius="md" px="3" py="1" mb="5">
-        <Input
-          variant="flushed" border="none" fontSize="xs" h="8" px="1" _focusVisible={{ boxShadow: 'none' }}
-          placeholder="Création express : nom du dossier + Entrée"
-          onKeyDown={(e) => { if (e.key === 'Enter') { create(e.target.value); e.target.value = '' } }}
-        />
-      </Box>
+      <Tip label="Tapez un nom puis Entrée — le dossier est créé et ouvert" display="block" mb="5">
+        <Box border="1.5px dashed" borderColor="gray.300" borderRadius="md" px="3" py="1">
+          <Input
+            variant="flushed" border="none" fontSize="xs" h="8" px="1" _focusVisible={{ boxShadow: 'none' }}
+            placeholder="Création express : nom du dossier + Entrée"
+            onKeyDown={(e) => { if (e.key === 'Enter') { create(e.target.value); e.target.value = '' } }}
+          />
+        </Box>
+      </Tip>
 
       <SimpleGrid columns={{ base: 1, md: 3 }} gap="5">
         {list.map((ds) => {
@@ -220,55 +296,83 @@ function DossierGrid() {
             <Card key={ds.id} p="4">
               <HStack mb="3" justify="space-between">
                 <HStack gap="2" minW="0">
-                  <Text fontSize="sm" fontWeight="700" color={C.ink} isTruncated>{ds.name}</Text>
+                  <Text fontSize="sm" fontWeight="700" color={C.ink} isTruncated
+                    cursor="pointer" onClick={() => nav(`/dossier-patient/dossier/${ds.id}`)}
+                    _hover={{ color: C.primary }}>
+                    {ds.name}
+                  </Text>
                   {ds.patient_dossier_number && (
-                    <Text fontSize="2xs" color="gray.400" flexShrink="0">n°{ds.patient_dossier_number}</Text>
+                    <Tip label="Numéro de dossier patient">
+                      <Text fontSize="2xs" color="gray.400" flexShrink="0">n°{ds.patient_dossier_number}</Text>
+                    </Tip>
                   )}
-                  {d?.listening.has(ds.id) && <Tag color="teal">Écoute</Tag>}
-                  {isTestName(ds.name) && <Tag color="purple">Test</Tag>}
+                  {d?.listening.has(ds.id) && (
+                    <Tip label="Une session de capture est en cours dans ce dossier">
+                      <Tag color="teal">Écoute</Tag>
+                    </Tip>
+                  )}
+                  {isTestName(ds.name) && (
+                    <Tip label="Dossier de démonstration / test">
+                      <Tag color="purple">Test</Tag>
+                    </Tip>
+                  )}
                 </HStack>
-                <Box as={FiFolder} color="gray.400" fontSize="sm" />
+                <Tip label="Dossier patient — cliquez la vignette pour ouvrir">
+                  <Box as={FiFolder} color="gray.400" fontSize="sm" />
+                </Tip>
               </HStack>
+              {/* vignette = dernière photo du dossier — clic ouvre la fiche */}
               <Link to={`/dossier-patient/dossier/${ds.id}`}>
-                <PhotoImg storagePath={p?.coverPath} ratio="16/9" mb="3" />
+                <Tip label="Ouvrir le dossier : photos, montages, sous-dossiers" display="block" mb="3">
+                  <PhotoImg storagePath={p?.coverPath} ratio="16/9" />
+                </Tip>
               </Link>
               {(ds.specialties || []).length > 0 && (
                 <HStack gap="1.5" mb="2" flexWrap="wrap">
                   {ds.specialties.slice(0, 3).map((s) => (
-                    <HStack key={s} gap="1" fontSize="2xs" color="gray.500">
-                      <Box w="6px" h="6px" borderRadius="full" bg={specColor(s)} />
-                      <Text>{s}</Text>
-                    </HStack>
+                    <Tip key={s} label={`Spécialité : ${s}`}>
+                      <HStack gap="1" fontSize="2xs" color="gray.500">
+                        <Box w="6px" h="6px" borderRadius="full" bg={specColor(s)} />
+                        <Text>{s}</Text>
+                      </HStack>
+                    </Tip>
                   ))}
+                  {ds.specialties.length > 3 && (
+                    <Tip label={ds.specialties.slice(3).join(', ')}>
+                      <Text fontSize="2xs" color="gray.400">+{ds.specialties.length - 3}</Text>
+                    </Tip>
+                  )}
                 </HStack>
               )}
               <HStack gap="3" mb="2" color="gray.500">
-                <Text fontSize="2xs"><FiImage style={{ display: 'inline' }} /> {photos} photos</Text>
-                <Text fontSize="2xs"><FiLayers style={{ display: 'inline' }} /> {montages} montages</Text>
-                <Text fontSize="2xs"><FiFolder style={{ display: 'inline' }} /> {subs} sous-dossiers</Text>
-                <Text fontSize="2xs"><FiClock style={{ display: 'inline' }} /> {ago(ds.updated_at)}</Text>
+                <Tip label="Photos rangées dans ce dossier"><Text fontSize="2xs"><FiImage style={{ display: 'inline' }} /> {photos} photos</Text></Tip>
+                <Tip label="Montages et planches créés depuis ce dossier"><Text fontSize="2xs"><FiLayers style={{ display: 'inline' }} /> {montages} montages</Text></Tip>
+                <Tip label="Sous-dossiers de rangement"><Text fontSize="2xs"><FiFolder style={{ display: 'inline' }} /> {subs} sous-dossiers</Text></Tip>
+                <Tip label="Dernière modification"><Text fontSize="2xs"><FiClock style={{ display: 'inline' }} /> {ago(ds.updated_at)}</Text></Tip>
               </HStack>
-              <ProgressBar value={progress} label={`${progress} % du cas`} mb="3" />
+              <Tip label={`Progression estimée du cas — ${photos} photo(s) sur ~5 attendues`} display="block" mb="3">
+                <ProgressBar value={progress} label={`${progress} % du cas`} />
+              </Tip>
               <HStack gap="2">
                 <Link to={`/acquisition/capture/${ds.id}`} style={{ flex: 1 }}>
                   <Tip label="Démarrer une session de capture dans ce dossier">
                     <PrimaryButton icon={FiCamera} w="100%">Capturer</PrimaryButton>
                   </Tip>
                 </Link>
-                <Tip label="Importer des photos dans ce dossier">
-                  <Button variant="outline" size="sm" px="2"
+                <Tip label="Importer des fichiers (JPG, PNG…) dans ce dossier">
+                  <Button variant="outline" size="sm" px="2" aria-label="Importer des photos"
                     onClick={() => { importTarget.current = ds.id; fileInput.current?.click() }}>
                     <FiUpload />
                   </Button>
                 </Tip>
-                <Tip label="Ouvrir le dossier">
+                <Tip label="Ouvrir le dossier — photos, montages, sous-dossiers">
                   <Link to={`/dossier-patient/dossier/${ds.id}`}>
-                    <Button variant="outline" size="sm" px="2"><FiEye /></Button>
+                    <Button variant="outline" size="sm" px="2" aria-label="Ouvrir le dossier"><FiEye /></Button>
                   </Link>
                 </Tip>
                 <Box position="relative">
-                  <Tip label="Actions">
-                    <Button variant="outline" size="sm" px="2"
+                  <Tip label="Plus d'actions : fiche, sous-dossier, corbeille">
+                    <Button variant="outline" size="sm" px="2" aria-label="Plus d'actions"
                       onClick={() => setMenuFor(menuFor === ds.id ? null : ds.id)}>
                       <FiMoreHorizontal />
                     </Button>
@@ -277,10 +381,14 @@ function DossierGrid() {
                     <VStack
                       position="absolute" bottom="100%" right="0" mb="1" align="stretch" gap="0"
                       bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="md"
-                      minW="180px" py="1" boxShadow="lg" zIndex="20"
+                      minW="200px" py="1" boxShadow="lg" zIndex="20"
                     >
-                      <MenuItem icon={FiEye} label="Ouvrir"
+                      <MenuItem icon={FiEye} label="Ouvrir le dossier"
                         onClick={() => { setMenuFor(null); nav(`/dossier-patient/dossier/${ds.id}`) }} />
+                      <MenuItem icon={FiUser} label="Modifier la fiche patient…"
+                        onClick={() => openEdit(ds)} />
+                      <MenuItem icon={FiFolderPlus} label="Nouveau sous-dossier…"
+                        onClick={() => { setMenuFor(null); setName(''); setModal({ kind: 'sub', id: ds.id }) }} />
                       <MenuItem icon={FiEdit2} label="Renommer…"
                         onClick={() => { setMenuFor(null); setName(ds.name); setModal({ kind: 'rename', id: ds.id }) }} />
                       <MenuItem icon={FiTrash2} label="Mettre à la corbeille" danger
@@ -306,6 +414,79 @@ function DossierGrid() {
         <Input fontSize="sm" placeholder="Nom du dossier" autoFocus
           value={name} onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') rename() }} />
+      </Modal>
+
+      {/* sous-dossier : rangement hiérarchique (parent_id) */}
+      <Modal open={modal?.kind === 'sub'} onClose={() => setModal(null)} width="400px"
+        title="Nouveau sous-dossier"
+        footer={<PrimaryButton onClick={() => createSub(modal.id)} disabled={!name.trim()}>Créer</PrimaryButton>}>
+        <VStack align="stretch" gap="3">
+          <Text fontSize="xs" color="gray.500">
+            Rangé dans <b>{d?.dossiers.find((x) => x.id === modal?.id)?.name}</b> — ex. « Traitement », « Suivi 6 mois ».
+          </Text>
+          <Input fontSize="sm" placeholder="Nom du sous-dossier" autoFocus
+            value={name} onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') createSub(modal?.id) }} />
+        </VStack>
+      </Modal>
+
+      {/* modifier la fiche : n°, spécialités, description + identité patient */}
+      <Modal open={modal?.kind === 'edit'} onClose={() => setModal(null)} width="560px"
+        title={`Fiche patient — ${editForm?.name || ''}`}
+        footer={
+          <>
+            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Annuler</Button>
+            <PrimaryButton onClick={saveEdit} disabled={busy}>
+              {busy ? 'Enregistrement…' : 'Enregistrer'}
+            </PrimaryButton>
+          </>
+        }>
+        {editForm && (
+          <VStack align="stretch" gap="4">
+            <SimpleGrid columns={3} gap="3">
+              <Box>
+                <Text fontSize="xs" color="gray.500" mb="1">Nom</Text>
+                <Input fontSize="sm" placeholder="DOE" textTransform="uppercase"
+                  value={editForm.last} onChange={(e) => setEditForm({ ...editForm, last: e.target.value })} />
+              </Box>
+              <Box>
+                <Text fontSize="xs" color="gray.500" mb="1">Prénom</Text>
+                <Input fontSize="sm" placeholder="John"
+                  value={editForm.first} onChange={(e) => setEditForm({ ...editForm, first: e.target.value })} />
+              </Box>
+              <Box>
+                <Text fontSize="xs" color="gray.500" mb="1">Naissance</Text>
+                <Input fontSize="sm" type="date"
+                  value={editForm.birth || ''} onChange={(e) => setEditForm({ ...editForm, birth: e.target.value })} />
+              </Box>
+            </SimpleGrid>
+            <Box>
+              <Text fontSize="xs" color="gray.500" mb="1">N° de dossier</Text>
+              <Input fontSize="sm" placeholder="877" w="160px"
+                value={editForm.num} onChange={(e) => setEditForm({ ...editForm, num: e.target.value })} />
+            </Box>
+            <Box>
+              <Text fontSize="xs" color="gray.500" mb="2">Spécialités de la séance</Text>
+              <HStack gap="1.5" flexWrap="wrap">
+                {SPECIALTIES.map((s) => (
+                  <SpecChip key={s.label} label={s.label} size="xs"
+                    active={editForm.specs.includes(s.label)}
+                    onClick={() => setEditForm((f) => ({
+                      ...f,
+                      specs: f.specs.includes(s.label)
+                        ? f.specs.filter((x) => x !== s.label)
+                        : [...f.specs, s.label],
+                    }))} />
+                ))}
+              </HStack>
+            </Box>
+            <Box>
+              <Text fontSize="xs" color="gray.500" mb="1">Notes</Text>
+              <Input fontSize="sm" placeholder="Observations, contexte du cas…"
+                value={editForm.desc} onChange={(e) => setEditForm({ ...editForm, desc: e.target.value })} />
+            </Box>
+          </VStack>
+        )}
       </Modal>
 
       {/* « Nouveau patient » — fidèle au modal de la concurrence :
