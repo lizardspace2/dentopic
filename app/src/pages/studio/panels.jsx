@@ -4,15 +4,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Center, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
-  FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiLayers, FiPlus,
-  FiRefreshCw, FiTrash2,
+  FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiGrid, FiLayers, FiLock,
+  FiMove, FiPlus, FiRefreshCw, FiTrash2, FiEdit2,
 } from 'react-icons/fi'
 import { LuContrast, LuHistory, LuRedo2, LuUndo2 } from 'react-icons/lu'
 import { TbMask } from 'react-icons/tb'
 import { Tip } from '../../components/ui'
 import { C } from '../../theme'
 import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
-import { curveLUT, histogram } from './engine'
+import { ADJUST_KINDS, ADJUST_PARAMS, curveLUT, histogram } from './engine'
 
 const D = C // alias lisibilité
 const panelBg = D.darkCard
@@ -414,8 +414,29 @@ function SwatchPicker({ value, onChange, onCustom }) {
 export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
   const layers = [...editor.layers].reverse()
   const fxList = (l) => l.fx ? Object.entries(l.fx).filter(([, f]) => f?.on).map(([k]) => FX_NAMES[k] || k) : []
+  const act = editor.active
+  // rangée « Lock » façon Photoshop : pixels transparents, pixels, position, tout
+  const lockBtn = (key, icon, label, off) => (
+    <Tip key={key} label={label}>
+      <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="12px"
+        color={act?.[key] ? '#f2c200' : muted} bg={act?.[key] ? 'whiteAlpha.100' : 'transparent'}
+        _hover={{ color: fg }}
+        onClick={() => { if (!act) return; editor.snapshot('Verrou'); act[key] = !act[key]; onChange() }}>
+        <Box as={icon} />
+      </Center>
+    </Tip>
+  )
   return (
     <VStack align="stretch" gap="0" flex="1" overflowY="auto">
+      {/* Rangée Lock — les 4 verrous de Photoshop */}
+      <HStack px="2.5" py="1" gap="1" borderBottom="1px solid" borderColor={panelBorder}>
+        <Text fontSize="2xs" color={muted} flexShrink={0}>Verrou :</Text>
+        {lockBtn('lockAlpha', FiGrid, 'Verrouiller les pixels transparents — le pinceau ne peint que sur l\'existant')}
+        {lockBtn('lockPx', FiEdit2, 'Verrouiller les pixels — bloque pinceau, gomme, filtres')}
+        {lockBtn('lockPos', FiMove, 'Verrouiller la position — l\'outil Déplacement est inactif')}
+        {lockBtn('locked', FiLock, 'Tout verrouiller')}
+        {act?.locked && <Text fontSize="2xs" color="#f2c200" ml="1">calque verrouillé</Text>}
+      </HStack>
       {/* Calque de réglage global */}
       <HStack px="2.5" py="1.5" gap="2" fontSize="xs" color={fg}
         borderBottom="1px solid" borderColor={panelBorder}>
@@ -564,6 +585,10 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
                   value={editor.active.opacity}
                   onPointerDown={() => editor.snapshot()}
                   onChange={(e) => { editor.active.opacity = +e.target.value; onChange() }} />
+                <Input type="number" w="46px" h="18px" fontSize="2xs" px="1" bg="#1c2433" color={fg}
+                  border="1px solid" borderColor={panelBorder} min="0" max="100"
+                  value={Math.round(editor.active.opacity * 100)}
+                  onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) { editor.active.opacity = Math.min(1, Math.max(0, v / 100)); onChange() } }} />
               </HStack>
             </Tip>
             <Tip label="Remplissage — affecte les pixels seuls (les effets fx restent visibles)" flex="1">
@@ -573,6 +598,10 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
                   value={editor.active.fill ?? 1}
                   onPointerDown={() => editor.snapshot()}
                   onChange={(e) => { editor.active.fill = +e.target.value; onChange() }} />
+                <Input type="number" w="46px" h="18px" fontSize="2xs" px="1" bg="#1c2433" color={fg}
+                  border="1px solid" borderColor={panelBorder} min="0" max="100"
+                  value={Math.round((editor.active.fill ?? 1) * 100)}
+                  onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) { editor.active.fill = Math.min(1, Math.max(0, v / 100)); onChange() } }} />
               </HStack>
             </Tip>
           </>
@@ -1133,6 +1162,148 @@ export function NavigatorPanel({ editor, version, view, stageSize, onNav }) {
   )
 }
 
+// ---- Petit histogramme (panneau Propriétés, façon Photoshop) -----------------------
+
+function MiniHist({ editor, version, w = 150, h = 56 }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const cv = ref.current
+    if (!cv || !editor.w) return
+    const ctx = cv.getContext('2d')
+    ctx.clearRect(0, 0, w, h)
+    const { h: hist, max } = histogram(editor.compositeFiltered())
+    ctx.fillStyle = '#cfd8e3'
+    for (let i = 0; i < 256; i++) {
+      const v = Math.min(1, hist[i] / (max || 1))
+      const y = h - v * (h - 2)
+      ctx.fillRect(i * w / 256, y, Math.max(1, w / 256), h - y)
+    }
+  }, [version, editor, w, h])
+  return <canvas ref={ref} width={w} height={h} style={{ display: 'block' }} />
+}
+
+// ---- Propriétés du calque de réglage sélectionné — façon Photoshop -----------------
+// (le panneau « Propriétés » de Ps affiche les paramètres du réglage + l'histogramme)
+
+export function AdjustLayerProps({ editor, layer, onChange }) {
+  const adj = layer?.adj
+  const p = adj?.params || {}
+  const setP = (k, v) => { p[k] = v; onChange() }
+  const setKind = (kind) => {
+    layer.adj = { kind, params: JSON.parse(JSON.stringify(ADJUST_PARAMS[kind] || {})) }
+    layer.name = ADJUST_KINDS.find((k) => k.key === kind)?.label || layer.name
+    onChange()
+  }
+  const sl = (label, key, min, max, step = 1) => (
+    <VStack key={key} align="stretch" gap="0.5">
+      <HStack justify="space-between">
+        <Text fontSize="2xs" color={muted}>{label}</Text>
+        <Input type="number" w="56px" h="18px" fontSize="2xs" px="1" bg="#1c2433" color={fg}
+          border="1px solid" borderColor={panelBorder}
+          min={min} max={max} step={step} value={p[key] ?? 0}
+          onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setP(key, Math.min(max, Math.max(min, v))) }} />
+      </HStack>
+      <Input type="range" min={min} max={max} step={step} h="16px"
+        value={p[key] ?? 0} onChange={(e) => setP(key, +e.target.value)} />
+    </VStack>
+  )
+  if (!layer || layer.type !== 'adjust') {
+    return (
+      <VStack align="stretch" gap="2" px="3" py="3">
+        <Text fontSize="2xs" color={muted}>
+          Sélectionnez un calque de réglage pour éditer ses paramètres ici
+          (comme le panneau Propriétés de Photoshop).
+        </Text>
+      </VStack>
+    )
+  }
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3" overflowY="auto" flex="1">
+      <HStack gap="2">
+        <Text fontSize="2xs" color={muted} w="44px">Type</Text>
+        <Box as="select" flex="1" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+          border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+          value={adj?.kind || 'bc'} onChange={(e) => setKind(e.target.value)}>
+          {ADJUST_KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+        </Box>
+      </HStack>
+      <MiniHist editor={editor} version={0} />
+      <Box h="1px" bg="whiteAlpha.50" />
+      {adj?.kind === 'bc' && (<>
+        {sl('Luminosité', 'brightness', -100, 100)}
+        {sl('Contraste', 'contrast', -100, 100)}
+      </>)}
+      {adj?.kind === 'hsl' && (<>
+        {sl('Teinte', 'hue', -180, 180)}
+        {sl('Saturation', 'sat', -100, 100)}
+        {sl('Luminosité', 'light', -100, 100)}
+      </>)}
+      {adj?.kind === 'levels' && (<>
+        {sl('Noirs entrée', 'inBlack', 0, 254)}
+        {sl('Gamma', 'gamma', 10, 400)}
+        {sl('Blancs entrée', 'inWhite', 1, 255)}
+        {sl('Noirs sortie', 'outBlack', 0, 254)}
+        {sl('Blancs sortie', 'outWhite', 1, 255)}
+      </>)}
+      {adj?.kind === 'curves' && (
+        <Text fontSize="2xs" color={muted}>Éditez la courbe dans l'onglet <b>Courbes</b>.</Text>
+      )}
+      {adj?.kind === 'invert' && <Text fontSize="2xs" color={muted}>Sans paramètre — inverse tout.</Text>}
+      {adj?.kind === 'bw' && (<>
+        {sl('Rouge', 'r', 0, 200)}{sl('Vert', 'g', 0, 200)}{sl('Bleu', 'b', 0, 200)}
+      </>)}
+      {adj?.kind === 'threshold' && sl('Seuil', 'level', 0, 255)}
+      {adj?.kind === 'photoFilter' && (<>
+        <HStack gap="2">
+          <Text fontSize="2xs" color={muted} w="60px">Couleur</Text>
+          <Input type="color" w="44px" h="22px" p="0" value={p.color || '#c8872a'}
+            onChange={(e) => setP('color', e.target.value)} />
+        </HStack>
+        {sl('Densité', 'density', 0, 100)}
+      </>)}
+      {adj?.kind === 'vibrance' && (<>
+        {sl('Vibrance', 'amount', -100, 100)}
+        {sl('Saturation', 'sat', -100, 100)}
+      </>)}
+      {adj?.kind === 'posterize' && sl('Niveaux', 'levels', 2, 32)}
+      <Box h="1px" bg="whiteAlpha.50" />
+      <HStack gap="1.5" cursor="pointer" onClick={() => { layer.visible = !layer.visible; onChange() }}>
+        <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+          borderColor={layer.visible ? '#4f8fe8' : 'gray.500'} bg={layer.visible ? '#4f8fe8' : 'transparent'}
+          color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+          {layer.visible ? '✓' : ''}
+        </Box>
+        <Text fontSize="2xs" color={fg}>Réglage visible</Text>
+      </HStack>
+      <Box as="button" fontSize="2xs" py="1" borderRadius="sm" cursor="pointer"
+        bg="whiteAlpha.100" color={fg} _hover={{ bg: 'whiteAlpha.200' }}
+        onClick={() => { layer.adj.params = JSON.parse(JSON.stringify(ADJUST_PARAMS[adj.kind] || {})); onChange() }}>
+        Rétablir les valeurs par défaut
+      </Box>
+    </VStack>
+  )
+}
+
+// ---- Panneau Canaux (miniatures grises R/V/B — façon Photoshop) --------------------
+
+export function ChannelsPanel({ editor, version }) {
+  const chs = [['rgb', 'RVB'], ['r', 'Rouge'], ['g', 'Vert'], ['b', 'Bleu']]
+  return (
+    <VStack align="stretch" gap="1" px="3" py="2" overflowY="auto" flex="1">
+      {chs.map(([k, label]) => (
+        <HStack key={k} gap="2" fontSize="2xs" color={k === 'rgb' ? fg : muted}>
+          <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
+            bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
+            <img src={editor.channelCanvas(k).toDataURL('image/png')} alt="" style={{ width: '100%', height: '100%' }} />
+          </Box>
+          <Text>{label}</Text>
+        </HStack>
+      ))}
+      <Text fontSize="2xs" color={muted} pt="1">Aperçu des canaux du composite.</Text>
+    </VStack>
+  )
+}
+
 // ---- Panneau droit : Histoire (états nommés, clic = saut) — façon Photoshop ------
 
 export function HistoryPanel({ editor, version, onJump }) {
@@ -1234,42 +1405,80 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
 
 // ---- Panneau latéral à onglets -------------------------------------------------------
 
-export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, onAdjust, onJump, view, stageSize, onNav, curveTarget }) {
-  const [tab, setTab] = useState('dental')
-  const TABS = [
-    ['dental', 'Dentaire', 'Avant/après, redresser, calibrer, teinte, référence, planche'],
-    ['layers', 'Calques', 'Empilement, fusion, opacité, remplissage, effets fx, masques'],
-    ['adjust', 'Réglages', 'Exposition, balance des blancs, niveaux, effets'],
-    ['curves', 'Courbes', 'Tonalité par canal RGB/R/V/B'],
-    ['hist', 'Hist.', 'États de l\'historique — clic pour sauter'],
-    ['nav', 'Nav.', 'Vue d\'ensemble et déplacement du cadre visible'],
-    ['histo', 'Histo', 'Histogramme et statistiques de luminance'],
-    ['info', 'Infos', 'Document, dimensions, curseur, couleur'],
-  ]
+// Rangée d'onglets partagée par les groupes du panneau droit
+function TabRow({ tabs, value, onChange }) {
   return (
-    <Flex w="248px" direction="column" bg={panelBg} borderLeft="1px solid" borderColor={panelBorder} flexShrink={0}>
-      <HStack px="2" pt="2" pb="0" gap="1" borderBottom="1px solid" borderColor={panelBorder}>
-        {TABS.map(([k, l, tip]) => (
-          <Tip key={k} label={tip}>
-            <Box px="2.5" py="1.5" fontSize="xs" cursor="pointer" borderRadius="md md 0 0"
-              color={tab === k ? fg : muted} fontWeight={tab === k ? '600' : '400'}
-              bg={tab === k ? 'whiteAlpha.100' : 'transparent'}
-              onClick={() => setTab(k)}>
-              {l}
-            </Box>
-          </Tip>
-        ))}
-      </HStack>
-      <Flex flex="1" direction="column" overflow="hidden">
-        {tab === 'dental' && <DentalPanel editor={editor} version={version} onChange={onChange} dental={dental} />}
-        {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} onFx={onFx} onAdjust={onAdjust} />}
-        {tab === 'adjust' && <AdjustPanel editor={editor} onChange={onChange}
-          wbPick={wbPick} onWbPick={onWbPick} comparing={comparing} onCompare={onCompare} />}
-        {tab === 'curves' && <CurvesPanel editor={editor} version={version} onChange={onChange} target={curveTarget} />}
-        {tab === 'hist' && <HistoryPanel editor={editor} version={version} onJump={onJump} />}
-        {tab === 'nav' && <NavigatorPanel editor={editor} version={version} view={view} stageSize={stageSize} onNav={onNav} />}
-        {tab === 'histo' && <HistogramPanel editor={editor} version={version} />}
-        {tab === 'info' && <InfoPanel editor={editor} zoom={zoom} cursor={cursor} />}
+    <HStack px="2" pt="1.5" pb="0" gap="1" borderBottom="1px solid" borderColor={panelBorder} flexShrink={0}>
+      {tabs.map(([k, l, tip]) => (
+        <Tip key={k} label={tip}>
+          <Box px="2" py="1.5" fontSize="xs" cursor="pointer" borderRadius="md md 0 0"
+            color={value === k ? fg : muted} fontWeight={value === k ? '600' : '400'}
+            bg={value === k ? 'whiteAlpha.100' : 'transparent'}
+            onClick={() => onChange(k)}>
+            {l}
+          </Box>
+        </Tip>
+      ))}
+    </HStack>
+  )
+}
+
+// Structure façon Photoshop : Propriétés/Réglages en haut — Nav/Histo/Infos au
+// milieu — Calques/Canaux/Histoire en bas.
+
+export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, onAdjust, onJump, view, stageSize, onNav, curveTarget }) {
+  const [topTab, setTopTab] = useState('props')
+  const [midTab, setMidTab] = useState('nav')
+  const [botTab, setBotTab] = useState('layers')
+  const isAdj = editor.active?.type === 'adjust'
+  return (
+    <Flex w="252px" direction="column" bg={panelBg} borderLeft="1px solid" borderColor={panelBorder} flexShrink={0}>
+      {/* Groupe haut : Propriétés (réglage du calque actif) / Réglages / Courbes / Dentaire */}
+      <Flex direction="column" flex="1.25" minH="0" borderBottom="1px solid" borderColor={panelBorder}>
+        <TabRow value={isAdj ? 'props' : topTab} onChange={setTopTab} tabs={[
+          ['props', 'Propriétés', 'Paramètres du calque de réglage actif — façon Photoshop'],
+          ['adjust', 'Réglages', 'Exposition, balance des blancs, niveaux, effets'],
+          ['curves', 'Courbes', 'Tonalité par canal RGB/R/V/B'],
+          ['dental', 'Dentaire', 'Avant/après, redresser, calibrer, teinte, référence, planche'],
+        ]} />
+        <Flex flex="1" direction="column" overflow="hidden" overflowY="auto">
+          {topTab === 'props' || isAdj ? (
+            <AdjustLayerProps editor={editor} layer={editor.active} onChange={() => { editor.markDirty(); onChange() }} />
+          ) : topTab === 'adjust' ? (
+            <AdjustPanel editor={editor} onChange={onChange}
+              wbPick={wbPick} onWbPick={onWbPick} comparing={comparing} onCompare={onCompare} />
+          ) : topTab === 'curves' ? (
+            <CurvesPanel editor={editor} version={version} onChange={onChange} target={curveTarget} />
+          ) : (
+            <DentalPanel editor={editor} version={version} onChange={onChange} dental={dental} />
+          )}
+        </Flex>
+      </Flex>
+      {/* Groupe milieu : Nav / Histo / Infos — compact */}
+      <Flex direction="column" h="168px" flexShrink={0} borderBottom="1px solid" borderColor={panelBorder}>
+        <TabRow value={midTab} onChange={setMidTab} tabs={[
+          ['nav', 'Nav.', 'Vue d\'ensemble et déplacement du cadre visible'],
+          ['histo', 'Histo', 'Histogramme et statistiques de luminance'],
+          ['info', 'Infos', 'Document, dimensions, curseur, couleur'],
+        ]} />
+        <Flex flex="1" direction="column" overflow="hidden">
+          {midTab === 'nav' && <NavigatorPanel editor={editor} version={version} view={view} stageSize={stageSize} onNav={onNav} />}
+          {midTab === 'histo' && <HistogramPanel editor={editor} version={version} />}
+          {midTab === 'info' && <InfoPanel editor={editor} zoom={zoom} cursor={cursor} />}
+        </Flex>
+      </Flex>
+      {/* Groupe bas : Calques / Canaux / Histoire */}
+      <Flex direction="column" flex="1" minH="0">
+        <TabRow value={botTab} onChange={setBotTab} tabs={[
+          ['layers', 'Calques', 'Empilement, fusion, opacité, remplissage, effets fx, masques'],
+          ['canaux', 'Canaux', 'Aperçu des canaux RVB / R / V / B du composite'],
+          ['hist', 'Hist.', 'États de l\'historique — clic pour sauter'],
+        ]} />
+        <Flex flex="1" direction="column" overflow="hidden">
+          {botTab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} onFx={onFx} onAdjust={onAdjust} />}
+          {botTab === 'canaux' && <ChannelsPanel editor={editor} version={version} />}
+          {botTab === 'hist' && <HistoryPanel editor={editor} version={version} onJump={onJump} />}
+        </Flex>
       </Flex>
     </Flex>
   )

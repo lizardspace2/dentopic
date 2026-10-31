@@ -3,7 +3,7 @@
 // Le moteur canvas (calques, filtres, historique) vit dans ./engine.js —
 // ce fichier ne fait que relier événements, menus et rendu.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Flex, Input } from '@chakra-ui/react'
+import { Box, Flex, HStack, Input, Text } from '@chakra-ui/react'
 import { useSearchParams } from 'react-router-dom'
 import { C } from '../../theme'
 import { useApp } from '../../context/AppContext'
@@ -21,7 +21,7 @@ import { FILTER_DEFS } from './constants'
 import {
   MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas,
 } from './panels'
-import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal, FilterModal, AdjustLayerModal } from './modals'
+import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal, FilterModal } from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 
@@ -87,7 +87,6 @@ export default function Studio() {
   const [guides, setGuides] = useState({ v: [], h: [] }) // positions en coords doc
   const [snapOn, setSnapOn] = useState(false)
   const [filterKey, setFilterKey] = useState(null)   // clé FILTER_DEFS ouverte
-  const [editAdj, setEditAdj] = useState(null)        // calque de réglage édité
   const [shapePrev, setShapePrev] = useState(null)    // aperçu de forme en cours
   const plassoRef = useRef(null)                      // sommets du lasso polygonal
   const filterBase = useRef(null)                     // dump avant ouverture du filtre (aperçu live)
@@ -475,7 +474,7 @@ export default function Studio() {
         const l = editor.active
         if (!l) break
         // poignées de transformation : coin proche -> redimensionnement
-        if (opts.transform && !l.locked) {
+        if (opts.transform && !l.locked && !l.lockPos) {
           const corner = [[l.dx, l.dy], [l.dx + editor.w, l.dy], [l.dx, l.dy + editor.h], [l.dx + editor.w, l.dy + editor.h]]
             .findIndex(([cx, cy]) => Math.hypot(ix - cx, iy - cy) < 14 / view.scale)
           if (corner >= 0) {
@@ -498,6 +497,7 @@ export default function Studio() {
             break
           }
         }
+        if (l.lockPos) break // verrou « position » : le déplacement est bloqué
         editor.snapshot()
         stroke.current = { kind: 'move', ox: ix, oy: iy, dx: l.dx, dy: l.dy }
         break
@@ -645,6 +645,8 @@ export default function Studio() {
   const paint = (ix, iy, l) => {
     const s = stroke.current
     if (!s) return
+    // verrou « pixels » (rangée Lock façon Photoshop) : rien ne peint ce calque
+    if (l.lockPx && tool !== 'redeye') return
     // Édition du masque de fusion : le pinceau écrit l'alpha du masque
     // (blanc révèle, noir masque, gris = partiel) — mode 'copy' = valeur exacte.
     if (l.mask && l.maskActive && (tool === 'brush' || tool === 'pencil' || tool === 'eraser')) {
@@ -680,6 +682,8 @@ export default function Studio() {
     }
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
+    // verrou « pixels transparents » : on ne peint que sur l'existant (Photoshop)
+    if (l.lockAlpha && tool !== 'eraser') ctx.globalCompositeOperation = 'source-atop'
     if (tool === 'eraser') {
       ctx.globalCompositeOperation = 'destination-out'
       ctx.globalAlpha = opts.eraserOpacity ?? 1
@@ -1163,8 +1167,8 @@ export default function Studio() {
       '-',
       { label: 'Nouveau calque de réglage…', disabled: !docOpen, onClick: () => {
         editor.snapshot('Calque de réglage')
-        const l = editor.addAdjustLayer('bc')
-        bump(); setEditAdj(l)
+        editor.addAdjustLayer('bc')
+        bump() // les paramètres s'éditent dans l'onglet Propriétés (façon Photoshop)
       } },
       '-',
       { label: 'Ajouter un masque de fusion', disabled: !docOpen || !editor.active || editor.active.locked || editor.active.type === 'adjust' || !!editor.active?.mask,
@@ -1272,10 +1276,23 @@ export default function Studio() {
           fgColor={opts.fg} bgColor={opts.bg}
           onPickColor={setPickColor}
           onSwap={() => setOpts((o) => ({ ...o, fg: o.bg, bg: o.fg }))} />
-        <Box
-          ref={containerRef} flex="1" position="relative" bg="#14181f" overflow="hidden"
-          cursor={tool === 'hand' ? 'grab' : tool === 'text' ? 'text' : 'crosshair'}
-        >
+        <Flex direction="column" flex="1" minW="0">
+          {/* Onglet de document façon Photoshop : nom @ zoom (calque actif, mode) */}
+          {docOpen && (
+            <HStack h="26px" px="2.5" gap="2" bg={C.darkCard} borderBottom="1px solid"
+              borderColor={C.darkBorder} flexShrink="0" fontSize="2xs" color={C.darkMuted}>
+              <Text color={C.darkFg} isTruncated fontWeight="600">{editor.docName}</Text>
+              <Text>@ {Math.round(view.scale * 100)} %</Text>
+              <Text isTruncated>({editor.active?.name || '—'}, RVB/8)</Text>
+              <Box flex="1" />
+              {editor.sel && <Text color="#4f8fe8">sélection active</Text>}
+              {editor.active?.type === 'adjust' && <Text color="#c4b5fd">calque de réglage</Text>}
+            </HStack>
+          )}
+          <Box
+            ref={containerRef} flex="1" position="relative" bg="#14181f" overflow="hidden"
+            cursor={tool === 'hand' ? 'grab' : tool === 'text' ? 'text' : 'crosshair'}
+          >
           <canvas
             ref={canvasRef} style={{ position: 'absolute', inset: 0 }}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
@@ -1330,10 +1347,11 @@ export default function Studio() {
               }}
             />
           )}
-        </Box>
+          </Box>
+        </Flex>
         {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump}
           onFx={() => setModal('style')}
-          onAdjust={(l) => setEditAdj(l)}
+          onAdjust={null}
           onJump={async (dir, i) => {
             if (dir === 'undo') await editor.historyJump(i)
             else await editor.historyJumpForward(i)
@@ -1386,8 +1404,6 @@ export default function Studio() {
         docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
       <FilterModal open={!!filterKey} def={filterKey ? FILTER_DEFS[filterKey] : null}
         onPreview={previewFilter} onApply={applyFilter} onCancel={cancelFilter} />
-      <AdjustLayerModal open={!!editAdj} editor={editor} layer={editAdj} onClose={() => setEditAdj(null)}
-        onChange={() => { editor.markDirty(); bump() }} />
     </Flex>
   )
 }

@@ -331,7 +331,27 @@ export class Editor {
 
   _mkLayer(name) {
     const cv = mkCanvas(this.w, this.h)
-    return { id: uid++, name, cv, ctx: cv.getContext('2d'), visible: true, opacity: 1, fill: 1, dx: 0, dy: 0, blend: 'source-over', fx: null, type: 'pixel', mask: null, maskActive: false }
+    return { id: uid++, name, cv, ctx: cv.getContext('2d'), visible: true, opacity: 1, fill: 1, dx: 0, dy: 0, blend: 'source-over', fx: null, type: 'pixel', mask: null, maskActive: false,
+      // verrous fins façon Photoshop : pixels transparents / pixels / position / tout
+      lockAlpha: false, lockPx: false, lockPos: false }
+  }
+
+  /** Miniature d'un canal du composite (gris) — panneau Canaux. ch : 'rgb'|'r'|'g'|'b' */
+  channelCanvas(ch = 'rgb', w = 42, h = 30) {
+    const comp = this.compositeFiltered()
+    const t = mkCanvas(w, h)
+    const s = mkCanvas(w, h)
+    s.getContext('2d').drawImage(comp, 0, 0, w, h)
+    const d = s.getContext('2d').getImageData(0, 0, w, h)
+    const o = t.getContext('2d').createImageData(w, h)
+    for (let i = 0; i < d.data.length; i += 4) {
+      const ci = ch === 'r' ? 0 : ch === 'g' ? 1 : ch === 'b' ? 2 : -1
+      const v = ci < 0 ? (d.data[i] * 0.299 + d.data[i + 1] * 0.587 + d.data[i + 2] * 0.114) : d.data[i + ci]
+      o.data[i] = o.data[i + 1] = o.data[i + 2] = v
+      o.data[i + 3] = d.data[i + 3] > 8 ? 255 : 0
+    }
+    t.getContext('2d').putImageData(o, 0, 0)
+    return t
   }
 
   /** Calque de réglage non destructif — transforme le composite des calques du dessous. */
@@ -1310,6 +1330,7 @@ export class Editor {
         type: l.type || 'pixel', adj: l.adj || null,
         mask: l.mask ? l.mask.toDataURL('image/png') : null,
         maskActive: l.mask ? !!l.maskActive : false,
+        lockAlpha: !!l.lockAlpha, lockPx: !!l.lockPx, lockPos: !!l.lockPos,
       })),
     }
   }
