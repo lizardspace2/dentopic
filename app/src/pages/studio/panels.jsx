@@ -35,16 +35,18 @@ export function MenuBar({ menus, docName, zoom }) {
       <Text fontSize="xs" fontWeight="700" color={fg} mr="2">DentoPic Studio</Text>
       {menus.map((m) => (
         <Box key={m.label} position="relative">
-          <Box
-            px="2.5" py="1" fontSize="xs" borderRadius="md" cursor="pointer"
-            color={open === m.label ? '#ffffff' : muted}
-            bg={open === m.label ? 'whiteAlpha.100' : 'transparent'}
-            _hover={{ bg: 'whiteAlpha.100', color: '#ffffff' }}
-            onClick={() => setOpen(open === m.label ? null : m.label)}
-            onMouseEnter={() => open && setOpen(m.label)}
-          >
-            {m.label}
-          </Box>
+          <Tip label={m.tip || `Menu ${m.label}`}>
+            <Box
+              px="2.5" py="1" fontSize="xs" borderRadius="md" cursor="pointer"
+              color={open === m.label ? '#ffffff' : muted}
+              bg={open === m.label ? 'whiteAlpha.100' : 'transparent'}
+              _hover={{ bg: 'whiteAlpha.100', color: '#ffffff' }}
+              onClick={() => setOpen(open === m.label ? null : m.label)}
+              onMouseEnter={() => open && setOpen(m.label)}
+            >
+              {m.label}
+            </Box>
+          </Tip>
           {open === m.label && (
             <VStack
               position="absolute" top="100%" left="0" mt="1" align="stretch" gap="0"
@@ -67,9 +69,11 @@ export function MenuBar({ menus, docName, zoom }) {
         </Box>
       ))}
       <Box flex="1" />
-      <Text fontSize="2xs" color={muted} isTruncated maxW="300px">
-        {docName}{docName && zoom != null ? ` @ ${Math.round(zoom * 1000) / 10} %` : ''}
-      </Text>
+      <Tip label="Document ouvert — nom @ zoom">
+        <Text fontSize="2xs" color={muted} isTruncated maxW="300px">
+          {docName}{docName && zoom != null ? ` @ ${Math.round(zoom * 1000) / 10} %` : ''}
+        </Text>
+      </Tip>
     </HStack>
   )
 }
@@ -147,48 +151,59 @@ export function OptionsBar({
       </Text>
       {tool === 'brush' && (
         <>
-          <Text {...row}>Taille {opts.brushSize}px</Text>{slider('brushSize', 1, 80)}
-          <Text {...row}>Opacité {Math.round(opts.brushOpacity * 100)}%</Text>{slider('brushOpacity', 0.05, 1, 0.05)}
-          <SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} />
+          <Tip label="Diamètre du pinceau (px)"><Text {...row}>Taille {opts.brushSize}px</Text></Tip>{slider('brushSize', 1, 80)}
+          <Tip label="Transparence du trait"><Text {...row}>Opacité {Math.round(opts.brushOpacity * 100)}%</Text></Tip>{slider('brushOpacity', 0.05, 1, 0.05)}
+          <Tip label="Couleur du trait"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} /></Tip>
         </>
       )}
       {tool === 'eraser' && (
         <>
-          <Text {...row}>Taille {opts.eraserSize}px</Text>{slider('eraserSize', 2, 120)}
+          <Tip label="Diamètre de la gomme (px)"><Text {...row}>Taille {opts.eraserSize}px</Text></Tip>{slider('eraserSize', 2, 120)}
         </>
       )}
       {tool === 'text' && (
         <>
-          <Text {...row}>Taille</Text>
+          <Tip label="Corps du texte"><Text {...row}>Taille</Text></Tip>
           <Input type="number" w="60px" h="20px" fontSize="2xs" value={opts.textSize}
             onChange={(e) => setOpts({ ...opts, textSize: +e.target.value || 24 })} />
-          <SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} />
+          <Tip label="Couleur du texte"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} /></Tip>
         </>
       )}
       {tool === 'crop' && cropRect && (
-        <>{btn('Valider le recadrage', onApplyCrop, true)}{btn('Annuler', onCancelCrop)}</>
+        <>
+          <Tip label="Appliquer le recadrage — Entrée">{btn('Valider le recadrage', onApplyCrop, true)}</Tip>
+          <Tip label="Abandonner — Échap">{btn('Annuler', onCancelCrop)}</Tip>
+        </>
       )}
       {tool === 'rect' && hasSel && (
-        <>{btn('Remplir', onFill)}{btn('Effacer', onDelete)}{btn('Désélectionner', onDeselect, true)}</>
+        <>
+          <Tip label="Remplit la sélection avec la couleur de premier plan">{btn('Remplir', onFill)}</Tip>
+          <Tip label="Vide le contenu de la sélection — Suppr">{btn('Effacer', onDelete)}</Tip>
+          <Tip label="Désélectionner — Ctrl+D">{btn('Désélectionner', onDeselect, true)}</Tip>
+        </>
       )}
-      {tool === 'rotate' && <>{btn('Pivoter 90°', onRotate, true)}</>}
+      {tool === 'rotate' && (
+        <Tip label="Rotation d'un quart de tour du document">{btn('Pivoter 90°', onRotate, true)}</Tip>
+      )}
       {tool === 'move' && (
         <>
-          <HStack gap="1.5" cursor="pointer" onClick={() => setOpts({ ...opts, transform: !opts.transform })}>
-            <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-              borderColor={opts.transform ? '#4f8fe8' : 'gray.500'}
-              bg={opts.transform ? '#4f8fe8' : 'transparent'}
-              color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
-              {opts.transform ? '✓' : ''}
-            </Box>
-            <Text {...row}>Poignées de transformation</Text>
-          </HStack>
+          <Tip label="Affiche les poignées pour redimensionner le calque">
+            <HStack gap="1.5" cursor="pointer" onClick={() => setOpts({ ...opts, transform: !opts.transform })}>
+              <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+                borderColor={opts.transform ? '#4f8fe8' : 'gray.500'}
+                bg={opts.transform ? '#4f8fe8' : 'transparent'}
+                color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+                {opts.transform ? '✓' : ''}
+              </Box>
+              <Text {...row}>Poignées de transformation</Text>
+            </HStack>
+          </Tip>
           <Text {...row}>Glisser déplace le calque · coin = redimensionner</Text>
         </>
       )}
       {tool === 'wand' && (
         <>
-          <Text {...row}>Tolérance {opts.tol}</Text>{slider('tol', 4, 120)}
+          <Tip label="Écart de couleur accepté — plus grand = zone plus large"><Text {...row}>Tolérance {opts.tol}</Text></Tip>{slider('tol', 4, 120)}
           <Text {...row}>Cliquer une couleur → sélection de la zone</Text>
         </>
       )}
@@ -239,10 +254,14 @@ export function LayersPanel({ editor, version, onChange }) {
       {/* Calque de réglage global */}
       <HStack px="2.5" py="1.5" gap="2" fontSize="xs" color={fg}
         borderBottom="1px solid" borderColor={panelBorder}>
-        <Box as={editor.adjustVisible ? FiEye : FiEyeOff} color={muted} cursor="pointer" fontSize="13px"
-          onClick={() => { editor.adjustVisible = !editor.adjustVisible; onChange() }} />
+        <Tip label="Afficher / masquer les réglages globaux">
+          <Box as={editor.adjustVisible ? FiEye : FiEyeOff} color={muted} cursor="pointer" fontSize="13px"
+            onClick={() => { editor.adjustVisible = !editor.adjustVisible; onChange() }} />
+        </Tip>
         <Box as={FiLayers} color={C.primary} fontSize="13px" />
-        <Text flex="1" fontSize="xs">Réglages (filtres)</Text>
+        <Tip label="Réglages, courbes et balance des blancs appliqués à l'image" flex="1">
+          <Text flex="1" fontSize="xs">Réglages (filtres)</Text>
+        </Tip>
       </HStack>
       {layers.map((l) => (
         <HStack
@@ -252,37 +271,51 @@ export function LayersPanel({ editor, version, onChange }) {
           color={l.visible ? fg : muted}
           onClick={() => { editor.setActive(l.id); onChange() }}
         >
-          <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
-            onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
-          <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
-            bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
-            <img src={editor.layerThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
-          </Box>
+          <Tip label={l.visible ? 'Masquer le calque' : 'Afficher le calque'}>
+            <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
+              onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
+          </Tip>
+          <Tip label={l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
+            <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
+              bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
+              <img src={editor.layerThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
+            </Box>
+          </Tip>
           <Text flex="1" isTruncated>{l.name}{l.locked ? ' 🔒' : ''}</Text>
           {editor.activeId === l.id && !l.locked && (
             <HStack gap="0.5" flexShrink={0}>
-              <Box as={FiArrowUp} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
-                onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, 1); onChange() }} />
-              <Box as={FiArrowDown} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
-                onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, -1); onChange() }} />
-              <Box as={FiCopy} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
-                onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.duplicateLayer(l.id); onChange() }} />
-              <Box as={FiTrash2} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: '#f87171' }}
-                onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.removeLayer(l.id); onChange() }} />
+              <Tip label="Monter le calque">
+                <Box as={FiArrowUp} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
+                  onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, 1); onChange() }} />
+              </Tip>
+              <Tip label="Descendre le calque">
+                <Box as={FiArrowDown} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
+                  onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, -1); onChange() }} />
+              </Tip>
+              <Tip label="Dupliquer le calque">
+                <Box as={FiCopy} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
+                  onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.duplicateLayer(l.id); onChange() }} />
+              </Tip>
+              <Tip label="Supprimer le calque">
+                <Box as={FiTrash2} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: '#f87171' }}
+                  onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.removeLayer(l.id); onChange() }} />
+              </Tip>
             </HStack>
           )}
         </HStack>
       ))}
       {editor.active && (
         <HStack px="2.5" py="1.5" gap="2" borderTop="1px solid" borderColor={panelBorder}>
-          <Text fontSize="2xs" color={muted} flexShrink="0">Fusion</Text>
+          <Tip label="Mode de fusion du calque avec ceux du dessous">
+            <Text fontSize="2xs" color={muted} flexShrink="0">Fusion</Text>
+          </Tip>
           <Box as="select" flex="1" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
             border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
             value={editor.active.blend || 'source-over'}
             onChange={(e) => { editor.snapshot(); editor.active.blend = e.target.value; onChange() }}>
             {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
           </Box>
-          <Tip label="Ombre portée">
+          <Tip label="Ombre portée sur le calque actif">
             <Box as="button" px="1.5" h="20px" fontSize="2xs" borderRadius="sm" cursor="pointer"
               bg={editor.active.fx?.shadow ? C.primary : 'whiteAlpha.100'} color="#ffffff"
               onClick={() => {
@@ -294,18 +327,22 @@ export function LayersPanel({ editor, version, onChange }) {
         </HStack>
       )}
       <HStack px="2.5" py="2" gap="2" mt="auto" borderTop="1px solid" borderColor={panelBorder}>
-        <HStack flex="1" gap="1.5" cursor="pointer" color={C.primary} fontSize="xs"
-          onClick={() => { editor.snapshot(); editor.addLayer(); onChange() }}>
-          <FiPlus /> <Text>Nouveau calque</Text>
-        </HStack>
-        {editor.active && (
-          <HStack gap="1.5" flex="1">
-            <Text fontSize="2xs" color={muted}>Opacité</Text>
-            <Input type="range" min="0" max="1" step="0.05" h="16px" flex="1"
-              value={editor.active.opacity}
-              onPointerDown={() => editor.snapshot()}
-              onChange={(e) => { editor.active.opacity = +e.target.value; onChange() }} />
+        <Tip label="Calque transparent au-dessus — pour dessiner ou annoter sans toucher l'image" flex="1">
+          <HStack flex="1" gap="1.5" cursor="pointer" color={C.primary} fontSize="xs"
+            onClick={() => { editor.snapshot(); editor.addLayer(); onChange() }}>
+            <FiPlus /> <Text>Nouveau calque</Text>
           </HStack>
+        </Tip>
+        {editor.active && (
+          <Tip label="Opacité du calque actif" flex="1">
+            <HStack gap="1.5" flex="1">
+              <Text fontSize="2xs" color={muted}>Opacité</Text>
+              <Input type="range" min="0" max="1" step="0.05" h="16px" flex="1"
+                value={editor.active.opacity}
+                onPointerDown={() => editor.snapshot()}
+                onChange={(e) => { editor.active.opacity = +e.target.value; onChange() }} />
+            </HStack>
+          </Tip>
         )}
       </HStack>
     </VStack>
@@ -329,7 +366,7 @@ function Section({ title, right, children }) {
 function Slider({ d, value, onChange, onStart }) {
   const disp = d.fmt ? d.fmt(value) : `${value}${d.unit || ''}`
   return (
-    <Box>
+    <Tip label={d.tip || d.label} display="block">
       <HStack justify="space-between" mb="0.5">
         <Text fontSize="2xs" color={muted}>{d.label}</Text>
         <Text fontSize="2xs" color={fg} w="52px" textAlign="right">{disp}</Text>
@@ -337,7 +374,7 @@ function Slider({ d, value, onChange, onStart }) {
       <Input type="range" min={d.min} max={d.max} step={d.step || 1} h="16px"
         value={value} onPointerDown={onStart}
         onChange={(e) => onChange(+e.target.value)} />
-    </Box>
+    </Tip>
   )
 }
 
@@ -386,23 +423,31 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
     <VStack align="stretch" gap="2.5" px="3" py="3" flex="1" overflowY="auto">
       {/* Comparaison avant/après sur le canevas */}
       <Section title="Comparaison">
-        <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm" cursor="pointer"
-          bg={comparing ? '#f2c200' : 'whiteAlpha.100'} color={comparing ? '#111827' : fg}
-          fontWeight={comparing ? '700' : '400'} onClick={onCompare}>
-          {comparing ? '⬅ AVANT | APRÈS ➡ (glisser le séparateur)' : 'Comparer AVANT / APRÈS'}
-        </Box>
+        <Tip label="Original à gauche du séparateur jaune, retouche à droite — Q" display="block">
+          <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm" cursor="pointer"
+            bg={comparing ? '#f2c200' : 'whiteAlpha.100'} color={comparing ? '#111827' : fg}
+            fontWeight={comparing ? '700' : '400'} onClick={onCompare}>
+            {comparing ? '⬅ AVANT | APRÈS ➡ (glisser le séparateur)' : 'Comparer AVANT / APRÈS'}
+          </Box>
+        </Tip>
       </Section>
 
       {/* Préréglages */}
       <Section title="Préréglages"
-        right={<Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" onClick={savePreset}>+ Sauver</Box>}>
+        right={
+          <Tip label="Enregistrer les réglages courants comme préréglage réutilisable">
+            <Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" onClick={savePreset}>+ Sauver</Box>
+          </Tip>
+        }>
         <HStack gap="1.5" flexWrap="wrap">
           {[...PRESETS, ...userPresets].map((p) => (
-            <Box key={p.name} as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm"
-              bg="whiteAlpha.100" color={fg} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
-              onClick={() => applyPreset(p)}>
-              {p.name}
-            </Box>
+            <Tip key={p.name} label={`Appliquer « ${p.name} » à tous les réglages`}>
+              <Box as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm"
+                bg="whiteAlpha.100" color={fg} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
+                onClick={() => applyPreset(p)}>
+                {p.name}
+              </Box>
+            </Tip>
           ))}
         </HStack>
       </Section>
@@ -410,20 +455,26 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
       {ADJUST_GROUPS.map((g) => (
         <Section key={g.title} title={g.title}
           right={g.levels && (
-            <Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" onClick={autoLevels}>Auto</Box>
+            <Tip label="Niveaux automatiques — noirs/blancs calés sur l'histogramme">
+              <Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" onClick={autoLevels}>Auto</Box>
+            </Tip>
           )}>
           {g.wb && (
             <HStack gap="2">
-              <Box as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm" cursor="pointer"
-                bg={wbPick ? '#f2c200' : 'whiteAlpha.100'} color={wbPick ? '#111827' : fg}
-                onClick={onWbPick}>
-                {wbPick ? '🎯 Cliquez une zone neutre' : 'Pipette balance des blancs'}
-              </Box>
-              {editor.wb && (
-                <Box as="button" fontSize="2xs" color={muted} cursor="pointer"
-                  onClick={() => { editor.snapshot(); editor.wb = null; onChange() }}>
-                  Reset BB
+              <Tip label="Cliquez une zone neutre (grise) de la photo — corrige la dominante couleur">
+                <Box as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                  bg={wbPick ? '#f2c200' : 'whiteAlpha.100'} color={wbPick ? '#111827' : fg}
+                  onClick={onWbPick}>
+                  {wbPick ? '🎯 Cliquez une zone neutre' : 'Pipette balance des blancs'}
                 </Box>
+              </Tip>
+              {editor.wb && (
+                <Tip label="Annuler la balance des blancs mesurée à la pipette">
+                  <Box as="button" fontSize="2xs" color={muted} cursor="pointer"
+                    onClick={() => { editor.snapshot(); editor.wb = null; onChange() }}>
+                    Reset BB
+                  </Box>
+                </Tip>
               )}
             </HStack>
           )}
@@ -434,9 +485,10 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
         </Section>
       ))}
 
-      <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm"
-        bg="whiteAlpha.100" color={muted} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
-        onClick={() => {
+      <Tip label="Remettre tous les réglages, courbes et balance des blancs à zéro" display="block">
+        <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm"
+          bg="whiteAlpha.100" color={muted} cursor="pointer" _hover={{ bg: 'whiteAlpha.200' }}
+          onClick={() => {
           editor.snapshot()
           editor.adjust = { brightness: 100, contrast: 100, saturate: 100, hue: 0, blur: 0,
             grayscale: 0, sepia: 0, invert: 0, inBlack: 0, gamma: 100, inWhite: 255,
@@ -444,8 +496,9 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
           editor.wb = null
           onChange()
         }}>
-        Réinitialiser tous les réglages
-      </Box>
+          Réinitialiser tous les réglages
+        </Box>
+      </Tip>
     </VStack>
   )
 }
@@ -548,34 +601,44 @@ export function CurvesPanel({ editor, version, onChange }) {
   return (
     <VStack align="stretch" gap="2" px="3" py="3" flex="1" overflowY="auto">
       <HStack>
-        <Text fontSize="2xs" color={muted}>Canal</Text>
+        <Tip label="Canal à éditer — RGB agit sur les trois canaux">
+          <Text fontSize="2xs" color={muted}>Canal</Text>
+        </Tip>
         <Box as="select" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
           border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
           value={ch} onChange={(e) => setCh(e.target.value)}>
           {CURVE_CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </Box>
         <Box flex="1" />
-        <Box as="button" fontSize="2xs" px="2" h="20px" borderRadius="sm"
-          bg="whiteAlpha.100" color={muted} cursor="pointer"
-          onClick={() => { editor.snapshot(); editor.curves[ch] = null; onChange() }}>
-          Reset
-        </Box>
-      </HStack>
-      <Box as="canvas" ref={cvRef} width={W} height={H} borderRadius="sm"
-        border="1px solid" borderColor={panelBorder} cursor="crosshair" style={{ touchAction: 'none' }}
-        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={() => { drag.current = -1 }} />
-      <HStack justify="space-between">
-        <HStack gap="1.5" cursor="pointer"
-          onClick={() => { editor.adjustVisible = !editor.adjustVisible; onChange() }}>
-          <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-            borderColor={editor.adjustVisible ? '#4f8fe8' : 'gray.500'}
-            bg={editor.adjustVisible ? '#4f8fe8' : 'transparent'}
-            color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
-            {editor.adjustVisible ? '✓' : ''}
+        <Tip label="Réinitialiser la courbe de ce canal">
+          <Box as="button" fontSize="2xs" px="2" h="20px" borderRadius="sm"
+            bg="whiteAlpha.100" color={muted} cursor="pointer"
+            onClick={() => { editor.snapshot(); editor.curves[ch] = null; onChange() }}>
+            Reset
           </Box>
-          <Text fontSize="2xs" color={muted}>Réglages visibles</Text>
-        </HStack>
-        <Text fontSize="2xs" color={muted}>Entrée → Sortie</Text>
+        </Tip>
+      </HStack>
+      <Tip label="Clic = ajouter un point · glisser = déplacer · sortir du cadre = supprimer" display="block">
+        <Box as="canvas" ref={cvRef} width={W} height={H} borderRadius="sm"
+          border="1px solid" borderColor={panelBorder} cursor="crosshair" style={{ touchAction: 'none' }}
+          onPointerDown={onDown} onPointerMove={onMove} onPointerUp={() => { drag.current = -1 }} />
+      </Tip>
+      <HStack justify="space-between">
+        <Tip label="Activer / désactiver l'effet des réglages et courbes">
+          <HStack gap="1.5" cursor="pointer"
+            onClick={() => { editor.adjustVisible = !editor.adjustVisible; onChange() }}>
+            <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+              borderColor={editor.adjustVisible ? '#4f8fe8' : 'gray.500'}
+              bg={editor.adjustVisible ? '#4f8fe8' : 'transparent'}
+              color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+              {editor.adjustVisible ? '✓' : ''}
+            </Box>
+            <Text fontSize="2xs" color={muted}>Réglages visibles</Text>
+          </HStack>
+        </Tip>
+        <Tip label="Axe horizontal = niveaux d'entrée · vertical = niveaux de sortie">
+          <Text fontSize="2xs" color={muted}>Entrée → Sortie</Text>
+        </Tip>
       </HStack>
     </VStack>
   )
@@ -616,23 +679,25 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
   return (
     <HStack h="24px" px="3" gap="4" bg={panelBg} borderTop="1px solid" borderColor={panelBorder}
       fontSize="2xs" color={muted} flexShrink={0}>
-      <Input
-        w="52px" h="17px" fontSize="2xs" px="1" bg="transparent" border="1px solid"
-        borderColor="transparent" _hover={{ borderColor: panelBorder }}
-        _focusVisible={{ borderColor: '#4f8fe8', boxShadow: 'none' }}
-        defaultValue={Math.round(zoom * 100) + ' %'}
-        key={Math.round(zoom * 100)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            const v = parseFloat(e.target.value)
-            if (v > 0) onZoom(v / 100 / zoom)
-            e.target.blur()
-          }
-        }}
-      />
-      <Text>{t?.label}</Text>
-      <Text>{editor.w ? `${editor.w} × ${editor.h} px` : ''}</Text>
-      {editor.w > 0 && <Text>RGB • 8 bit • {editor.layers.length} calque(s)</Text>}
+      <Tip label="Saisir un zoom (%) puis Entrée — molette sur le canevas pour zoomer">
+        <Input
+          w="52px" h="17px" fontSize="2xs" px="1" bg="transparent" border="1px solid"
+          borderColor="transparent" _hover={{ borderColor: panelBorder }}
+          _focusVisible={{ borderColor: '#4f8fe8', boxShadow: 'none' }}
+          defaultValue={Math.round(zoom * 100) + ' %'}
+          key={Math.round(zoom * 100)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const v = parseFloat(e.target.value)
+              if (v > 0) onZoom(v / 100 / zoom)
+              e.target.blur()
+            }
+          }}
+        />
+      </Tip>
+      <Tip label="Outil actif"><Text>{t?.label}</Text></Tip>
+      <Tip label="Dimensions du document"><Text>{editor.w ? `${editor.w} × ${editor.h} px` : ''}</Text></Tip>
+      {editor.w > 0 && <Tip label="Espace colorimétrique et nombre de calques"><Text>RGB • 8 bit • {editor.layers.length} calque(s)</Text></Tip>}
       <Box flex="1" />
       <Text isTruncated maxW="280px">{editor.docName}</Text>
     </HStack>
@@ -643,17 +708,24 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
 
 export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare }) {
   const [tab, setTab] = useState('layers')
-  const TABS = [['layers', 'Calques'], ['adjust', 'Réglages'], ['curves', 'Courbes'], ['info', 'Infos']]
+  const TABS = [
+    ['layers', 'Calques', 'Empilement, fusion, opacité, effets fx'],
+    ['adjust', 'Réglages', 'Exposition, balance des blancs, niveaux, effets'],
+    ['curves', 'Courbes', 'Tonalité par canal RGB/R/V/B'],
+    ['info', 'Infos', 'Document, dimensions, curseur, couleur'],
+  ]
   return (
     <Flex w="248px" direction="column" bg={panelBg} borderLeft="1px solid" borderColor={panelBorder} flexShrink={0}>
       <HStack px="2" pt="2" pb="0" gap="1" borderBottom="1px solid" borderColor={panelBorder}>
-        {TABS.map(([k, l]) => (
-          <Box key={k} px="2.5" py="1.5" fontSize="xs" cursor="pointer" borderRadius="md md 0 0"
-            color={tab === k ? fg : muted} fontWeight={tab === k ? '600' : '400'}
-            bg={tab === k ? 'whiteAlpha.100' : 'transparent'}
-            onClick={() => setTab(k)}>
-            {l}
-          </Box>
+        {TABS.map(([k, l, tip]) => (
+          <Tip key={k} label={tip}>
+            <Box px="2.5" py="1.5" fontSize="xs" cursor="pointer" borderRadius="md md 0 0"
+              color={tab === k ? fg : muted} fontWeight={tab === k ? '600' : '400'}
+              bg={tab === k ? 'whiteAlpha.100' : 'transparent'}
+              onClick={() => setTab(k)}>
+              {l}
+            </Box>
+          </Tip>
         ))}
       </HStack>
       <Flex flex="1" direction="column" overflow="hidden">
@@ -680,14 +752,18 @@ export function EmptyCanvas({ onOpen, onPick }) {
         <Text fontSize="sm" fontWeight="600" color={fg}>Aucun document ouvert</Text>
         <Text fontSize="xs" color={muted}>Ouvrez une photo du workspace ou un fichier local</Text>
         <HStack gap="2" mt="1">
-          <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" bg={C.primary} color="#ffffff"
-            cursor="pointer" onClick={onPick}>
-            Choisir une photo
-          </Box>
-          <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" bg="whiteAlpha.100" color={fg}
-            cursor="pointer" onClick={onOpen}>
-            Importer un fichier…
-          </Box>
+          <Tip label="Photo déjà rangée dans un dossier du workspace">
+            <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" bg={C.primary} color="#ffffff"
+              cursor="pointer" onClick={onPick}>
+              Choisir une photo
+            </Box>
+          </Tip>
+          <Tip label="JPG / PNG depuis votre ordinateur">
+            <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" bg="whiteAlpha.100" color={fg}
+              cursor="pointer" onClick={onOpen}>
+              Importer un fichier…
+            </Box>
+          </Tip>
         </HStack>
       </VStack>
     </Center>

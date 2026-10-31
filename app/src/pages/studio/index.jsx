@@ -361,7 +361,7 @@ export default function Studio() {
   }
 
   const menus = [
-    { label: 'Fichier', items: [
+    { label: 'Fichier', tip: 'Document : ouvrir, montage avant/après, exporter', items: [
       { label: 'Ouvrir une photo…', onClick: () => setModal('open') },
       { label: 'Importer un fichier…', onClick: () => fileInput.current?.click() },
       { label: 'Montage avant / après…', onClick: () => setModal('montage') },
@@ -370,7 +370,7 @@ export default function Studio() {
       '-',
       { label: 'Fermer le document', disabled: !docOpen, onClick: () => setDocOpen(false) },
     ]},
-    { label: 'Édition', items: [
+    { label: 'Édition', tip: 'Historique et contenu de la sélection', items: [
       { label: 'Annuler', shortcut: 'Ctrl+Z', disabled: !docOpen, onClick: async () => { await editor.undo(); bump() } },
       { label: 'Rétablir', shortcut: 'Ctrl+Y', disabled: !docOpen, onClick: async () => { await editor.redo(); bump() } },
       '-',
@@ -383,23 +383,23 @@ export default function Studio() {
         editor.snapshot(); editor.deleteContent(); bump()
       } },
     ]},
-    { label: 'Sélection', items: [
+    { label: 'Sélection', tip: 'Zones de travail (rectangle, baguette)', items: [
       { label: 'Tout sélectionner', shortcut: 'Ctrl+A', disabled: !docOpen, onClick: () => { editor.selectAll(); bump() } },
       { label: 'Désélectionner', shortcut: 'Ctrl+D', disabled: !docOpen || !editor.sel, onClick: () => { editor.deselect(); bump() } },
     ]},
-    { label: 'Image', items: [
+    { label: 'Image', tip: 'Transformations du document (rotation, miroir, aplatir)', items: [
       { label: 'Pivoter 90°', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.rotate90(); bump() } },
       { label: 'Miroir horizontal', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.flipH(); bump() } },
       { label: 'Miroir vertical', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.flipV(); bump() } },
       '-',
       { label: 'Aplatir l\'image', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.flatten(); bump() } },
     ]},
-    { label: 'Calque', items: [
+    { label: 'Calque', tip: 'Pile de calques : créer, dupliquer, supprimer', items: [
       { label: 'Nouveau calque', disabled: !docOpen, onClick: () => { editor.addLayer(); editor.snapshot(); bump() } },
       { label: 'Dupliquer le calque', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.duplicateLayer(editor.activeId); bump() } },
       { label: 'Supprimer le calque', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.removeLayer(editor.activeId); bump() } },
     ]},
-    { label: 'Affichage', items: [
+    { label: 'Affichage', tip: 'Zoom et comparaison avant/après', items: [
       { label: 'Zoom +', shortcut: '+', onClick: () => zoomAt(1.25) },
       { label: 'Zoom −', shortcut: '−', onClick: () => zoomAt(0.8) },
       { label: 'Ajuster à l\'écran', shortcut: '0', disabled: !docOpen, onClick: fitView },
