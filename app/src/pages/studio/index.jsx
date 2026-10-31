@@ -19,7 +19,7 @@ import {
 import {
   MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas,
 } from './panels'
-import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal } from './modals'
+import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal } from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 
@@ -45,7 +45,7 @@ export default function Studio() {
 
   const [tool, setTool] = useState('move')
   const [opts, setOpts] = useState({
-    fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, eraserSize: 30,
+    fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, brushHard: 0.9, eraserSize: 30, eraserHard: 0.85, eraserOpacity: 1,
     textSize: 32, textFont: 'Inter Tight', textBold: true, textItalic: false, textTracking: 0,
     tol: 32, transform: false, cloneSize: 48, cloneOpacity: 1,
   })
@@ -55,7 +55,8 @@ export default function Studio() {
   const [docOpen, setDocOpen] = useState(false)
   const [srcPhoto, setSrcPhoto] = useState(null)
   const [dossiers, setDossiers] = useState([])
-  const [modal, setModal] = useState(null) // 'open' | 'export'
+  const [modal, setModal] = useState(null) // 'open' | 'export' | ...
+  const [pickColor, setPickColor] = useState(null) // 'fg' | 'bg' | null — sélecteur détaillé
   const [cropRect, setCropRect] = useState(null)
   const [textInput, setTextInput] = useState(null) // {sx, sy, ix, iy}
   const [cursor, setCursor] = useState(null)
@@ -562,7 +563,10 @@ export default function Studio() {
     ctx.lineJoin = 'round'
     if (tool === 'eraser') {
       ctx.globalCompositeOperation = 'destination-out'
+      ctx.globalAlpha = opts.eraserOpacity ?? 1
       ctx.lineWidth = opts.eraserSize
+      const esoft = (1 - (opts.eraserHard ?? 1)) * opts.eraserSize * 0.6
+      if (esoft > 0.5) { ctx.shadowColor = '#000000'; ctx.shadowBlur = esoft }
       ctx.beginPath()
       ctx.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
       ctx.lineTo(ix - l.dx, iy - l.dy)
@@ -580,6 +584,9 @@ export default function Studio() {
       ctx.strokeStyle = opts.fg
       ctx.globalAlpha = opts.brushOpacity
       ctx.lineWidth = opts.brushSize
+      // dureté : bord adouci par un flou d'ombre proportionnel au diamètre
+      const soft = (1 - (opts.brushHard ?? 1)) * opts.brushSize * 0.6
+      if (soft > 0.5) { ctx.shadowColor = opts.fg; ctx.shadowBlur = soft }
       ctx.beginPath()
       ctx.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
       ctx.lineTo(ix - l.dx, iy - l.dy)
@@ -857,12 +864,13 @@ export default function Studio() {
           onDeselect={() => { editor.deselect(); bump() }}
           canUndo={editor.undoStack.length > 0} canRedo={editor.redoStack.length > 0}
           onUndo={async () => { await editor.undo(); bump() }}
-          onRedo={async () => { await editor.redo(); bump() }} />
+          onRedo={async () => { await editor.redo(); bump() }}
+          onPickColor={setPickColor} />
       )}
       <Flex flex="1" minH="0">
         <ToolBar tool={tool} setTool={setTool}
-          fgColor={opts.fg} setFgColor={(c) => setOpts((o) => ({ ...o, fg: c }))}
-          bgColor={opts.bg} setBgColor={(c) => setOpts((o) => ({ ...o, bg: c }))}
+          fgColor={opts.fg} bgColor={opts.bg}
+          onPickColor={setPickColor}
           onSwap={() => setOpts((o) => ({ ...o, fg: o.bg, bg: o.fg }))} />
         <Box
           ref={containerRef} flex="1" position="relative" bg="#14181f" overflow="hidden"
@@ -952,6 +960,10 @@ export default function Studio() {
       <OpenPhotoModal open={modal === 'refpick'} onClose={() => setModal(null)} wsId={wsId} onPick={pickRefPhoto} />
       <MontageModal open={modal === 'montage'} onClose={() => setModal(null)} wsId={wsId} onCreate={openMontage} />
       <SheetModal open={modal === 'sheet'} onClose={() => setModal(null)} wsId={wsId} onCompose={composeSheet} />
+      <ColorPickerModal open={!!pickColor} onClose={() => setPickColor(null)}
+        color={pickColor ? opts[pickColor] : '#000000'}
+        title={pickColor === 'bg' ? 'Sélecteur de couleurs (arrière-plan)' : 'Sélecteur de couleurs (premier plan)'}
+        onApply={(v) => setOpts((o) => ({ ...o, [pickColor]: v }))} />
       <LayerStyleModal open={modal === 'style'} onClose={() => setModal(null)}
         layer={editor.active}
         onApply={(fx, lOpt) => {

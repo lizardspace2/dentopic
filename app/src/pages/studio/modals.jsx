@@ -1,13 +1,13 @@
 // Modals du Studio : ouverture d'une photo du workspace, export, sauvegarde.
 import { useEffect, useState } from 'react'
-import { Box, Button, HStack, SimpleGrid, Text, VStack } from '@chakra-ui/react'
+import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiDownload, FiFolder, FiSave } from 'react-icons/fi'
 import { Card, Modal, SearchInput, Select, Tag, Tip, isTestName } from '../../components/ui'
 import { C } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
 import { BLEND_MODES, SHEET_SLOTS } from './constants'
-import { DEFAULT_FX } from './engine'
+import { DEFAULT_FX, hexToRgb, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
 
 // ---- Ouvrir : photo du workspace (ou import local géré par la page) -------------
 
@@ -429,6 +429,122 @@ export function LayerStyleModal({ open, onClose, layer, onApply }) {
             {FX_SECTIONS.find((s) => s.key === sel)?.label}
           </Text>
           <FxParams sel={sel} fx={fx} setFx={setFx} layer={lOpt} setLayer={setLOpt} />
+        </VStack>
+      </HStack>
+    </Modal>
+  )
+}
+
+// ---- Sélecteur de couleurs façon Photoshop ------------------------------------
+// Carré saturation/luminosité + barre de teinte + champs TSL / RVB / hex.
+
+const numIn = {
+  w: '52px', h: '22px', fontSize: '2xs', px: '1.5',
+}
+
+export function ColorPickerModal({ open, onClose, color, onApply, title = 'Sélecteur de couleurs (premier plan)' }) {
+  const [hsv, setHsv] = useState(() => hexToHsv(color || '#dc2626'))
+  const [hexIn, setHexIn] = useState(color || '#dc2626')
+  useEffect(() => {
+    if (open) { setHsv(hexToHsv(color || '#dc2626')); setHexIn(color || '#dc2626') }
+  }, [open, color])
+  const [r, g, b] = hsvToRgb(hsv.h, hsv.s, hsv.v)
+  const hex = rgbToHex(r, g, b)
+  const up = (k, v) => {
+    const nh = { ...hsv, [k]: Math.max(0, Math.min(k === 'h' ? 360 : 1, v)) }
+    setHsv(nh); setHexIn(hsvToHex(nh.h, nh.s, nh.v))
+  }
+  const up2sv = (fx, fy) => {
+    const nh = {
+      ...hsv,
+      s: Math.max(0, Math.min(1, fx)),
+      v: Math.max(0, Math.min(1, 1 - fy)),
+    }
+    setHsv(nh); setHexIn(hsvToHex(nh.h, nh.s, nh.v))
+  }
+  const setRgb = (i, val) => {
+    const rgb = [r, g, b]; rgb[i] = Math.max(0, Math.min(255, +val || 0))
+    const nh = hexToHsv(rgbToHex(...rgb))
+    setHsv(nh); setHexIn(rgbToHex(...rgb))
+  }
+  const onHex = (v) => {
+    setHexIn(v)
+    if (/^#?[0-9a-f]{6}$/i.test(v.trim())) setHsv(hexToHsv(v))
+  }
+  // drag sur carré SV / barre teinte
+  const drag = (ref, fn) => (e) => {
+    const el = ref.current || e.currentTarget
+    const move = (ev) => {
+      const rc = el.getBoundingClientRect()
+      fn((ev.clientX - rc.left) / rc.width, (ev.clientY - rc.top) / rc.height)
+    }
+    el.setPointerCapture(e.pointerId)
+    move(e)
+    const mm = (ev) => move(ev)
+    const up2 = () => { el.removeEventListener('pointermove', mm); el.removeEventListener('pointerup', up2) }
+    el.addEventListener('pointermove', mm)
+    el.addEventListener('pointerup', up2)
+  }
+  const svRef = { current: null }, hueRef = { current: null }
+  const row = (label, val, set, max) => (
+    <HStack gap="1">
+      <Text fontSize="2xs" color="gray.500" w="10px">{label}</Text>
+      <Input {...numIn} type="number" value={val} min={0} max={max}
+        onChange={(e) => set(e.target.value)} />
+      <Text fontSize="2xs" color="gray.400" w="20px">{label === 'T' ? '°' : ''}</Text>
+    </HStack>
+  )
+  return (
+    <Modal open={open} onClose={onClose} title={title} width="470px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => { onApply(hex); onClose() }}>OK</Button>
+        </>
+      }>
+      <HStack align="stretch" gap="4">
+        {/* Carré saturation / luminosité */}
+        <Box
+          ref={(el) => (svRef.current = el)}
+          w="240px" h="200px" borderRadius="md" cursor="crosshair" position="relative" flexShrink={0}
+          bg={`linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, hsl(${hsv.h},100%,50%))`}
+          onPointerDown={drag(svRef, (fx, fy) => up2sv(fx, fy))}
+        >
+          <Box position="absolute" w="12px" h="12px" borderRadius="full" border="2px solid #fff"
+            boxShadow="0 0 0 1px rgba(0,0,0,.5)" pointerEvents="none"
+            left={`${hsv.s * 100}%`} top={`${(1 - hsv.v) * 100}%`} transform="translate(-50%,-50%)" />
+        </Box>
+        {/* Barre de teinte */}
+        <Box
+          ref={(el) => (hueRef.current = el)}
+          w="16px" h="200px" borderRadius="md" cursor="pointer" position="relative" flexShrink={0}
+          bg="linear-gradient(to bottom, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)"
+          onPointerDown={drag(hueRef, (_x, fy) => up('h', fy * 360))}
+        >
+          <Box position="absolute" left="-3px" right="-3px" h="4px" borderRadius="sm"
+            border="2px solid #fff" boxShadow="0 0 0 1px rgba(0,0,0,.4)" pointerEvents="none"
+            top={`${(hsv.h / 360) * 100}%`} transform="translateY(-50%)" />
+        </Box>
+        {/* Champs */}
+        <VStack align="stretch" gap="1.5" flex="1">
+          {/* aperçu actuelle / nouvelle */}
+          <HStack gap="0" mb="1" borderRadius="md" overflow="hidden" border="1px solid" borderColor="gray.300">
+            <Box flex="1" h="34px" bg={hex} />
+            <Box flex="1" h="34px" bg={color || '#000'} />
+          </HStack>
+          <Text fontSize="2xs" color="gray.400">nouvelle / actuelle</Text>
+          {row('T', Math.round(hsv.h), (v) => up('h', +v || 0), 360)}
+          {row('S', Math.round(hsv.s * 100), (v) => up('s', (+v || 0) / 100), 100)}
+          {row('L', Math.round(hsv.v * 100), (v) => up('v', (+v || 0) / 100), 100)}
+          <Box h="1" />
+          {row('R', r, (v) => setRgb(0, v), 255)}
+          {row('V', g, (v) => setRgb(1, v), 255)}
+          {row('B', b, (v) => setRgb(2, v), 255)}
+          <HStack gap="1">
+            <Text fontSize="2xs" color="gray.500" w="10px">#</Text>
+            <Input {...numIn} w="80px" value={hexIn} onChange={(e) => onHex(e.target.value)} />
+          </HStack>
         </VStack>
       </HStack>
     </Modal>

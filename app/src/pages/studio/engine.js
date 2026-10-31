@@ -973,8 +973,40 @@ export async function fetchImg(url) {
 }
 
 export function rgbToHex(r, g, b) {
-  return '#' + [r, g, b].map((v) => v.toString(16).padStart(2, '0')).join('')
+  return '#' + [r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')
 }
+
+// ---- Conversions couleur pour le sélecteur Photoshop --------------------------
+
+export function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim())
+  if (!m) return [0, 0, 0]
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+export function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn
+  let h = 0
+  if (d) {
+    if (mx === r) h = ((g - b) / d + (g < b ? 6 : 0)) * 60
+    else if (mx === g) h = ((b - r) / d + 2) * 60
+    else h = ((r - g) / d + 4) * 60
+  }
+  return { h, s: mx ? d / mx : 0, v: mx }
+}
+
+export function hsvToRgb(h, s, v) {
+  const c = v * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = v - c
+  const [r, g, b] =
+    h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x]
+    : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x]
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)]
+}
+
+export function hexToHsv(hex) { const [r, g, b] = hexToRgb(hex); return rgbToHsv(r, g, b) }
+export function hsvToHex(h, s, v) { return rgbToHex(...hsvToRgb(h, s, v)) }
 
 /** Moyennes RVB + luminance d'un canvas ou d'une image (échantillonnage ~1/8). */
 export function meanRGBOf(src, step = 10) {

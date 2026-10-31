@@ -91,7 +91,7 @@ export function MenuBar({ menus, docName, zoom }) {
 
 // ---- Barre d'outils verticale -------------------------------------------------
 
-export function ToolBar({ tool, setTool, fgColor, setFgColor, bgColor, setBgColor, onSwap }) {
+export function ToolBar({ tool, setTool, fgColor, bgColor, onSwap, onPickColor }) {
   return (
     <VStack w="44px" py="2" gap="1" bg={panelBg} borderRight="1px solid" borderColor={panelBorder} flexShrink={0}>
       {TOOLS.map((t) => (
@@ -108,23 +108,17 @@ export function ToolBar({ tool, setTool, fgColor, setFgColor, bgColor, setBgColo
         </Tip>
       ))}
       <Box flex="1" />
-      {/* Premier plan / arrière-plan + swap (comme Photoshop) */}
-      <Tip label="Premier plan — clic pour changer · X permute">
+      {/* Premier plan / arrière-plan + swap — clic = sélecteur détaillé */}
+      <Tip label="Premier plan — clic : sélecteur de couleurs détaillé · X permute">
         <Box position="relative" w="26px" h="26px">
           <Box
             w="20px" h="20px" borderRadius="sm" border="1.5px solid" borderColor="white"
-            bg={fgColor} position="absolute" top="0" left="0" zIndex="2"
+            bg={fgColor} position="absolute" top="0" left="0" zIndex="2" cursor="pointer"
+            onClick={() => onPickColor?.('fg')}
           />
           <Box w="20px" h="20px" borderRadius="sm" border="1.5px solid" borderColor="gray.500"
-            bg={bgColor} position="absolute" bottom="0" right="0" />
-          <Input
-            type="color" value={fgColor} onChange={(e) => setFgColor(e.target.value)}
-            position="absolute" top="0" left="0" opacity="0" cursor="pointer" w="20px" h="20px" zIndex="3"
-          />
-          <Input
-            type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)}
-            position="absolute" bottom="0" right="0" opacity="0" cursor="pointer" w="20px" h="20px" zIndex="3"
-          />
+            bg={bgColor} position="absolute" bottom="0" right="0" cursor="pointer"
+            onClick={() => onPickColor?.('bg')} />
         </Box>
       </Tip>
       <Tip label="Permuter premier plan / arrière-plan — X">
@@ -142,12 +136,20 @@ export function ToolBar({ tool, setTool, fgColor, setFgColor, bgColor, setBgColo
 
 export function OptionsBar({
   tool, opts, setOpts, cropRect, onApplyCrop, onCancelCrop, onRotate,
-  hasSel, onFill, onDelete, onDeselect, canUndo, canRedo, onUndo, onRedo,
+  hasSel, onFill, onDelete, onDeselect, canUndo, canRedo, onUndo, onRedo, onPickColor,
 }) {
   const row = { fontSize: '2xs', color: muted }
-  const slider = (key, min, max, step = 1) => (
-    <Input type="range" min={min} max={max} step={step} w="110px" h="18px"
-      value={opts[key]} onChange={(e) => setOpts({ ...opts, [key]: +e.target.value })} />
+  // slider + saisie numérique exacte (comme les champs de valeur de Photoshop)
+  const clampN = (v, min, max) => Math.min(max, Math.max(min, v))
+  // scale=100 : le champ affiche des pourcentages (0-100) comme Photoshop, opts stocke 0-1
+  const slider = (key, min, max, step = 1, scale = 1) => (
+    <HStack gap="1">
+      <Input type="range" min={min} max={max} step={step} w="100px" h="18px"
+        value={opts[key]} onChange={(e) => setOpts({ ...opts, [key]: +e.target.value })} />
+      <Input type="number" min={min * scale} max={max * scale} step={step * scale || 1} w="50px" h="18px" fontSize="2xs" px="1"
+        value={Math.round(opts[key] * scale * 100) / 100}
+        onChange={(e) => { const v = +e.target.value / scale; if (!isNaN(v)) setOpts({ ...opts, [key]: clampN(v, min, max) }) }} />
+    </HStack>
   )
   const btn = (label, onClick, primary) => (
     <Box as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm" cursor="pointer"
@@ -162,20 +164,23 @@ export function OptionsBar({
       </Text>
       {tool === 'brush' && (
         <>
-          <Tip label="Diamètre du pinceau (px)"><Text {...row}>Taille {opts.brushSize}px</Text></Tip>{slider('brushSize', 1, 80)}
-          <Tip label="Transparence du trait"><Text {...row}>Opacité {Math.round(opts.brushOpacity * 100)}%</Text></Tip>{slider('brushOpacity', 0.05, 1, 0.05)}
-          <Tip label="Couleur du trait"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} /></Tip>
+          <Tip label="Diamètre du pinceau (px) — saisie libre"><Text {...row}>Taille {opts.brushSize}px</Text></Tip>{slider('brushSize', 1, 400)}
+          <Tip label="Dureté du bord — 100 % = net, 0 % = très diffus"><Text {...row}>Dureté {Math.round((opts.brushHard ?? 1) * 100)}%</Text></Tip>{slider('brushHard', 0, 1, 0.05, 100)}
+          <Tip label="Transparence du trait"><Text {...row}>Opacité {Math.round(opts.brushOpacity * 100)}%</Text></Tip>{slider('brushOpacity', 0.05, 1, 0.05, 100)}
+          <Tip label="Couleur du trait — « + » : sélecteur détaillé"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} onCustom={() => onPickColor?.('fg')} /></Tip>
         </>
       )}
       {tool === 'eraser' && (
         <>
-          <Tip label="Diamètre de la gomme (px)"><Text {...row}>Taille {opts.eraserSize}px</Text></Tip>{slider('eraserSize', 2, 120)}
+          <Tip label="Diamètre de la gomme (px) — saisie libre"><Text {...row}>Taille {opts.eraserSize}px</Text></Tip>{slider('eraserSize', 2, 500)}
+          <Tip label="Dureté du bord de la gomme"><Text {...row}>Dureté {Math.round((opts.eraserHard ?? 1) * 100)}%</Text></Tip>{slider('eraserHard', 0, 1, 0.05, 100)}
+          <Tip label="Opacité de gommage"><Text {...row}>Opacité {Math.round((opts.eraserOpacity ?? 1) * 100)}%</Text></Tip>{slider('eraserOpacity', 0.05, 1, 0.05, 100)}
         </>
       )}
       {tool === 'clone' && (
         <>
-          <Tip label="Alt+clic sur la zone à dupliquer, puis peignez"><Text {...row}>Taille {opts.cloneSize}px</Text></Tip>{slider('cloneSize', 8, 200)}
-          <Tip label="Transparence de la copie"><Text {...row}>Opacité {Math.round((opts.cloneOpacity ?? 1) * 100)}%</Text></Tip>{slider('cloneOpacity', 0.1, 1, 0.05)}
+          <Tip label="Alt+clic sur la zone à dupliquer, puis peignez"><Text {...row}>Taille {opts.cloneSize}px</Text></Tip>{slider('cloneSize', 8, 500)}
+          <Tip label="Transparence de la copie"><Text {...row}>Opacité {Math.round((opts.cloneOpacity ?? 1) * 100)}%</Text></Tip>{slider('cloneOpacity', 0.1, 1, 0.05, 100)}
           <Text {...row}>Alt+clic = source · glisser = dupliquer</Text>
         </>
       )}
@@ -210,7 +215,7 @@ export function OptionsBar({
           <Tip label="Interlettrage (px entre caractères)"><Text {...row}>Crénage</Text></Tip>
           <Input type="number" w="46px" h="20px" fontSize="2xs" value={opts.textTracking}
             onChange={(e) => setOpts({ ...opts, textTracking: +e.target.value || 0 })} />
-          <Tip label="Couleur du texte"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} /></Tip>
+          <Tip label="Couleur du texte — « + » : sélecteur détaillé"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} onCustom={() => onPickColor?.('fg')} /></Tip>
         </>
       )}
       {tool === 'crop' && cropRect && (
@@ -279,7 +284,8 @@ export function OptionsBar({
   )
 }
 
-function SwatchPicker({ value, onChange }) {
+function SwatchPicker({ value, onChange, onCustom }) {
+  const custom = !SWATCHES.includes(value)
   return (
     <HStack gap="1">
       {SWATCHES.map((c) => (
@@ -287,6 +293,16 @@ function SwatchPicker({ value, onChange }) {
           border="1.5px solid" borderColor={value === c ? '#ffffff' : 'transparent'}
           onClick={() => onChange(c)} />
       ))}
+      {/* couleur personnalisée : la puce « + » ouvre le sélecteur détaillé ;
+          si la couleur courante est hors palette, elle s'affiche à sa place */}
+      <Box
+        w="14px" h="14px" borderRadius="sm" cursor="pointer"
+        bg={custom ? value : 'transparent'} color={custom ? 'transparent' : '#ffffff'}
+        border="1.5px solid" borderColor={custom ? '#ffffff' : 'gray.500'}
+        fontSize="11px" lineHeight="12px" textAlign="center" fontWeight="700"
+        onClick={onCustom}>
+        {custom ? '' : '+'}
+      </Box>
     </HStack>
   )
 }
