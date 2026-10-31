@@ -219,7 +219,7 @@ export function OptionsBar({
           <Tip label="Abandonner — Échap">{btn('Annuler', onCancelCrop)}</Tip>
         </>
       )}
-      {(tool === 'rect' || tool === 'lasso' || tool === 'wand') && hasSel && (
+      {hasSel && (
         <>
           <Tip label="Remplit la sélection avec la couleur de premier plan">{btn('Remplir', onFill)}</Tip>
           <Tip label="Vide le contenu de la sélection — Suppr">{btn('Effacer', onDelete)}</Tip>

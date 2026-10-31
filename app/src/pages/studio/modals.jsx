@@ -407,11 +407,11 @@ export function LayerStyleModal({ open, onClose, layer, onApply }) {
             const on = fixed || fx[key]?.on
             return (
               <Tip key={key} label={fixed ? 'Fusion, opacité, remplissage' : `${on ? 'Actif' : 'Inactif'} — cocher pour activer, cliquer pour régler`}>
-                <HStack px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
+                <HStack px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer" data-fxrow={key}
                   bg={sel === key ? 'whiteAlpha.100' : 'transparent'} borderRadius="sm"
                   color={sel === key ? 'white' : 'gray.300'}
                   onClick={() => setSel(key)}>
-                  <Box w="14px" h="14px" borderRadius="sm" border="1px solid" flexShrink={0}
+                  <Box w="14px" h="14px" borderRadius="sm" border="1px solid" flexShrink={0} data-fxcheck={key}
                     borderColor={on ? '#4f8fe8' : 'gray.600'} bg={on ? '#4f8fe8' : 'transparent'}
                     color="#ffffff" fontSize="2xs" lineHeight="14px" textAlign="center"
                     onClick={(e) => { if (!fixed) { e.stopPropagation(); toggle(key, !on); setSel(key) } }}>
