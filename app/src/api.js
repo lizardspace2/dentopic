@@ -246,9 +246,51 @@ export function countSessionPhotos(sessionId) {
     .then(({ count }) => count || 0)
 }
 
+// ---- Salles (rooms) — name + location, rattachables aux appareils (room_id) ──
+
+export function listRooms(wsId) {
+  return supabase
+    .from('rooms')
+    .select('*')
+    .eq('workspace_id', wsId)
+    .order('name')
+    .then(({ data }) => data || [])
+}
+
+export function createRoom(wsId, { name, location = '' }) {
+  return supabase
+    .from('rooms')
+    .insert({ workspace_id: wsId, name, location })
+    .select()
+    .single()
+    .then(({ data, error }) => {
+      if (error) console.warn('createRoom:', error.message)
+      return data
+    })
+}
+
+export function updateRoom(id, fields) {
+  return supabase.from('rooms').update(fields).eq('id', id).select().single()
+    .then(({ data, error }) => { if (error) console.warn('updateRoom:', error.message); return data })
+}
+
+export function deleteRoom(id) {
+  // on délie les appareils avant de supprimer la salle (room_id -> null)
+  return supabase.from('capture_devices').update({ room_id: null }).eq('room_id', id)
+    .then(() => supabase.from('rooms').delete().eq('id', id))
+    .then(({ error }) => { if (error) console.warn('deleteRoom:', error.message); return !error })
+}
+
 // ---- Appareils (capture_devices) — name/manufacturer/model/connection_type + metadata (jsonb) ──
 
-export function createCaptureDevice(wsId, { name, manufacturer = '', model = '', connectionType = 'wifi', metadata = {} }) {
+// La contrainte SQL n'accepte que wifi|usb|mobile|other — les types riches
+// (ptp, sd, watch_folder, ftp…) sont rangés dans metadata.conn.
+export const ALLOWED_CONN = new Set(['wifi', 'usb', 'mobile', 'other'])
+
+export function createCaptureDevice(wsId, { name, manufacturer = '', model = '', connectionType = 'wifi', roomId = null, status = 'offline', metadata = {} }) {
+  const conn = ALLOWED_CONN.has(connectionType) ? connectionType : 'other'
+  const meta = { ...metadata }
+  if (!ALLOWED_CONN.has(connectionType) && !meta.conn) meta.conn = connectionType
   return supabase
     .from('capture_devices')
     .insert({
@@ -256,9 +298,10 @@ export function createCaptureDevice(wsId, { name, manufacturer = '', model = '',
       name,
       manufacturer,
       model,
-      connection_type: connectionType,
-      status: 'offline',
-      metadata,
+      connection_type: conn,
+      room_id: roomId,
+      status,
+      metadata: meta,
     })
     .select()
     .single()

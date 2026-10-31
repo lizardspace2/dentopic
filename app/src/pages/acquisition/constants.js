@@ -1,5 +1,6 @@
 // Données statiques de la page Acquisition : textes du guide et catalogue des sources.
-import { FiCamera, FiFolder, FiMonitor, FiSmartphone, FiUpload, FiWifi, FiSettings, FiLayers } from 'react-icons/fi'
+import { FiCamera, FiFolder, FiMonitor, FiSmartphone, FiUpload, FiWifi, FiSettings, FiLayers, FiHardDrive } from 'react-icons/fi'
+import { MdOutlineSdCard } from 'react-icons/md'
 
 // Étapes du guide « Comprendre l'acquisition » (textes repris de l'original)
 export const HELP_STEPS = [
@@ -74,4 +75,40 @@ export const BRAND_PRESETS = [
   { label: 'Nikon WiFi', manufacturer: 'Nikon', connectionType: 'ptp', hint: 'Pairing PTP/IP direct (Z6 II, Z7 II, Z8, Z9…)' },
   { label: 'Sony WiFi', manufacturer: 'Sony', connectionType: 'wifi', hint: 'Transfert WiFi / Imaging Edge' },
   { label: 'Autre', manufacturer: '', connectionType: 'wifi', hint: 'Saisie libre' },
+]
+
+// ---- « Nouvel appareil » façon concurrent : tuiles source + liaison ----------
+
+// Tuiles « Source d'acquisition » — chaque tuile pré-remplit fabricant/connexion
+// et définit le type fonctionnel (kind) de l'appareil.
+export const DEVICE_SOURCES = [
+  { key: 'manual', icon: FiMonitor, label: 'Manuel / autre', hint: 'Boîtier saisi à la main', kind: 'camera', conn: 'other' },
+  { key: 'mobile', icon: FiSmartphone, label: 'Application mobile', hint: 'QR code — photos en direct', kind: 'camera', conn: 'mobile' },
+  { key: 'canon', icon: FiCamera, label: 'Canon', hint: 'Connexion WiFi directe à l’appareil', kind: 'camera', conn: 'wifi', manufacturer: 'Canon' },
+  { key: 'nikon', icon: FiCamera, label: 'Nikon WiFi', hint: 'Pairing PTP/IP direct (Z6 II, Z7 II, Z8, Z9…)', kind: 'camera', conn: 'ptp', manufacturer: 'Nikon' },
+  { key: 'sdcard', icon: MdOutlineSdCard, label: 'Carte SD Wi-Fi', hint: 'Carte SD Wi-Fi (Toshiba FlashAir, ez Share…) — le bridge relève les nouvelles photos', kind: 'camera', conn: 'sd' },
+  { key: 'ftp', icon: FiWifi, label: 'FTP', hint: 'Transfert FTP depuis l’appareil', kind: 'ftp', conn: 'ftp' },
+  { key: 'watch', icon: FiMonitor, label: 'Dossier surveillé', hint: 'Auto-import depuis un dossier (Nikon WMU, EOS Utility…)', kind: 'watch', conn: 'watch_folder' },
+]
+
+// Tuiles « Liaison d'acquisition » (section DentoPic Bridge)
+export const LIAISON_DEFS = [
+  { key: 'sdcard', icon: MdOutlineSdCard, label: 'Carte SD Wi-Fi' },
+  { key: 'watch', icon: FiMonitor, label: 'Dossier surveillé' },
+  { key: 'wifi', icon: FiWifi, label: 'Wi-Fi intégré (DCAPI)' },
+  { key: 'ftp', icon: FiUpload, label: 'Passerelle FTP' },
+]
+
+// Select « Connexion » du formulaire appareil — libellés conviviaux.
+// NB : la contrainte SQL n'accepte que wifi|usb|mobile|other — les valeurs
+// riches sont rangées dans metadata.conn par createCaptureDevice.
+export const CONN_SELECT = [
+  ['wifi', 'Wi-Fi'],
+  ['ptp', 'Wi-Fi PTP/IP'],
+  ['usb', 'USB'],
+  ['sd', 'Carte SD Wi-Fi'],
+  ['ftp', 'FTP'],
+  ['watch_folder', 'Dossier surveillé'],
+  ['mobile', 'Application mobile'],
+  ['other', 'Autre'],
 ]

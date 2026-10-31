@@ -18,7 +18,7 @@ import {
   listCaptureDevices, listDossiers, listActiveSessions,
   createCaptureSession, endCaptureSession, createDossier,
   createCaptureDevice, updateCaptureDevice, importPhotos, countSessionPhotos,
-  listProtocolSteps, listPhotosByDossier,
+  listProtocolSteps, listPhotosByDossier, listRooms,
 } from '../../api'
 import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind } from './constants'
 import {
@@ -35,7 +35,7 @@ export default function Acquisition() {
   const { workspace, session } = useApp()
   const { id: routeDossierId } = useParams() // /acquisition/capture/<dossierId>
   const wsId = workspace?.id
-  const [d, setD] = useState({ devices: [], dossiers: [], active: [] })
+  const [d, setD] = useState({ devices: [], dossiers: [], active: [], rooms: [] })
   const [received, setReceived] = useState(0)
   const [target, setTarget] = useState(null) // dossier ARRIVÉE
   const [source, setSource] = useState(null) // { key, deviceId?, label? } DÉPART
@@ -56,12 +56,13 @@ export default function Acquisition() {
 
   const reload = async () => {
     if (!wsId) return
-    const [devices, dossiers, active] = await Promise.all([
+    const [devices, dossiers, active, rooms] = await Promise.all([
       listCaptureDevices(wsId),
       listDossiers(wsId, { limit: 200 }),
       listActiveSessions(wsId),
+      listRooms(wsId),
     ])
-    setD({ devices, dossiers, active })
+    setD({ devices, dossiers, active, rooms })
     const cur = active[0]
     if (cur) {
       setReceived(await countSessionPhotos(cur.id))
@@ -137,30 +138,32 @@ export default function Acquisition() {
 
   // FTP : deviceId=null -> crée une source ; sinon met à jour sa config.
   // Dans les deux cas la source devient l'appareil sélectionné (réutilisable ensuite).
-  const saveFtp = async (deviceId, form) => {
+  const saveFtp = async (deviceId, { roomId, ...ftp }) => {
     const dev = deviceId
       ? await updateCaptureDevice(deviceId, {
-          name: form.name?.trim() || undefined,
-          metadata: { ...(d.devices.find((x) => x.id === deviceId)?.metadata || {}), kind: 'ftp', ftp: form },
+          name: ftp.name?.trim() || undefined,
+          room_id: roomId || null,
+          metadata: { ...(d.devices.find((x) => x.id === deviceId)?.metadata || {}), kind: 'ftp', ftp },
         })
       : await createCaptureDevice(wsId, {
-          name: form.name?.trim() || `FTP — ${form.host || 'serveur'}`,
-          connectionType: 'other', metadata: { kind: 'ftp', ftp: form },
+          name: ftp.name?.trim() || `FTP — ${ftp.host || 'serveur'}`,
+          connectionType: 'other', roomId, metadata: { kind: 'ftp', ftp },
         })
     if (dev) setSource({ key: 'ftp', deviceId: dev.id, label: dev.name })
     await reload()
     return dev
   }
 
-  const saveWatch = async (deviceId, form) => {
+  const saveWatch = async (deviceId, { roomId, ...watch }) => {
     const dev = deviceId
       ? await updateCaptureDevice(deviceId, {
-          name: form.name?.trim() || undefined,
-          metadata: { ...(d.devices.find((x) => x.id === deviceId)?.metadata || {}), kind: 'watch', watch: form },
+          name: watch.name?.trim() || undefined,
+          room_id: roomId || null,
+          metadata: { ...(d.devices.find((x) => x.id === deviceId)?.metadata || {}), kind: 'watch', watch },
         })
       : await createCaptureDevice(wsId, {
-          name: form.name?.trim() || form.path || 'Dossier surveillé',
-          connectionType: 'other', metadata: { kind: 'watch', watch: form },
+          name: watch.name?.trim() || watch.path || 'Dossier surveillé',
+          connectionType: 'other', roomId, metadata: { kind: 'watch', watch },
         })
     if (dev) setSource({ key: 'watch', deviceId: dev.id, label: dev.name })
     await reload()
@@ -407,12 +410,13 @@ export default function Acquisition() {
 
       {/* ---- Modals : tout se configure en popup ---- */}
       <GuideModal step={helpStep} onStep={setHelpStep} onClose={() => setHelpStep(null)} />
-      <SourceModal open={modal === 'source'} onClose={close} source={source} devices={d.devices} onPick={pickSource} />
+      <SourceModal open={modal === 'source'} onClose={close} source={source} devices={d.devices} rooms={d.rooms} onPick={pickSource} />
       <DossierModal open={modal === 'dossier'} onClose={close} dossiers={d.dossiers} target={target}
         onPick={(ds) => { setTarget(ds); close() }} onCreate={createDest} />
       <MobileModal open={modal === 'mobile'} onClose={close} target={target} onStart={startSession} />
       <CameraModal open={modal === 'camera'} onClose={close}
         devices={d.devices.filter((x) => devKind(x) === 'camera')}
+        rooms={d.rooms}
         selectedId={source?.deviceId}
         onPick={(dev) => { setSource({ key: 'camera', deviceId: dev.id, label: dev.name }); close() }}
         onCreate={async (form) => {
@@ -422,11 +426,13 @@ export default function Acquisition() {
         }} />
       <FtpModal open={modal === 'ftp'} onClose={close}
         devices={d.devices.filter((x) => devKind(x) === 'ftp')}
+        rooms={d.rooms}
         selectedId={source?.deviceId}
         onPick={(dev) => { setSource({ key: 'ftp', deviceId: dev.id, label: dev.name }); close() }}
         onSave={saveFtp} />
       <WatchModal open={modal === 'watch'} onClose={close}
         devices={d.devices.filter((x) => devKind(x) === 'watch')}
+        rooms={d.rooms}
         selectedId={source?.deviceId}
         onPick={(dev) => { setSource({ key: 'watch', deviceId: dev.id, label: dev.name }); close() }}
         onSave={saveWatch} />

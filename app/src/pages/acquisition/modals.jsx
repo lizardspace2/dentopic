@@ -13,7 +13,10 @@ import {
   Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, isTestName,
 } from '../../components/ui'
 import { C } from '../../theme'
-import { HELP_STEPS, SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS, devKind } from './constants'
+import {
+  HELP_STEPS, SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS, devKind,
+  DEVICE_SOURCES, LIAISON_DEFS, CONN_SELECT,
+} from './constants'
 
 // ---- Petits morceaux partagés ------------------------------------------------
 
@@ -36,14 +39,16 @@ function SourceRow({ def, active, badge, onClick }) {
   )
 }
 
-function DeviceRow({ dev, selected, onClick }) {
+function DeviceRow({ dev, rooms = [], selected, onClick }) {
   const online = dev.status === 'online'
   const kind = devKind(dev)
-  const hint = kind === 'ftp'
+  const room = rooms.find((r) => r.id === dev.room_id)?.name
+  const hint = (kind === 'ftp'
     ? `FTP · ${dev.metadata?.ftp?.host || ''}${dev.metadata?.ftp?.path ? ' ' + dev.metadata.ftp.path : ''}`
     : kind === 'watch'
       ? `Surveillé · ${dev.metadata?.watch?.path || ''}`
-      : [dev.manufacturer, dev.model, dev.connection_type].filter(Boolean).join(' · ')
+      : [dev.manufacturer, dev.model].filter(Boolean).join(' · ')
+  ) + (room ? ` · ${room}` : '')
   return (
     <HStack px="3" py="2" gap="3" borderRadius="lg" cursor="pointer"
       bg={selected ? C.softBlue : 'transparent'} _hover={{ bg: C.softBlue }} onClick={onClick}>
@@ -96,7 +101,7 @@ export function GuideModal({ step, onStep, onClose }) {
 
 // ---- 2. Source d'acquisition (clic sur DÉPART) --------------------------------
 
-export function SourceModal({ open, onClose, source, devices, onPick }) {
+export function SourceModal({ open, onClose, source, devices, rooms = [], onPick }) {
   // Répartition des appareils par type de source — badges « n sources » comme la caméra
   const cams = devices.filter((x) => devKind(x) === 'camera')
   const ftps = devices.filter((x) => devKind(x) === 'ftp')
@@ -121,7 +126,7 @@ export function SourceModal({ open, onClose, source, devices, onPick }) {
       </Text>
       <VStack align="stretch" gap="1.5">
         {devices.map((dev) => (
-          <DeviceRow key={dev.id} dev={dev}
+          <DeviceRow key={dev.id} dev={dev} rooms={rooms}
             selected={source?.deviceId === dev.id}
             onClick={() => onPick({ key: keyFor(dev), modal: null, deviceId: dev.id, label: dev.name })} />
         ))}
@@ -241,9 +246,9 @@ export function MobileModal({ open, onClose, target, onStart }) {
 
 // ---- 5. Appareil photo : choix + ajout -------------------------------------------
 
-export function CameraModal({ open, onClose, devices, selectedId, onPick, onCreate }) {
+export function CameraModal({ open, onClose, devices, rooms = [], selectedId, onPick, onCreate }) {
   const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({ name: '', manufacturer: '', model: '', connectionType: 'wifi' })
+  const [form, setForm] = useState({ name: '', manufacturer: '', model: '', connectionType: 'wifi', roomId: '' })
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
   const pickBrand = (b) => setForm((f) => ({
     ...f,
@@ -253,14 +258,14 @@ export function CameraModal({ open, onClose, devices, selectedId, onPick, onCrea
   }))
   const save = async () => {
     const ok = await onCreate({ ...form })
-    if (ok) { setAdding(false); setForm({ name: '', manufacturer: '', model: '', connectionType: 'wifi' }) }
+    if (ok) { setAdding(false); setForm({ name: '', manufacturer: '', model: '', connectionType: 'wifi', roomId: '' }) }
   }
   return (
     <Modal open={open} onClose={onClose}
       title="Appareil photo" subtitle="Sélectionnez ou connectez un boîtier" width="460px">
       <VStack align="stretch" gap="1.5" maxH="260px" overflowY="auto">
         {devices.map((dev) => (
-          <DeviceRow key={dev.id} dev={dev} selected={selectedId === dev.id} onClick={() => onPick(dev)} />
+          <DeviceRow key={dev.id} dev={dev} rooms={rooms} selected={selectedId === dev.id} onClick={() => onPick(dev)} />
         ))}
         {devices.length === 0 && (
           <Text fontSize="sm" color="gray.500" textAlign="center" py="4">
@@ -304,11 +309,19 @@ export function CameraModal({ open, onClose, devices, selectedId, onPick, onCrea
                 <Input fontSize="sm" placeholder="ex. EOS R6" value={form.model} onChange={set('model')} />
               </Field>
             </SimpleGrid>
-            <Field label="Type de connexion">
-              <Select w="100%" value={form.connectionType} onChange={set('connectionType')}>
-                {CONNECTION_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
-            </Field>
+            <SimpleGrid columns={2} gap="3">
+              <Field label="Type de connexion">
+                <Select w="100%" value={form.connectionType} onChange={set('connectionType')}>
+                  {CONNECTION_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </Select>
+              </Field>
+              <Field label="Salle">
+                <Select w="100%" value={form.roomId} onChange={set('roomId')}>
+                  <option value="">Aucune</option>
+                  {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </Select>
+              </Field>
+            </SimpleGrid>
             <HStack justify="end" gap="2">
               <Button variant="outline" size="sm" onClick={() => setAdding(false)}>Annuler</Button>
               <PrimaryButton onClick={save} disabled={!form.name.trim()}>Enregistrer</PrimaryButton>
@@ -324,12 +337,12 @@ export function CameraModal({ open, onClose, devices, selectedId, onPick, onCrea
 // Comme la caméra : une source FTP enregistrée reste réutilisable — on la retrouve
 // dans la liste (badge dans SourceModal), on clique pour la reprendre, ✎ pour éditer.
 
-export function FtpModal({ open, onClose, devices = [], selectedId, onPick, onSave }) {
+export function FtpModal({ open, onClose, devices = [], rooms = [], selectedId, onPick, onSave }) {
   const [editing, setEditing] = useState(null) // device en cours d'édition | 'new' | null
   const [form, setForm] = useState({})
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
-  const startNew = () => { setEditing('new'); setForm({ name: '', host: '', port: '21', path: '', user: '' }) }
-  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.ftp || {}) }) }
+  const startNew = () => { setEditing('new'); setForm({ name: '', host: '', port: '21', path: '', user: '', roomId: '' }) }
+  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.ftp || {}), roomId: dev.room_id || '' }) }
   const save = async () => {
     const ok = await onSave(editing === 'new' ? null : editing, form)
     if (ok) setEditing(null)
@@ -387,9 +400,17 @@ export function FtpModal({ open, onClose, devices = [], selectedId, onPick, onSa
             <Field label="Chemin surveillé">
               <Input fontSize="sm" placeholder="/photos/dentaire" value={form.path || ''} onChange={set('path')} />
             </Field>
-            <Field label="Utilisateur">
-              <Input fontSize="sm" placeholder="dentopic" value={form.user || ''} onChange={set('user')} />
-            </Field>
+            <SimpleGrid columns={2} gap="3">
+              <Field label="Utilisateur">
+                <Input fontSize="sm" placeholder="dentopic" value={form.user || ''} onChange={set('user')} />
+              </Field>
+              <Field label="Salle">
+                <Select w="100%" value={form.roomId || ''} onChange={set('roomId')}>
+                  <option value="">Aucune</option>
+                  {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </Select>
+              </Field>
+            </SimpleGrid>
             <HStack justify="end" gap="2">
               <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Annuler</Button>
               <PrimaryButton onClick={save} disabled={!form.name?.trim()}>
@@ -405,12 +426,12 @@ export function FtpModal({ open, onClose, devices = [], selectedId, onPick, onSa
 
 // ---- 7. Dossier surveillé : liste + formulaire ---------------------------------------
 
-export function WatchModal({ open, onClose, devices = [], selectedId, onPick, onSave }) {
+export function WatchModal({ open, onClose, devices = [], rooms = [], selectedId, onPick, onSave }) {
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState({})
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
-  const startNew = () => { setEditing('new'); setForm({ name: '', path: '', grouping: 'date', exts: '' }) }
-  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.watch || {}) }) }
+  const startNew = () => { setEditing('new'); setForm({ name: '', path: '', grouping: 'date', exts: '', roomId: '' }) }
+  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.watch || {}), roomId: dev.room_id || '' }) }
   const save = async () => {
     const ok = await onSave(editing === 'new' ? null : editing, form)
     if (ok) setEditing(null)
@@ -464,9 +485,17 @@ export function WatchModal({ open, onClose, devices = [], selectedId, onPick, on
                 <option value="prefix">Sous-dossiers par préfixe de nom</option>
               </Select>
             </Field>
-            <Field label="Extensions acceptées">
-              <Input fontSize="sm" placeholder="jpg, jpeg, png, webp" value={form.exts || ''} onChange={set('exts')} />
-            </Field>
+            <SimpleGrid columns={2} gap="3">
+              <Field label="Extensions acceptées">
+                <Input fontSize="sm" placeholder="jpg, jpeg, png, webp" value={form.exts || ''} onChange={set('exts')} />
+              </Field>
+              <Field label="Salle">
+                <Select w="100%" value={form.roomId || ''} onChange={set('roomId')}>
+                  <option value="">Aucune</option>
+                  {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </Select>
+              </Field>
+            </SimpleGrid>
             <HStack bg={C.softBlue} borderRadius="md" px="3" py="2" gap="2">
               <Box as={FiHardDrive} color={C.primary} />
               <Text fontSize="xs" color={C.body}>
@@ -482,6 +511,168 @@ export function WatchModal({ open, onClose, devices = [], selectedId, onPick, on
           </VStack>
         </Card>
       )}
+    </Modal>
+  )
+}
+
+// ---- 7b. « Nouvel appareil » façon concurrent : tuiles source + salle + liaison -------
+
+const STATUS_DEFS = [
+  ['offline', 'Hors ligne'],
+  ['online', 'En ligne'],
+  ['pairing', 'Appairage en cours'],
+]
+
+function DeviceTile({ def, active, onClick }) {
+  const I = def.icon
+  return (
+    <Box
+      as="button" textAlign="left" px="3" py="2.5" borderRadius="lg" cursor="pointer"
+      border="1.5px solid" borderColor={active ? C.primary : 'gray.200'}
+      bg={active ? C.softBlue : 'transparent'}
+      _hover={{ borderColor: C.primary }}
+      title={def.hint}
+      onClick={onClick}
+    >
+      <HStack gap="2">
+        <Box as={I} color={active ? C.primary : 'gray.500'} flexShrink={0} />
+        <Text fontSize="xs" fontWeight="600" color={active ? C.primary : C.ink} isTruncated>
+          {def.label}
+        </Text>
+      </HStack>
+    </Box>
+  )
+}
+
+export function DeviceModal({ open, onClose, rooms = [], device, onSave }) {
+  const empty = {
+    src: 'manual', name: '', roomId: '', conn: 'wifi', status: 'offline',
+    manufacturer: '', model: '', liaison: '', watchPath: '', ftpHost: '', interop: false,
+  }
+  const [form, setForm] = useState(empty)
+  useEffect(() => {
+    if (!open) return
+    if (device) {
+      const m = device.metadata || {}
+      setForm({
+        src: m.source || 'manual',
+        name: device.name || '',
+        roomId: device.room_id || '',
+        conn: m.conn || device.connection_type || 'wifi',
+        status: device.status || 'offline',
+        manufacturer: device.manufacturer || '',
+        model: device.model || '',
+        liaison: m.liaison || '',
+        watchPath: m.watch?.path || '',
+        ftpHost: m.ftp?.host || '',
+        interop: !!m.interop,
+      })
+    } else {
+      setForm(empty)
+    }
+  }, [open, device?.id])
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target?.type === 'checkbox' ? e.target.checked : e.target.value }))
+  const pickSrc = (s) => setForm((f) => ({
+    ...f,
+    src: s.key,
+    conn: s.conn || f.conn,
+    manufacturer: s.manufacturer !== undefined ? s.manufacturer : f.manufacturer,
+    liaison: f.liaison || (s.key === 'watch' ? 'watch' : s.key === 'ftp' ? 'ftp' : s.key === 'sdcard' ? 'sdcard' : f.liaison),
+  }))
+  const save = async () => { const ok = await onSave(form); if (ok) setForm(empty) }
+  const showWatch = form.src === 'watch' || form.liaison === 'watch'
+  const showFtp = form.src === 'ftp' || form.liaison === 'ftp'
+  return (
+    <Modal open={open} onClose={onClose} width="560px"
+      title={device ? "Modifier l'appareil" : 'Nouvel appareil'}
+      subtitle={device ? undefined : 'Déclarez la source puis rattachez l’appareil à une salle'}
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <PrimaryButton onClick={save} disabled={!form.name.trim()}>
+            {device ? 'Mettre à jour' : 'Créer'}
+          </PrimaryButton>
+        </>
+      }
+    >
+      <VStack align="stretch" gap="4">
+        <Box>
+          <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400" mb="2">
+            SOURCE D'ACQUISITION
+          </Text>
+          <SimpleGrid columns={3} gap="2">
+            {DEVICE_SOURCES.map((s) => (
+              <DeviceTile key={s.key} def={s} active={form.src === s.key} onClick={() => pickSrc(s)} />
+            ))}
+          </SimpleGrid>
+          <Text fontSize="2xs" color="gray.400" mt="1.5">
+            {DEVICE_SOURCES.find((s) => s.key === form.src)?.hint}
+          </Text>
+        </Box>
+
+        <SimpleGrid columns={2} gap="3">
+          <Field label="Nom *">
+            <Input fontSize="sm" placeholder="ex. Nikon Z6 II — Salle 2" value={form.name} onChange={set('name')} />
+          </Field>
+          <Field label="Salle">
+            <Select w="100%" value={form.roomId} onChange={set('roomId')}>
+              <option value="">Aucune (non rattaché)</option>
+              {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Connexion">
+            <Select w="100%" value={form.conn} onChange={set('conn')}>
+              {CONN_SELECT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </Select>
+          </Field>
+          <Field label="Statut">
+            <Select w="100%" value={form.status} onChange={set('status')}>
+              {STATUS_DEFS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </Select>
+          </Field>
+          <Field label="Fabricant">
+            <Input fontSize="sm" placeholder="Nikon, Canon…" value={form.manufacturer} onChange={set('manufacturer')} />
+          </Field>
+          <Field label="Modèle">
+            <Input fontSize="sm" placeholder="ex. Z6 II" value={form.model} onChange={set('model')} />
+          </Field>
+        </SimpleGrid>
+
+        <Box border="1px solid" borderColor={C.cardBorder} borderRadius="lg" p="4">
+          <Text fontSize="xs" fontWeight="700" color={C.ink} mb="1">
+            Connexion via DentoPic Bridge <Box as="span" color="red.500">*</Box>
+          </Text>
+          <Text fontSize="2xs" color="gray.500" mb="3">
+            DentoPic Bridge tourne sur le poste de salle — il assure le lien entre cet appareil et l'acquisition (carte SD Wi-Fi, dossier surveillé, Wi-Fi intégré ou passerelle FTP).
+          </Text>
+          <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400" mb="2">
+            LIAISON D'ACQUISITION
+          </Text>
+          <SimpleGrid columns={4} gap="2">
+            {LIAISON_DEFS.map((l) => (
+              <DeviceTile key={l.key} def={l} active={form.liaison === l.key}
+                onClick={() => setForm((f) => ({ ...f, liaison: f.liaison === l.key ? '' : l.key }))} />
+            ))}
+          </SimpleGrid>
+          {showWatch && (
+            <Field label="Dossier surveillé" mt="3">
+              <Input fontSize="sm" placeholder="C:\Photos\Import ou /Volumes/SD/DCIM"
+                value={form.watchPath} onChange={set('watchPath')} />
+            </Field>
+          )}
+          {showFtp && (
+            <Field label="Hôte FTP" mt="3">
+              <Input fontSize="sm" placeholder="192.168.1.20" value={form.ftpHost} onChange={set('ftpHost')} />
+            </Field>
+          )}
+          <HStack as="label" mt="3" gap="2" cursor="pointer">
+            <input type="checkbox" checked={form.interop} onChange={set('interop')} />
+            <Text fontSize="xs" color={C.body}>
+              Interopérabilité (option) — exposer cet appareil à un autre logiciel d'imagerie dentaire
+            </Text>
+          </HStack>
+        </Box>
+      </VStack>
     </Modal>
   )
 }
