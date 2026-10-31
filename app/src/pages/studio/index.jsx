@@ -34,7 +34,7 @@ export default function Studio() {
   const lastSample = useRef(0) // throttle pipette (panneau Infos)
 
   const [tool, setTool] = useState('move')
-  const [opts, setOpts] = useState({ fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, eraserSize: 30, textSize: 32 })
+  const [opts, setOpts] = useState({ fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, eraserSize: 30, textSize: 32, tol: 32, transform: false })
   const [view, setView] = useState({ scale: 1, ox: 40, oy: 40 })
   const [version, setVersion] = useState(0) // bump → re-render canvas + panneaux
   const [docOpen, setDocOpen] = useState(false)
@@ -46,7 +46,7 @@ export default function Studio() {
   const [cursor, setCursor] = useState(null)
   const [showOriginal, setShowOriginal] = useState(false)
 
-  const bump = useCallback(() => setVersion((v) => v + 1), [])
+  const bump = useCallback(() => { editor.markDirty(); setVersion((v) => v + 1) }, [editor])
   const toImg = useCallback(
     (sx, sy) => [(sx - view.ox) / view.scale, (sy - view.oy) / view.scale],
     [view]
@@ -103,8 +103,11 @@ export default function Studio() {
 
   const render = useCallback(() => {
     const cv = canvasRef.current
-    if (cv) editor.render(cv, view, { showOriginal, cropRect })
-  }, [editor, view, showOriginal, cropRect])
+    if (cv) editor.render(cv, view, {
+      showOriginal, cropRect,
+      handles: tool === 'move' && opts.transform ? editor.active : null,
+    })
+  }, [editor, view, showOriginal, cropRect, tool, opts.transform, version])
 
   useEffect(render, [render, version])
 
@@ -154,11 +157,30 @@ export default function Studio() {
     const [ix, iy] = toImg(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
 
     switch (tool) {
-      case 'move':
-        if (editor.active) {
-          editor.snapshot()
-          stroke.current = { kind: 'move', ox: ix, oy: iy, dx: editor.active.dx, dy: editor.active.dy }
+      case 'move': {
+        const l = editor.active
+        if (!l) break
+        // poignées de transformation : coin proche -> redimensionnement
+        if (opts.transform && !l.locked) {
+          const corner = [[l.dx, l.dy], [l.dx + editor.w, l.dy], [l.dx, l.dy + editor.h], [l.dx + editor.w, l.dy + editor.h]]
+            .findIndex(([cx, cy]) => Math.hypot(ix - cx, iy - cy) < 14 / view.scale)
+          if (corner >= 0) {
+            editor.snapshot()
+            // ancre = coin opposé ; hx/hy = poignée saisie (coords doc)
+            const hx = [l.dx, l.dx + editor.w, l.dx, l.dx + editor.w][corner]
+            const hy = [l.dy, l.dy, l.dy + editor.h, l.dy + editor.h][corner]
+            stroke.current = { kind: 'scale', l, hx, hy, ax: l.dx + editor.w - hx + l.dx, ay: l.dy + editor.h - hy + l.dy, src: l.cv }
+            break
+          }
         }
+        editor.snapshot()
+        stroke.current = { kind: 'move', ox: ix, oy: iy, dx: l.dx, dy: l.dy }
+        break
+      }
+      case 'wand':
+        editor.snapshot()
+        editor.wandSelect(ix, iy, opts.tol)
+        bump()
         break
       case 'hand':
         stroke.current = { kind: 'pan', sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ox: view.ox, oy: view.oy }
@@ -248,6 +270,18 @@ export default function Studio() {
       bump()
     } else if (s.kind === 'pan') {
       setView((v) => ({ ...v, ox: s.ox + e.nativeEvent.offsetX - s.sx, oy: s.oy + e.nativeEvent.offsetY - s.sy }))
+    } else if (s.kind === 'scale') {
+      const sx = clamp((ix - s.ax) / (s.hx - s.ax || 1), -8, 8)
+      const sy = clamp((iy - s.ay) / (s.hy - s.ay || 1), -8, 8)
+      // redessine la source d'origine mise à l'échelle autour du coin opposé
+      const ctx = s.l.ctx
+      ctx.clearRect(0, 0, editor.w, editor.h)
+      ctx.save()
+      ctx.translate(s.ax, s.ay)
+      ctx.scale(sx, sy)
+      ctx.drawImage(s.src, -s.ax, -s.ay)
+      ctx.restore()
+      bump()
     } else if (s.kind === 'crop') {
       setCropRect([Math.min(s.x0, ix), Math.min(s.y0, iy), Math.abs(ix - s.x0), Math.abs(iy - s.y0)])
     } else if (s.kind === 'sel') {
@@ -367,7 +401,7 @@ export default function Studio() {
         else if (k === 'd') { e.preventDefault(); editor.deselect(); bump() }
         return
       }
-      const map = { v: 'move', c: 'crop', m: 'rect', b: 'brush', e: 'eraser', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate' }
+      const map = { v: 'move', c: 'crop', m: 'rect', w: 'wand', b: 'brush', e: 'eraser', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate' }
       if (map[k]) setTool(map[k])
       else if (k === '+') zoomAt(1.25)
       else if (k === '-') zoomAt(0.8)
@@ -385,7 +419,7 @@ export default function Studio() {
   return (
     <Flex h="100%" direction="column" bg={C.darkBg} color={C.darkFg} overflow="hidden">
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={openFile} />
-      <MenuBar menus={menus} docName={docOpen ? editor.docName : ''} />
+      <MenuBar menus={menus} docName={docOpen ? editor.docName : ''} zoom={docOpen ? view.scale : null} />
       {docOpen && (
         <OptionsBar tool={tool} opts={opts} setOpts={setOpts}
           cropRect={cropRect} onApplyCrop={applyCrop} onCancelCrop={() => setCropRect(null)}
@@ -446,7 +480,7 @@ export default function Studio() {
         </Box>
         {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump} />}
       </Flex>
-      <StatusBar editor={editor} zoom={view.scale} tool={tool} />
+      <StatusBar editor={editor} zoom={view.scale} tool={tool} onZoom={(f) => zoomAt(f)} />
 
       <OpenPhotoModal open={modal === 'open'} onClose={() => setModal(null)} wsId={wsId} onPick={openPhoto} />
       <MontageModal open={modal === 'montage'} onClose={() => setModal(null)} wsId={wsId} onCreate={openMontage} />

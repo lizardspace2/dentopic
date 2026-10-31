@@ -1,7 +1,7 @@
 // Outils et réglages du Studio (layout façon Photoshop).
 import {
   FiCrop, FiEdit2, FiFeather, FiMove, FiRotateCw,
-  FiSquare, FiType, FiZoomIn,
+  FiSquare, FiType, FiZoomIn, FiZap,
 } from 'react-icons/fi'
 import { LuHand } from 'react-icons/lu'
 import { TbColorPicker } from 'react-icons/tb'
@@ -11,6 +11,7 @@ export const TOOLS = [
   { key: 'move', icon: FiMove, label: 'Déplacement', hint: 'Déplace le calque actif — V' },
   { key: 'crop', icon: FiCrop, label: 'Recadrage', hint: 'Trace une zone puis valide — C' },
   { key: 'rect', icon: FiSquare, label: 'Sélection', hint: 'Rectangle de sélection — M' },
+  { key: 'wand', icon: FiZap, label: 'Baguette', hint: 'Sélection par couleur — W' },
   { key: 'brush', icon: FiEdit2, label: 'Pinceau', hint: 'Dessine sur le calque actif — B' },
   { key: 'eraser', icon: FiFeather, label: 'Gomme', hint: 'Efface le calque actif — E' },
   { key: 'text', icon: FiType, label: 'Texte', hint: 'Clique puis saisis — T' },
@@ -45,4 +46,28 @@ export const PRESETS = [
 export const SWATCHES = [
   '#111827', '#ffffff', '#dc2626', '#ea580c', '#d97706',
   '#16a34a', '#2563eb', '#7c3aed', '#db2777', '#0891b2',
+]
+
+// Modes de fusion des calques (label -> globalCompositeOperation Canvas2D)
+export const BLEND_MODES = [
+  ['Normal', 'source-over'],
+  ['Multiplier', 'multiply'],
+  ['Écran', 'screen'],
+  ['Incrustation', 'overlay'],
+  ['Obscurcir', 'darken'],
+  ['Éclaircir', 'lighten'],
+  ['Densité couleur −', 'color-burn'],
+  ['Densité couleur +', 'color-dodge'],
+  ['Lumière douce', 'soft-light'],
+  ['Lumière dure', 'hard-light'],
+  ['Différence', 'difference'],
+  ['Teinte', 'hue'],
+  ['Saturation', 'saturation'],
+  ['Couleur', 'color'],
+  ['Luminosité', 'luminosity'],
+]
+
+// Canaux du panneau Courbes
+export const CURVE_CHANNELS = [
+  ['rgb', 'RGB'], ['r', 'Rouge'], ['g', 'Vert'], ['b', 'Bleu'],
 ]

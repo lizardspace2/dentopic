@@ -10,7 +10,8 @@ import {
 import { LuRedo2, LuUndo2 } from 'react-icons/lu'
 import { Tip } from '../../components/ui'
 import { C } from '../../theme'
-import { ADJUST_DEFS, PRESETS, SWATCHES, TOOLS } from './constants'
+import { ADJUST_DEFS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS } from './constants'
+import { curveLUT, histogram } from './engine'
 
 const D = C // alias lisibilité
 const panelBg = D.darkCard
@@ -20,7 +21,7 @@ const muted = D.darkMuted
 
 // ---- Barre de menus (Fichier / Édition / Image / Calque / Affichage) -----------
 
-export function MenuBar({ menus, docName }) {
+export function MenuBar({ menus, docName, zoom }) {
   const [open, setOpen] = useState(null)
   const ref = useRef(null)
   useEffect(() => {
@@ -66,7 +67,9 @@ export function MenuBar({ menus, docName }) {
         </Box>
       ))}
       <Box flex="1" />
-      <Text fontSize="2xs" color={muted} isTruncated maxW="260px">{docName}</Text>
+      <Text fontSize="2xs" color={muted} isTruncated maxW="300px">
+        {docName}{docName && zoom != null ? ` @ ${Math.round(zoom * 1000) / 10} %` : ''}
+      </Text>
     </HStack>
   )
 }
@@ -169,9 +172,29 @@ export function OptionsBar({
         <>{btn('Remplir', onFill)}{btn('Effacer', onDelete)}{btn('Désélectionner', onDeselect, true)}</>
       )}
       {tool === 'rotate' && <>{btn('Pivoter 90°', onRotate, true)}</>}
-      {['move', 'hand', 'zoom', 'picker', 'rect'].includes(tool) && !(tool === 'rect' && hasSel) && (
+      {tool === 'move' && (
+        <>
+          <HStack gap="1.5" cursor="pointer" onClick={() => setOpts({ ...opts, transform: !opts.transform })}>
+            <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+              borderColor={opts.transform ? '#4f8fe8' : 'gray.500'}
+              bg={opts.transform ? '#4f8fe8' : 'transparent'}
+              color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+              {opts.transform ? '✓' : ''}
+            </Box>
+            <Text {...row}>Poignées de transformation</Text>
+          </HStack>
+          <Text {...row}>Glisser déplace le calque · coin = redimensionner</Text>
+        </>
+      )}
+      {tool === 'wand' && (
+        <>
+          <Text {...row}>Tolérance {opts.tol}</Text>{slider('tol', 4, 120)}
+          <Text {...row}>Cliquer une couleur → sélection de la zone</Text>
+        </>
+      )}
+      {['hand', 'zoom', 'picker', 'rect'].includes(tool) && !(tool === 'rect' && hasSel) && (
         <Text {...row}>
-          {{ move: 'Glisser déplace le calque actif', hand: 'Glisser déplace la vue',
+          {{ hand: 'Glisser déplace la vue',
             zoom: 'Cliquer pour zoomer (Alt = dézoomer)', picker: 'Cliquer pour prélever la couleur',
             rect: 'Trace une zone de sélection' }[tool]}
         </Text>
@@ -223,7 +246,7 @@ export function LayersPanel({ editor, version, onChange }) {
       </HStack>
       {layers.map((l) => (
         <HStack
-          key={l.id} px="2.5" py="1.5" gap="2" fontSize="xs" cursor="pointer"
+          key={l.id} px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
           bg={editor.activeId === l.id ? 'whiteAlpha.100' : 'transparent'}
           borderBottom="1px solid" borderColor="whiteAlpha.50"
           color={l.visible ? fg : muted}
@@ -231,7 +254,11 @@ export function LayersPanel({ editor, version, onChange }) {
         >
           <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
             onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
-          <Text flex="1" isTruncated>{l.name}</Text>
+          <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
+            bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
+            <img src={editor.layerThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
+          </Box>
+          <Text flex="1" isTruncated>{l.name}{l.locked ? ' 🔒' : ''}</Text>
           {editor.activeId === l.id && !l.locked && (
             <HStack gap="0.5" flexShrink={0}>
               <Box as={FiArrowUp} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
@@ -246,6 +273,26 @@ export function LayersPanel({ editor, version, onChange }) {
           )}
         </HStack>
       ))}
+      {editor.active && (
+        <HStack px="2.5" py="1.5" gap="2" borderTop="1px solid" borderColor={panelBorder}>
+          <Text fontSize="2xs" color={muted} flexShrink="0">Fusion</Text>
+          <Box as="select" flex="1" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+            border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+            value={editor.active.blend || 'source-over'}
+            onChange={(e) => { editor.snapshot(); editor.active.blend = e.target.value; onChange() }}>
+            {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+          </Box>
+          <Tip label="Ombre portée">
+            <Box as="button" px="1.5" h="20px" fontSize="2xs" borderRadius="sm" cursor="pointer"
+              bg={editor.active.fx?.shadow ? C.primary : 'whiteAlpha.100'} color="#ffffff"
+              onClick={() => {
+                editor.snapshot()
+                editor.active.fx = { ...(editor.active.fx || {}), shadow: !editor.active.fx?.shadow }
+                onChange()
+              }}>fx</Box>
+          </Tip>
+        </HStack>
+      )}
       <HStack px="2.5" py="2" gap="2" mt="auto" borderTop="1px solid" borderColor={panelBorder}>
         <HStack flex="1" gap="1.5" cursor="pointer" color={C.primary} fontSize="xs"
           onClick={() => { editor.snapshot(); editor.addLayer(); onChange() }}>
@@ -300,6 +347,137 @@ export function AdjustPanel({ editor, onChange }) {
   )
 }
 
+// ---- Panneau droit : Courbes (histogramme + courbe par canal) ----------------------
+//
+// Zone carrée 216px = [0..255]². Clic près de la courbe : nouveau point.
+// Drag d'un point : déplace. Sortir un point du cadre : supprime.
+
+export function CurvesPanel({ editor, version, onChange }) {
+  const [ch, setCh] = useState('rgb')
+  const cvRef = useRef(null)
+  const drag = useRef(-1)
+  const W = 216, H = 164
+  const px2v = (x) => Math.round((x / W) * 255)
+  const v2px = (v) => (v / 255) * W
+  const pts = () => editor.curves[ch] || [{ x: 0, y: 0 }, { x: 255, y: 255 }]
+
+  useEffect(() => {
+    const cv = cvRef.current
+    if (!cv || !editor.w) return
+    const ctx = cv.getContext('2d')
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, W, H)
+    // histogramme de luminance
+    try {
+      const { h, max } = histogram(editor.compositeFiltered())
+      ctx.fillStyle = 'rgba(255,255,255,0.16)'
+      for (let i = 0; i < 256; i += 2) {
+        const hh = (h[i] / max) * H * 0.85
+        ctx.fillRect(v2px(i), H - hh, Math.max(1, W / 128), hh)
+      }
+    } catch { /* doc pas prêt */ }
+    // grille 4×4 + diagonale
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+    ctx.lineWidth = 1
+    for (let i = 1; i < 4; i++) {
+      ctx.beginPath(); ctx.moveTo((W / 4) * i, 0); ctx.lineTo((W / 4) * i, H); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(0, (H / 4) * i); ctx.lineTo(W, (H / 4) * i); ctx.stroke()
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)'
+    ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke()
+    // courbe LUT
+    const lut = curveLUT(editor.curves[ch])
+    ctx.strokeStyle = { rgb: '#4f8fe8', r: '#f87171', g: '#4ade80', b: '#60a5fa' }[ch]
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    for (let i = 0; i < 256; i++) {
+      const x = v2px(i), y = H - (lut[i] / 255) * H
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)
+    }
+    ctx.stroke()
+    // points
+    for (const p of pts()) {
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#111827'
+      ctx.beginPath(); ctx.arc(v2px(p.x), H - v2px(p.y), 4.5, 0, 7); ctx.fill(); ctx.stroke()
+    }
+  })
+
+  const hit = (mx, my) => pts().findIndex((p) =>
+    Math.hypot(v2px(p.x) - mx, H - v2px(p.y) - my) < 8)
+
+  const onDown = (e) => {
+    const r = cvRef.current.getBoundingClientRect()
+    const mx = e.clientX - r.left, my = e.clientY - r.top
+    const i = hit(mx, my)
+    editor.snapshot()
+    if (i >= 0) { drag.current = i }
+    else {
+      const p = pts()
+      const np = [...p, { x: px2v(mx), y: px2v(H - my) }].sort((a, b) => a.x - b.x)
+      editor.curves[ch] = np
+      drag.current = np.findIndex((q) => q.x === px2v(mx) && q.y === px2v(H - my))
+      onChange()
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const onMove = (e) => {
+    if (drag.current < 0) return
+    const r = cvRef.current.getBoundingClientRect()
+    const mx = e.clientX - r.left, my = e.clientY - r.top
+    const p = [...pts()]
+    // sorti du cadre -> suppression (sauf points extrêmes)
+    if ((my < -20 || my > H + 20) && p.length > 2 && drag.current > 0 && drag.current < p.length - 1) {
+      p.splice(drag.current, 1)
+      editor.curves[ch] = p.length > 2 ? p : null
+      drag.current = -1
+      onChange()
+      return
+    }
+    const moved = {
+      x: Math.max(0, Math.min(255, px2v(mx))),
+      y: Math.max(0, Math.min(255, px2v(H - my))),
+    }
+    p[drag.current] = moved
+    editor.curves[ch] = p.sort((a, b) => a.x - b.x)
+    drag.current = editor.curves[ch].indexOf(moved)
+    onChange()
+  }
+
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3" flex="1" overflowY="auto">
+      <HStack>
+        <Text fontSize="2xs" color={muted}>Canal</Text>
+        <Box as="select" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+          border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+          value={ch} onChange={(e) => setCh(e.target.value)}>
+          {CURVE_CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </Box>
+        <Box flex="1" />
+        <Box as="button" fontSize="2xs" px="2" h="20px" borderRadius="sm"
+          bg="whiteAlpha.100" color={muted} cursor="pointer"
+          onClick={() => { editor.snapshot(); editor.curves[ch] = null; onChange() }}>
+          Reset
+        </Box>
+      </HStack>
+      <Box as="canvas" ref={cvRef} width={W} height={H} borderRadius="sm"
+        border="1px solid" borderColor={panelBorder} cursor="crosshair" style={{ touchAction: 'none' }}
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={() => { drag.current = -1 }} />
+      <HStack justify="space-between">
+        <HStack gap="1.5" cursor="pointer"
+          onClick={() => { editor.adjustVisible = !editor.adjustVisible; onChange() }}>
+          <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+            borderColor={editor.adjustVisible ? '#4f8fe8' : 'gray.500'}
+            bg={editor.adjustVisible ? '#4f8fe8' : 'transparent'}
+            color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+            {editor.adjustVisible ? '✓' : ''}
+          </Box>
+          <Text fontSize="2xs" color={muted}>Réglages visibles</Text>
+        </HStack>
+        <Text fontSize="2xs" color={muted}>Entrée → Sortie</Text>
+      </HStack>
+    </VStack>
+  )
+}
+
 // ---- Panneau droit : Infos --------------------------------------------------------
 
 export function InfoPanel({ editor, zoom, cursor }) {
@@ -330,14 +508,28 @@ function InfoRow({ k, v }) {
 
 // ---- Barre de statut basse ---------------------------------------------------------
 
-export function StatusBar({ editor, zoom, tool }) {
+export function StatusBar({ editor, zoom, tool, onZoom }) {
   const t = TOOLS.find((x) => x.key === tool)
   return (
     <HStack h="24px" px="3" gap="4" bg={panelBg} borderTop="1px solid" borderColor={panelBorder}
       fontSize="2xs" color={muted} flexShrink={0}>
-      <Text>{Math.round(zoom * 100)} %</Text>
+      <Input
+        w="52px" h="17px" fontSize="2xs" px="1" bg="transparent" border="1px solid"
+        borderColor="transparent" _hover={{ borderColor: panelBorder }}
+        _focusVisible={{ borderColor: '#4f8fe8', boxShadow: 'none' }}
+        defaultValue={Math.round(zoom * 100) + ' %'}
+        key={Math.round(zoom * 100)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            const v = parseFloat(e.target.value)
+            if (v > 0) onZoom(v / 100 / zoom)
+            e.target.blur()
+          }
+        }}
+      />
       <Text>{t?.label}</Text>
       <Text>{editor.w ? `${editor.w} × ${editor.h} px` : ''}</Text>
+      {editor.w > 0 && <Text>RGB • 8 bit • {editor.layers.length} calque(s)</Text>}
       <Box flex="1" />
       <Text isTruncated maxW="280px">{editor.docName}</Text>
     </HStack>
@@ -348,7 +540,7 @@ export function StatusBar({ editor, zoom, tool }) {
 
 export function RightPanel({ editor, version, zoom, cursor, onChange }) {
   const [tab, setTab] = useState('layers')
-  const TABS = [['layers', 'Calques'], ['adjust', 'Réglages'], ['info', 'Infos']]
+  const TABS = [['layers', 'Calques'], ['adjust', 'Réglages'], ['curves', 'Courbes'], ['info', 'Infos']]
   return (
     <Flex w="248px" direction="column" bg={panelBg} borderLeft="1px solid" borderColor={panelBorder} flexShrink={0}>
       <HStack px="2" pt="2" pb="0" gap="1" borderBottom="1px solid" borderColor={panelBorder}>
@@ -364,6 +556,7 @@ export function RightPanel({ editor, version, zoom, cursor, onChange }) {
       <Flex flex="1" direction="column" overflow="hidden">
         {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} />}
         {tab === 'adjust' && <AdjustPanel editor={editor} onChange={onChange} />}
+        {tab === 'curves' && <CurvesPanel editor={editor} version={version} onChange={onChange} />}
         {tab === 'info' && <InfoPanel editor={editor} zoom={zoom} cursor={cursor} />}
       </Flex>
     </Flex>

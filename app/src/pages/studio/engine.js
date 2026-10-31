@@ -13,6 +13,62 @@ export const filterString = (a) =>
   `hue-rotate(${a.hue}deg) blur(${a.blur}px) grayscale(${a.grayscale}%) ` +
   `sepia(${a.sepia}%) invert(${a.invert}%)`
 
+// ---- Courbes : points de contrôle -> LUT 256 par interpolation monotone ----------
+// curve = [{x, y}, …] trié par x ; y ∈ [0,255]. Lut identity = i.
+export function curveLUT(points) {
+  const lut = new Uint8ClampedArray(256)
+  if (!points || points.length < 2) { for (let i = 0; i < 256; i++) lut[i] = i; return lut }
+  const pts = [...points].sort((p, q) => p.x - q.x)
+  // interpolation Catmull-Rom simplifiée -> monotone approximative
+  const interp = (x) => {
+    if (x <= pts[0].x) return pts[0].y
+    if (x >= pts[pts.length - 1].x) return pts[pts.length - 1].y
+    let i = 0
+    while (i < pts.length - 2 && pts[i + 1].x < x) i++
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)]
+    const t = (x - p1.x) / (p2.x - p1.x || 1)
+    const t2 = t * t, t3 = t2 * t
+    return 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t +
+      (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+      (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+  }
+  for (let i = 0; i < 256; i++) lut[i] = interp(i)
+  return lut
+}
+
+// Applique les LUT {r,g,b,rgb} aux pixels d'un canvas (en place)
+export function applyLUTs(cv, luts) {
+  const ctx = cv.getContext('2d')
+  const d = ctx.getImageData(0, 0, cv.width, cv.height)
+  const px = d.data
+  const m = luts.rgb
+  for (let i = 0; i < px.length; i += 4) {
+    if (luts.r) px[i] = luts.r[px[i]]
+    if (luts.g) px[i + 1] = luts.g[px[i + 1]]
+    if (luts.b) px[i + 2] = luts.b[px[i + 2]]
+    if (m) {
+      px[i] = m[px[i]]; px[i + 1] = m[px[i + 1]]; px[i + 2] = m[px[i + 2]]
+    }
+  }
+  ctx.putImageData(d, 0, 0)
+  return cv
+}
+
+// Histogramme de luminance (256 cases) du composite, pour le panneau Courbes
+export function histogram(cv, step = 8) {
+  const ctx = cv.getContext('2d')
+  const { width, height } = cv
+  const sx = Math.max(1, Math.round(width / 400)) // échantillonnage si grand doc
+  const d = ctx.getImageData(0, 0, width, height, { willReadFrequently: true })
+  const h = new Float32Array(256)
+  const px = d.data
+  for (let i = 0; i < px.length; i += 4 * sx) {
+    h[Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2])]++
+  }
+  const max = Math.max(...h)
+  return { h, max }
+}
+
 const mkCanvas = (w, h) => {
   const cv = document.createElement('canvas')
   cv.width = Math.max(1, Math.round(w))
@@ -35,6 +91,8 @@ export class Editor {
   docName = 'document'
   sel = null          // [x, y, w, h] en coordonnées image, ou null
   isMontage = false   // vrai si le doc vient du montage avant/après
+  curves = { rgb: null, r: null, g: null, b: null } // points de contrôle par canal
+  _cf = null          // cache du composite filtré
 
   // ---- Document ---------------------------------------------------------------
 
@@ -59,7 +117,31 @@ export class Editor {
 
   _mkLayer(name) {
     const cv = mkCanvas(this.w, this.h)
-    return { id: uid++, name, cv, ctx: cv.getContext('2d'), visible: true, opacity: 1, dx: 0, dy: 0 }
+    return { id: uid++, name, cv, ctx: cv.getContext('2d'), visible: true, opacity: 1, dx: 0, dy: 0, blend: 'source-over' }
+  }
+
+  /** Invalide le composite caché — à appeler après toute mutation (la page le fait via bump). */
+  markDirty() { this._cf = null }
+
+  /** Miniature d'un calque (dataURL, pour le panneau Calques). */
+  layerThumb(l, w = 44, h = 32) {
+    const t = mkCanvas(w, h)
+    const ctx = t.getContext('2d')
+    const s = Math.min(w / l.cv.width, h / l.cv.height)
+    ctx.drawImage(l.cv, (w - l.cv.width * s) / 2, (h - l.cv.height * s) / 2, l.cv.width * s, l.cv.height * s)
+    return t.toDataURL('image/png')
+  }
+
+  /** Redimensionne le calque actif par un facteur autour d'un point d'ancrage. */
+  scaleLayer(l, sx, sy, ax = 0, ay = 0) {
+    if (!l || l.locked) return
+    const next = mkCanvas(this.w, this.h)
+    const ctx = next.getContext('2d')
+    ctx.translate(ax, ay)
+    ctx.scale(sx, sy)
+    ctx.drawImage(l.cv, -ax, -ay)
+    l.cv = next
+    l.ctx = ctx
   }
 
   addLayer(name = `Calque ${this.layers.length}`) {
@@ -155,21 +237,72 @@ export class Editor {
     for (const l of this.layers) {
       if (!l.visible) continue
       ctx.globalAlpha = l.opacity
+      ctx.globalCompositeOperation = l.blend || 'source-over'
+      if (l.fx?.shadow) {
+        ctx.shadowColor = 'rgba(0,0,0,0.45)'
+        ctx.shadowBlur = Math.round(this.w / 80)
+        ctx.shadowOffsetX = Math.round(this.w / 150)
+        ctx.shadowOffsetY = Math.round(this.w / 120)
+      }
       ctx.drawImage(l.cv, l.dx, l.dy)
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = ctx.shadowOffsetY = 0
     }
     ctx.globalAlpha = 1
+    ctx.globalCompositeOperation = 'source-over'
     return cv
   }
 
-  /** Composite avec filtres appliqués (export / écran) */
+  /** Composite avec filtres + courbes (cache : recalculé seulement après markDirty) */
   compositeFiltered() {
+    if (this._cf) return this._cf
     const src = this.composite()
-    if (!this.adjustVisible) return src
+    const hasCurves = this.curves.rgb || this.curves.r || this.curves.g || this.curves.b
+    if (!this.adjustVisible && !hasCurves) { this._cf = src; return src }
     const cv = mkCanvas(this.w, this.h)
     const ctx = cv.getContext('2d')
-    ctx.filter = filterString(this.adjust)
+    if (this.adjustVisible) ctx.filter = filterString(this.adjust)
     ctx.drawImage(src, 0, 0)
+    if (hasCurves) {
+      applyLUTs(cv, {
+        rgb: this.curves.rgb ? curveLUT(this.curves.rgb) : null,
+        r: this.curves.r ? curveLUT(this.curves.r) : null,
+        g: this.curves.g ? curveLUT(this.curves.g) : null,
+        b: this.curves.b ? curveLUT(this.curves.b) : null,
+      })
+    }
+    this._cf = cv
     return cv
+  }
+
+  /** Sélection « baguette magique » : bbox de la région contiguë de couleur proche. */
+  wandSelect(ix, iy, tolerance = 32) {
+    const src = this.compositeFiltered()
+    const ctx = src.getContext('2d')
+    const W = src.width, H = src.height
+    ix = Math.floor(ix); iy = Math.floor(iy)
+    if (ix < 0 || iy < 0 || ix >= W || iy >= H) return null
+    const d = ctx.getImageData(0, 0, W, H).data
+    const idx = (x, y) => (y * W + x) * 4
+    const t0 = [d[idx(ix, iy)], d[idx(ix, iy) + 1], d[idx(ix, iy) + 2]]
+    const seen = new Uint8Array(W * H)
+    const stack = [[ix, iy]]
+    let minX = ix, maxX = ix, minY = iy, maxY = iy, n = 0
+    const match = (o) => Math.abs(d[o] - t0[0]) + Math.abs(d[o + 1] - t0[1]) + Math.abs(d[o + 2] - t0[2]) <= tolerance * 3
+    while (stack.length && n < W * H) {
+      const [x, y] = stack.pop()
+      const k = y * W + x
+      if (seen[k]) continue
+      seen[k] = 1
+      if (!match(k * 4)) continue
+      n++
+      if (x < minX) minX = x; if (x > maxX) maxX = x
+      if (y < minY) minY = y; if (y > maxY) maxY = y
+      if (x > 0) stack.push([x - 1, y]); if (x < W - 1) stack.push([x + 1, y])
+      if (y > 0) stack.push([x, y - 1]); if (y < H - 1) stack.push([x, y + 1])
+    }
+    if (n < 10) return null
+    this.sel = [minX, minY, maxX - minX + 1, maxY - minY + 1]
+    return this.sel
   }
 
   /** Image d'origine (calque 0, sans filtres ni calques) — mode « Avant » */
@@ -183,8 +316,9 @@ export class Editor {
    * Dessine le document dans `target` (canvas visible) avec la vue {scale, ox, oy}.
    * showOriginal : n'affiche que l'image de base sans calques/filtres (comparer).
    * cropRect : rectangle de recadrage en cours (coordonnées image).
+   * handles : calque dont on affiche les poignées de transformation.
    */
-  render(target, view, { showOriginal = false, cropRect = null } = {}) {
+  render(target, view, { showOriginal = false, cropRect = null, handles = null } = {}) {
     const ctx = target.getContext('2d')
     ctx.clearRect(0, 0, target.width, target.height)
     if (!this.w) return
@@ -232,6 +366,23 @@ export class Editor {
       ctx.setLineDash([6 / view.scale, 4 / view.scale])
       ctx.strokeRect(x, y, w, h)
       ctx.setLineDash([])
+    }
+    // poignées de transformation du calque actif (outil Déplacement)
+    if (handles && !handles.locked) {
+      const hs = 8 / view.scale
+      ctx.strokeStyle = '#4f8fe8'
+      ctx.lineWidth = 1.5 / view.scale
+      ctx.strokeRect(handles.dx, handles.dy, this.w, this.h)
+      ctx.fillStyle = '#ffffff'
+      ctx.strokeStyle = '#111827'
+      ctx.lineWidth = 1 / view.scale
+      for (const [cx, cy] of [
+        [handles.dx, handles.dy], [handles.dx + this.w, handles.dy],
+        [handles.dx, handles.dy + this.h], [handles.dx + this.w, handles.dy + this.h],
+      ]) {
+        ctx.fillRect(cx - hs / 2, cy - hs / 2, hs, hs)
+        ctx.strokeRect(cx - hs / 2, cy - hs / 2, hs, hs)
+      }
     }
     ctx.restore()
   }
