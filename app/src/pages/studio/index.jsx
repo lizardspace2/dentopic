@@ -312,10 +312,9 @@ export default function Studio() {
         }
         const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
         editor.snapshot()
-        // copie figée du calque : la duplication lit l'état d'avant le geste
-        const snap = document.createElement('canvas')
-        snap.width = editor.w; snap.height = editor.h
-        snap.getContext('2d').drawImage(l.cv, 0, 0)
+        // copie figée du COMPOSITE (tous les calques) — Photoshop échantillonne
+        // l'image visible, pas le calque cible (souvent vide)
+        const snap = editor.composite()
         stroke.current = { kind: 'stroke', l, last: [ix, iy], srcSnap: snap, so: cloneSrc.current, st: [ix, iy] }
         paint(ix, iy, l)
         break
@@ -327,10 +326,19 @@ export default function Studio() {
       case 'hand':
         stroke.current = { kind: 'pan', sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ox: view.ox, oy: view.oy }
         break
-      case 'brush':
-      case 'eraser': {
+      case 'brush': {
         const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
         editor.snapshot()
+        stroke.current = { kind: 'stroke', l, last: [ix, iy] }
+        paint(ix, iy, l)
+        break
+      }
+      case 'eraser': {
+        // gommer un calque verrouillé = le « convertir en calque » (Photoshop) :
+        // sinon on créait un calque vide et on n'effaçait rien
+        const l = editor.active || editor.addLayer()
+        editor.snapshot()
+        if (l.locked) l.locked = false
         stroke.current = { kind: 'stroke', l, last: [ix, iy] }
         paint(ix, iy, l)
         break
@@ -592,7 +600,9 @@ export default function Studio() {
 
   useEffect(() => {
     const h = async (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+      // on laisse les champs texte gérer leurs touches (Ctrl+A = sélectionner le texte…)
+      // mais les range/color/checkbox n'ont pas besoin du clavier → raccourcis actifs
+      if (e.target.matches('input:not([type]),input[type=text],input[type=search],input[type=number],textarea,select,[contenteditable]')) return
       const k = e.key.toLowerCase()
       if (e.ctrlKey || e.metaKey) {
         if (k === 'z' && e.shiftKey) { await editor.redo(); bump() }

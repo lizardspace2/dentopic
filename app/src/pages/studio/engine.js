@@ -444,7 +444,9 @@ export class Editor {
         }
         drawn = ov
       }
-      ctx.globalAlpha = fill
+      // Pixels : alpha = Opacité × Remplissage (Photoshop : l'opacité agit
+      // aussi sur les effets, le remplissage seulement sur les pixels)
+      ctx.globalAlpha = l.opacity * fill
       ctx.drawImage(drawn, l.dx, l.dy)
 
       // --- Effets internes (au-dessus) : alpha = opacité calque ---
