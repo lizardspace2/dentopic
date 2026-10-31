@@ -19,6 +19,17 @@ const panelBorder = D.darkBorder
 const fg = D.darkFg
 const muted = D.darkMuted
 
+// Familles de police de l'outil Texte (panneau Caractère)
+const TEXT_FONTS = ['Inter Tight', 'Arial', 'Georgia', 'Times New Roman', 'Courier New', 'Verdana']
+
+// Noms lisibles des effets fx (liste dépliable sous le calque)
+const FX_NAMES = {
+  shadow: 'Ombre portée', innerShadow: 'Ombre interne', glow: 'Lueur externe',
+  innerGlow: 'Lueur interne', bevel: 'Biseautage', satin: 'Satin',
+  colorOverlay: 'Incrustation couleur', gradientOverlay: 'Incrustation dégradé',
+  stroke: 'Contour',
+}
+
 // ---- Barre de menus (Fichier / Édition / Image / Calque / Affichage) -----------
 
 export function MenuBar({ menus, docName, zoom }) {
@@ -161,11 +172,44 @@ export function OptionsBar({
           <Tip label="Diamètre de la gomme (px)"><Text {...row}>Taille {opts.eraserSize}px</Text></Tip>{slider('eraserSize', 2, 120)}
         </>
       )}
+      {tool === 'clone' && (
+        <>
+          <Tip label="Alt+clic sur la zone à dupliquer, puis peignez"><Text {...row}>Taille {opts.cloneSize}px</Text></Tip>{slider('cloneSize', 8, 200)}
+          <Tip label="Transparence de la copie"><Text {...row}>Opacité {Math.round((opts.cloneOpacity ?? 1) * 100)}%</Text></Tip>{slider('cloneOpacity', 0.1, 1, 0.05)}
+          <Text {...row}>Alt+clic = source · glisser = dupliquer</Text>
+        </>
+      )}
+      {tool === 'bucket' && (
+        <>
+          <Tip label="Écart de couleur accepté"><Text {...row}>Tolérance {opts.tol}</Text></Tip>{slider('tol', 4, 120)}
+          <Text {...row}>Cliquer → remplit la zone avec le premier plan</Text>
+        </>
+      )}
       {tool === 'text' && (
         <>
+          <Tip label="Police du calque texte">
+            <Box as="select" fontSize="2xs" bg="#1c2433" color={fg} borderRadius="sm"
+              border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+              value={opts.textFont} onChange={(e) => setOpts({ ...opts, textFont: e.target.value })}>
+              {TEXT_FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
+            </Box>
+          </Tip>
           <Tip label="Corps du texte"><Text {...row}>Taille</Text></Tip>
-          <Input type="number" w="60px" h="20px" fontSize="2xs" value={opts.textSize}
+          <Input type="number" w="52px" h="20px" fontSize="2xs" value={opts.textSize}
             onChange={(e) => setOpts({ ...opts, textSize: +e.target.value || 24 })} />
+          <Tip label="Gras">
+            <Box as="button" px="1.5" h="20px" fontSize="2xs" fontWeight="800" borderRadius="sm" cursor="pointer"
+              bg={opts.textBold ? C.primary : 'whiteAlpha.100'} color="#ffffff"
+              onClick={() => setOpts({ ...opts, textBold: !opts.textBold })}>B</Box>
+          </Tip>
+          <Tip label="Italique">
+            <Box as="button" px="1.5" h="20px" fontSize="2xs" fontStyle="italic" borderRadius="sm" cursor="pointer"
+              bg={opts.textItalic ? C.primary : 'whiteAlpha.100'} color="#ffffff"
+              onClick={() => setOpts({ ...opts, textItalic: !opts.textItalic })}>I</Box>
+          </Tip>
+          <Tip label="Interlettrage (px entre caractères)"><Text {...row}>Crénage</Text></Tip>
+          <Input type="number" w="46px" h="20px" fontSize="2xs" value={opts.textTracking}
+            onChange={(e) => setOpts({ ...opts, textTracking: +e.target.value || 0 })} />
           <Tip label="Couleur du texte"><SwatchPicker value={opts.fg} onChange={(v) => setOpts({ ...opts, fg: v })} /></Tip>
         </>
       )}
@@ -175,7 +219,7 @@ export function OptionsBar({
           <Tip label="Abandonner — Échap">{btn('Annuler', onCancelCrop)}</Tip>
         </>
       )}
-      {tool === 'rect' && hasSel && (
+      {(tool === 'rect' || tool === 'lasso' || tool === 'wand') && hasSel && (
         <>
           <Tip label="Remplit la sélection avec la couleur de premier plan">{btn('Remplir', onFill)}</Tip>
           <Tip label="Vide le contenu de la sélection — Suppr">{btn('Effacer', onDelete)}</Tip>
@@ -207,11 +251,13 @@ export function OptionsBar({
           <Text {...row}>Cliquer une couleur → sélection de la zone</Text>
         </>
       )}
-      {['hand', 'zoom', 'picker', 'rect'].includes(tool) && !(tool === 'rect' && hasSel) && (
+      {['hand', 'zoom', 'picker', 'rect', 'lasso', 'gradient'].includes(tool) && !hasSel && (
         <Text {...row}>
           {{ hand: 'Glisser déplace la vue',
             zoom: 'Cliquer pour zoomer (Alt = dézoomer)', picker: 'Cliquer pour prélever la couleur',
-            rect: 'Trace une zone de sélection' }[tool]}
+            rect: 'Trace une zone de sélection',
+            lasso: 'Trace une sélection à main levée — relâcher ferme la forme',
+            gradient: 'Glissez pour tirer un dégradé 1er plan → arrière-plan' }[tool]}
         </Text>
       )}
       <Box flex="1" />
@@ -247,8 +293,9 @@ function SwatchPicker({ value, onChange }) {
 
 // ---- Panneau droit : Calques ----------------------------------------------------
 
-export function LayersPanel({ editor, version, onChange }) {
+export function LayersPanel({ editor, version, onChange, onFx }) {
   const layers = [...editor.layers].reverse()
+  const fxList = (l) => l.fx ? Object.entries(l.fx).filter(([, f]) => f?.on).map(([k]) => FX_NAMES[k] || k) : []
   return (
     <VStack align="stretch" gap="0" flex="1" overflowY="auto">
       {/* Calque de réglage global */}
@@ -263,47 +310,68 @@ export function LayersPanel({ editor, version, onChange }) {
           <Text flex="1" fontSize="xs">Réglages (filtres)</Text>
         </Tip>
       </HStack>
-      {layers.map((l) => (
-        <HStack
-          key={l.id} px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
-          bg={editor.activeId === l.id ? 'whiteAlpha.100' : 'transparent'}
-          borderBottom="1px solid" borderColor="whiteAlpha.50"
-          color={l.visible ? fg : muted}
-          onClick={() => { editor.setActive(l.id); onChange() }}
-        >
-          <Tip label={l.visible ? 'Masquer le calque' : 'Afficher le calque'}>
-            <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
-              onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
-          </Tip>
-          <Tip label={l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
-            <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
-              bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
-              <img src={editor.layerThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
-            </Box>
-          </Tip>
-          <Text flex="1" isTruncated>{l.name}{l.locked ? ' 🔒' : ''}</Text>
-          {editor.activeId === l.id && !l.locked && (
-            <HStack gap="0.5" flexShrink={0}>
-              <Tip label="Monter le calque">
-                <Box as={FiArrowUp} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
-                  onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, 1); onChange() }} />
+      {layers.map((l) => {
+        const fxs = fxList(l)
+        return (
+          <Box key={l.id}>
+            <HStack
+              px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
+              bg={editor.activeId === l.id ? 'whiteAlpha.100' : 'transparent'}
+              color={l.visible ? fg : muted}
+              onClick={() => { editor.setActive(l.id); onChange() }}
+            >
+              <Tip label={l.visible ? 'Masquer le calque' : 'Afficher le calque'}>
+                <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
+                  onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
               </Tip>
-              <Tip label="Descendre le calque">
-                <Box as={FiArrowDown} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
-                  onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, -1); onChange() }} />
+              <Tip label={l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
+                <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
+                  bg="#2a3140" border="1px solid" borderColor="whiteAlpha.100">
+                  <img src={editor.layerThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
+                </Box>
               </Tip>
-              <Tip label="Dupliquer le calque">
-                <Box as={FiCopy} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
-                  onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.duplicateLayer(l.id); onChange() }} />
-              </Tip>
-              <Tip label="Supprimer le calque">
-                <Box as={FiTrash2} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: '#f87171' }}
-                  onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.removeLayer(l.id); onChange() }} />
-              </Tip>
+              <Text flex="1" isTruncated>{l.name}{l.locked ? ' 🔒' : ''}</Text>
+              {fxs.length > 0 && (
+                <Tip label="Styles de calque actifs — double-clic pour éditer">
+                  <Text fontSize="2xs" color={C.primary} fontWeight="700" flexShrink={0}
+                    onClick={(e) => { e.stopPropagation(); editor.setActive(l.id); onFx?.() }}>fx</Text>
+                </Tip>
+              )}
+              {editor.activeId === l.id && !l.locked && (
+                <HStack gap="0.5" flexShrink={0}>
+                  <Tip label="Monter le calque">
+                    <Box as={FiArrowUp} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
+                      onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, 1); onChange() }} />
+                  </Tip>
+                  <Tip label="Descendre le calque">
+                    <Box as={FiArrowDown} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
+                      onClick={(e) => { e.stopPropagation(); editor.moveLayer(l.id, -1); onChange() }} />
+                  </Tip>
+                  <Tip label="Dupliquer le calque">
+                    <Box as={FiCopy} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: fg }}
+                      onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.duplicateLayer(l.id); onChange() }} />
+                  </Tip>
+                  <Tip label="Supprimer le calque">
+                    <Box as={FiTrash2} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: '#f87171' }}
+                      onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.removeLayer(l.id); onChange() }} />
+                  </Tip>
+                </HStack>
+              )}
             </HStack>
-          )}
-        </HStack>
-      ))}
+            {fxs.length > 0 && (
+              <VStack align="stretch" gap="0" pl="14" pb="1">
+                {fxs.map((n) => (
+                  <Tip key={n} label={`Effet « ${n} » — clic pour éditer`}>
+                    <Text fontSize="2xs" color={muted} cursor="pointer" _hover={{ color: fg }}
+                      onClick={() => { editor.setActive(l.id); onFx?.() }}>{n}</Text>
+                  </Tip>
+                ))}
+              </VStack>
+            )}
+            <Box h="1px" bg="whiteAlpha.50" />
+          </Box>
+        )
+      })}
       {editor.active && (
         <HStack px="2.5" py="1.5" gap="2" borderTop="1px solid" borderColor={panelBorder}>
           <Tip label="Mode de fusion du calque avec ceux du dessous">
@@ -315,14 +383,10 @@ export function LayersPanel({ editor, version, onChange }) {
             onChange={(e) => { editor.snapshot(); editor.active.blend = e.target.value; onChange() }}>
             {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
           </Box>
-          <Tip label="Ombre portée sur le calque actif">
+          <Tip label="Style de calque — ombres, lueurs, contour, incrustations…">
             <Box as="button" px="1.5" h="20px" fontSize="2xs" borderRadius="sm" cursor="pointer"
-              bg={editor.active.fx?.shadow ? C.primary : 'whiteAlpha.100'} color="#ffffff"
-              onClick={() => {
-                editor.snapshot()
-                editor.active.fx = { ...(editor.active.fx || {}), shadow: !editor.active.fx?.shadow }
-                onChange()
-              }}>fx</Box>
+              bg={fxList(editor.active).length ? C.primary : 'whiteAlpha.100'} color="#ffffff"
+              onClick={onFx}>fx</Box>
           </Tip>
         </HStack>
       )}
@@ -334,15 +398,26 @@ export function LayersPanel({ editor, version, onChange }) {
           </HStack>
         </Tip>
         {editor.active && (
-          <Tip label="Opacité du calque actif" flex="1">
-            <HStack gap="1.5" flex="1">
-              <Text fontSize="2xs" color={muted}>Opacité</Text>
-              <Input type="range" min="0" max="1" step="0.05" h="16px" flex="1"
-                value={editor.active.opacity}
-                onPointerDown={() => editor.snapshot()}
-                onChange={(e) => { editor.active.opacity = +e.target.value; onChange() }} />
-            </HStack>
-          </Tip>
+          <>
+            <Tip label="Opacité — affecte le calque ET ses effets" flex="1">
+              <HStack gap="1" flex="1">
+                <Text fontSize="2xs" color={muted}>Opacité</Text>
+                <Input type="range" min="0" max="1" step="0.05" h="16px" flex="1"
+                  value={editor.active.opacity}
+                  onPointerDown={() => editor.snapshot()}
+                  onChange={(e) => { editor.active.opacity = +e.target.value; onChange() }} />
+              </HStack>
+            </Tip>
+            <Tip label="Remplissage — affecte les pixels seuls (les effets fx restent visibles)" flex="1">
+              <HStack gap="1" flex="1">
+                <Text fontSize="2xs" color={muted}>Rempl.</Text>
+                <Input type="range" min="0" max="1" step="0.05" h="16px" flex="1"
+                  value={editor.active.fill ?? 1}
+                  onPointerDown={() => editor.snapshot()}
+                  onChange={(e) => { editor.active.fill = +e.target.value; onChange() }} />
+              </HStack>
+            </Tip>
+          </>
         )}
       </HStack>
     </VStack>
@@ -396,7 +471,7 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
     if (!name) return
     const a = editor.adjust
     const keep = ['exposure', 'brightness', 'contrast', 'saturate', 'temp', 'tint',
-      'inBlack', 'gamma', 'inWhite', 'sharp', 'hue', 'grayscale', 'sepia']
+      'inBlack', 'gamma', 'inWhite', 'outBlack', 'outWhite', 'sharp', 'hue', 'grayscale', 'sepia']
     const adjust = {}
     for (const k of keep) adjust[k] = a[k]
     const next = [...userPresets, { name, adjust }]
@@ -492,6 +567,7 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
           editor.snapshot()
           editor.adjust = { brightness: 100, contrast: 100, saturate: 100, hue: 0, blur: 0,
             grayscale: 0, sepia: 0, invert: 0, inBlack: 0, gamma: 100, inWhite: 255,
+            outBlack: 0, outWhite: 255,
             exposure: 0, temp: 0, tint: 0, sharp: 0 }
           editor.wb = null
           onChange()
@@ -808,6 +884,96 @@ export function DentalPanel({ editor, version, onChange, dental }) {
   )
 }
 
+// ---- Panneau droit : Histogramme (stats façon Photoshop) -------------------------
+
+export function HistogramPanel({ editor, version }) {
+  const cvRef = useRef(null)
+  const [stats, setStats] = useState(null)
+  const W = 216, H = 120
+  useEffect(() => {
+    const cv = cvRef.current
+    if (!cv || !editor.w) return
+    const ctx = cv.getContext('2d')
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, W, H)
+    try {
+      const st = histogram(editor.compositeFiltered())
+      setStats(st)
+      // trois canaux superposés : R / V / B + luminance en blanc
+      const draw = (h, color) => {
+        const mx = Math.max(...h) || 1
+        ctx.fillStyle = color
+        for (let i = 0; i < 256; i += 2) {
+          const hh = (h[i] / mx) * H * 0.9
+          ctx.fillRect((i / 255) * W, H - hh, Math.max(1, W / 128), hh)
+        }
+      }
+      draw(st.h, 'rgba(255,255,255,0.75)')
+    } catch { /* doc pas prêt */ }
+  }, [version]) // eslint-disable-line
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3" flex="1" overflowY="auto">
+      <Tip label="Distribution des luminances du composite édité" display="block">
+        <Box as="canvas" ref={cvRef} width={W} height={H} borderRadius="sm"
+          border="1px solid" borderColor={panelBorder} />
+      </Tip>
+      {stats && (
+        <VStack align="stretch" gap="1" fontSize="2xs" color={muted}>
+          <InfoRow k="Moyenne" v={stats.mean.toFixed(2)} />
+          <InfoRow k="Écart type" v={stats.stdDev.toFixed(2)} />
+          <InfoRow k="Médiane" v={stats.median} />
+          <InfoRow k="Pixels" v={stats.pixels.toLocaleString('fr-FR')} />
+          <InfoRow k="Niveau de cache" v="1" />
+        </VStack>
+      )}
+    </VStack>
+  )
+}
+
+// ---- Panneau droit : Navigateur (vue d'ensemble + cadre viewport) -----------------
+
+export function NavigatorPanel({ editor, version, view, stageSize, onNav }) {
+  const cvRef = useRef(null)
+  const drag = useRef(false)
+  const W = 216
+  const navH = editor.w ? Math.min(170, Math.round(W * editor.h / editor.w)) : 120
+  const k = () => Math.min(W / editor.w, navH / editor.h) // miniaturisation doc → panneau
+  const draw = () => {
+    const cv = cvRef.current
+    if (!cv || !editor.w) return
+    const ctx = cv.getContext('2d')
+    ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, W, navH)
+    ctx.drawImage(editor.compositeFiltered(), 0, 0, editor.w * k(), editor.h * k())
+    // cadre rouge = zone visible dans le canevas principal
+    const s = view.scale, [vw, vh] = [stageSize.w, stageSize.h]
+    const x0 = Math.max(0, -view.ox / s) * k(), y0 = Math.max(0, -view.oy / s) * k()
+    const x1 = Math.min(editor.w, (vw - view.ox) / s) * k(), y1 = Math.min(editor.h, (vh - view.oy) / s) * k()
+    if (x1 > x0 && y1 > y0) {
+      ctx.strokeStyle = '#f87171'
+      ctx.lineWidth = 1.5
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0)
+    }
+  }
+  useEffect(draw, [version, view, stageSize]) // eslint-disable-line
+  const toDoc = (e) => {
+    const r = cvRef.current.getBoundingClientRect()
+    return [(e.clientX - r.left) / k(), (e.clientY - r.top) / k()]
+  }
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3">
+      <Tip label="Vue d'ensemble — cliquez ou glissez pour déplacer la zone affichée" display="block">
+        <Box as="canvas" ref={cvRef} width={W} height={navH} borderRadius="sm"
+          border="1px solid" borderColor={panelBorder} cursor="crosshair" style={{ touchAction: 'none' }}
+          onPointerDown={(e) => { drag.current = true; e.currentTarget.setPointerCapture(e.pointerId); onNav(...toDoc(e)) }}
+          onPointerMove={(e) => drag.current && onNav(...toDoc(e))}
+          onPointerUp={() => { drag.current = false }} />
+      </Tip>
+      <Text fontSize="2xs" color={muted}>
+        Le cadre rouge indique la partie du document visible dans le canevas.
+      </Text>
+    </VStack>
+  )
+}
+
 // ---- Panneau droit : Infos --------------------------------------------------------
 
 export function InfoPanel({ editor, zoom, cursor }) {
@@ -870,13 +1036,15 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
 
 // ---- Panneau latéral à onglets -------------------------------------------------------
 
-export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental }) {
+export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, view, stageSize, onNav }) {
   const [tab, setTab] = useState('dental')
   const TABS = [
     ['dental', 'Dentaire', 'Avant/après, redresser, calibrer, teinte, référence, planche'],
-    ['layers', 'Calques', 'Empilement, fusion, opacité, effets fx'],
+    ['layers', 'Calques', 'Empilement, fusion, opacité, remplissage, effets fx'],
     ['adjust', 'Réglages', 'Exposition, balance des blancs, niveaux, effets'],
     ['curves', 'Courbes', 'Tonalité par canal RGB/R/V/B'],
+    ['nav', 'Nav.', 'Vue d\'ensemble et déplacement du cadre visible'],
+    ['histo', 'Histo', 'Histogramme et statistiques de luminance'],
     ['info', 'Infos', 'Document, dimensions, curseur, couleur'],
   ]
   return (
@@ -895,10 +1063,12 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
       </HStack>
       <Flex flex="1" direction="column" overflow="hidden">
         {tab === 'dental' && <DentalPanel editor={editor} version={version} onChange={onChange} dental={dental} />}
-        {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} />}
+        {tab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} onFx={onFx} />}
         {tab === 'adjust' && <AdjustPanel editor={editor} onChange={onChange}
           wbPick={wbPick} onWbPick={onWbPick} comparing={comparing} onCompare={onCompare} />}
         {tab === 'curves' && <CurvesPanel editor={editor} version={version} onChange={onChange} />}
+        {tab === 'nav' && <NavigatorPanel editor={editor} version={version} view={view} stageSize={stageSize} onNav={onNav} />}
+        {tab === 'histo' && <HistogramPanel editor={editor} version={version} />}
         {tab === 'info' && <InfoPanel editor={editor} zoom={zoom} cursor={cursor} />}
       </Flex>
     </Flex>

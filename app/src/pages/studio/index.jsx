@@ -19,7 +19,7 @@ import {
 import {
   MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas,
 } from './panels'
-import { OpenPhotoModal, ExportModal, MontageModal, SheetModal } from './modals'
+import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal } from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 
@@ -37,11 +37,18 @@ export default function Studio() {
   const containerRef = useRef(null)
   const fileInput = useRef(null)
   const stroke = useRef(null) // état du drag en cours
+  const cloneSrc = useRef(null) // source du tampon de duplication [x, y] (Alt+clic)
+  const [gradLine, setGradLine] = useState(null) // aperçu du dégradé pendant le drag
   const lastSample = useRef(0) // throttle pipette (panneau Infos)
 
   const [tool, setTool] = useState('move')
-  const [opts, setOpts] = useState({ fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, eraserSize: 30, textSize: 32, tol: 32, transform: false })
+  const [opts, setOpts] = useState({
+    fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, eraserSize: 30,
+    textSize: 32, textFont: 'Inter Tight', textBold: true, textItalic: false, textTracking: 0,
+    tol: 32, transform: false, cloneSize: 48, cloneOpacity: 1,
+  })
   const [view, setView] = useState({ scale: 1, ox: 40, oy: 40 })
+  const [stageSize, setStageSize] = useState({ w: 0, h: 0 })
   const [version, setVersion] = useState(0) // bump → re-render canvas + panneaux
   const [docOpen, setDocOpen] = useState(false)
   const [srcPhoto, setSrcPhoto] = useState(null)
@@ -125,11 +132,11 @@ export default function Studio() {
       showOriginal, cropRect, compare,
       handles: tool === 'move' && opts.transform ? editor.active : null,
       previewRotate: straighten?.angle || 0,
-      line: straighten?.line || null,
+      line: straighten?.line || gradLine || null,
       overlay: refOverlay && refImg ? { img: refImg } : null,
     })
   }, [editor, view, showOriginal, cropRect, compare, tool, opts.transform, version,
-    straighten, refOverlay, refImg])
+    straighten, refOverlay, refImg, gradLine])
 
   useEffect(render, [render, version])
 
@@ -140,6 +147,7 @@ export default function Studio() {
       if (!c || !cv) return
       cv.width = c.clientWidth
       cv.height = c.clientHeight
+      setStageSize({ w: c.clientWidth, h: c.clientHeight })
       render()
     })
     if (containerRef.current) ro.observe(containerRef.current)
@@ -286,6 +294,36 @@ export default function Studio() {
         editor.wandSelect(ix, iy, opts.tol)
         bump()
         break
+      case 'lasso':
+        stroke.current = { kind: 'lasso', pts: [[ix, iy]] }
+        editor.lassoSelect([[ix, iy], [ix, iy], [ix, iy]])
+        bump()
+        break
+      case 'bucket':
+        editor.snapshot()
+        editor.bucketFill(ix, iy, opts.fg, opts.tol)
+        bump()
+        break
+      case 'clone': {
+        // Alt+clic = point de source ; sinon premier clic fixe la source
+        if (e.altKey || !cloneSrc.current) {
+          cloneSrc.current = [ix, iy]
+          break
+        }
+        const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
+        editor.snapshot()
+        // copie figée du calque : la duplication lit l'état d'avant le geste
+        const snap = document.createElement('canvas')
+        snap.width = editor.w; snap.height = editor.h
+        snap.getContext('2d').drawImage(l.cv, 0, 0)
+        stroke.current = { kind: 'stroke', l, last: [ix, iy], srcSnap: snap, so: cloneSrc.current, st: [ix, iy] }
+        paint(ix, iy, l)
+        break
+      }
+      case 'gradient':
+        stroke.current = { kind: 'gradient', x0: ix, y0: iy }
+        setGradLine([ix, iy, ix, iy])
+        break
       case 'hand':
         stroke.current = { kind: 'pan', sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ox: view.ox, oy: view.oy }
         break
@@ -308,6 +346,7 @@ export default function Studio() {
         stroke.current = { kind: 'crop', x0: ix, y0: iy }
         break
       case 'rect':
+        editor.selPoly = null
         editor.sel = [ix, iy, 0, 0]
         stroke.current = { kind: 'sel', x0: ix, y0: iy }
         break
@@ -318,7 +357,7 @@ export default function Studio() {
         editor.snapshot(); editor.rotate90(); bump()
         break
       case 'text':
-        setTextInput({ sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ix, iy })
+        setTextInput({ sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ix, iy, t: Date.now() })
         break
     }
   }
@@ -328,26 +367,43 @@ export default function Studio() {
     if (!s) return
     const ctx = l.ctx
     ctx.save()
-    if (editor.sel) {
+    // clip à la sélection (rectangle ou lasso)
+    ctx.beginPath()
+    if (editor.selPoly) {
+      editor.selPoly.forEach(([x, y], i) => ctx[i ? 'lineTo' : 'moveTo'](x - l.dx, y - l.dy))
+      ctx.closePath()
+    } else if (editor.sel) {
       const [sx, sy, sw, sh] = editor.sel
-      ctx.beginPath()
       ctx.rect(sx - l.dx, sy - l.dy, sw, sh)
-      ctx.clip()
-    }
+    } else ctx.rect(0, 0, editor.w, editor.h)
+    ctx.clip()
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     if (tool === 'eraser') {
       ctx.globalCompositeOperation = 'destination-out'
       ctx.lineWidth = opts.eraserSize
+      ctx.beginPath()
+      ctx.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
+      ctx.lineTo(ix - l.dx, iy - l.dy)
+      ctx.stroke()
+    } else if (tool === 'clone' && s.srcSnap) {
+      // tampon : la source suit le geste avec le décalage source→départ
+      const r = opts.cloneSize / 2
+      const cx = ix - l.dx, cy = iy - l.dy
+      const dvx = (s.so[0] - s.st[0]), dvy = (s.so[1] - s.st[1])
+      const sx = cx + dvx, sy = cy + dvy
+      ctx.globalAlpha = opts.cloneOpacity ?? 1
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip()
+      ctx.drawImage(s.srcSnap, sx - r, sy - r, opts.cloneSize, opts.cloneSize, cx - r, cy - r, opts.cloneSize, opts.cloneSize)
     } else {
       ctx.strokeStyle = opts.fg
       ctx.globalAlpha = opts.brushOpacity
       ctx.lineWidth = opts.brushSize
+      ctx.beginPath()
+      ctx.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
+      ctx.lineTo(ix - l.dx, iy - l.dy)
+      ctx.stroke()
     }
-    ctx.beginPath()
-    ctx.moveTo(s.last[0] - l.dx, s.last[1] - l.dy)
-    ctx.lineTo(ix - l.dx, iy - l.dy)
-    ctx.stroke()
     ctx.restore()
     s.last = [ix, iy]
     bump()
@@ -368,6 +424,12 @@ export default function Studio() {
     const s = stroke.current
     if (!s) return
     if (s.kind === 'stroke') paint(ix, iy, s.l)
+    else if (s.kind === 'lasso') {
+      s.pts.push([ix, iy])
+      editor.lassoSelect(s.pts)
+      bump()
+    }
+    else if (s.kind === 'gradient') setGradLine([s.x0, s.y0, ix, iy])
     else if (s.kind === 'divider') setCompare(clamp(ix / editor.w, 0.02, 0.98))
     else if (s.kind === 'ruler') setStraighten((st) => ({ ...st, line: [s.x0, s.y0, ix, iy] }))
     else if (s.kind === 'move') {
@@ -399,6 +461,18 @@ export default function Studio() {
   const onPointerUp = () => {
     const s = stroke.current
     if (s?.kind === 'sel' && editor.sel && (editor.sel[2] < 3 || editor.sel[3] < 3)) editor.sel = null
+    if (s?.kind === 'lasso') {
+      if (!s.pts || s.pts.length < 3) editor.deselect()
+      bump()
+    }
+    if (s?.kind === 'gradient') {
+      setGradLine(null)
+      if (gradLine && Math.hypot(gradLine[2] - gradLine[0], gradLine[3] - gradLine[1]) > 4) {
+        editor.snapshot()
+        editor.gradientFill(gradLine[0], gradLine[1], gradLine[2], gradLine[3], opts.fg, opts.bg)
+      }
+      bump()
+    }
     if (s?.kind === 'ruler' && straighten?.line) {
       const [x1, y1, x2, y2] = straighten.line
       const dx = x2 - x1, dy = y2 - y1
@@ -413,11 +487,14 @@ export default function Studio() {
 
   const commitText = (value) => {
     if (!textInput || !value.trim()) { setTextInput(null); return }
-    const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
+    const l = editor.active?.locked ? editor.addLayer('Texte') : editor.active || editor.addLayer('Texte')
     editor.snapshot()
-    l.ctx.font = `600 ${opts.textSize}px 'Inter Tight', sans-serif`
+    const style = `${opts.textItalic ? 'italic ' : ''}${opts.textBold ? '700' : '400'} ${opts.textSize}px '${opts.textFont}', sans-serif`
+    l.ctx.font = style
+    try { l.ctx.letterSpacing = `${opts.textTracking || 0}px` } catch { /* navigateur sans support */ }
     l.ctx.fillStyle = opts.fg
     l.ctx.fillText(value, textInput.ix - l.dx, textInput.iy - l.dy)
+    l.name = `T — ${value.slice(0, 24)}`
     setTextInput(null)
     bump()
   }
@@ -526,7 +603,7 @@ export default function Studio() {
         else if (k === 'd') { e.preventDefault(); editor.deselect(); bump() }
         return
       }
-      const map = { v: 'move', c: 'crop', m: 'rect', w: 'wand', b: 'brush', e: 'eraser', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate' }
+      const map = { v: 'move', c: 'crop', m: 'rect', l: 'lasso', w: 'wand', b: 'brush', s: 'clone', e: 'eraser', g: 'gradient', k: 'bucket', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate' }
       if (map[k]) setTool(map[k])
       else if (k === '+') zoomAt(1.25)
       else if (k === '-') zoomAt(0.8)
@@ -600,11 +677,20 @@ export default function Studio() {
               fontSize="sm" bg="#1c2433" color="#ffffff" border="1px solid" borderColor={C.primary}
               autoFocus placeholder="Texte…" zIndex="6"
               onKeyDown={(e) => { if (e.key === 'Enter') commitText(e.target.value); if (e.key === 'Escape') setTextInput(null) }}
-              onBlur={(e) => commitText(e.target.value)}
+              onBlur={(e) => {
+                // blur parasite du clic qui a ouvert le champ : on refocus
+                if (Date.now() - (textInput.t || 0) < 500) { e.target.focus(); return }
+                commitText(e.target.value)
+              }}
             />
           )}
         </Box>
         {docOpen && <RightPanel editor={editor} version={version} zoom={view.scale} cursor={cursor} onChange={bump}
+          onFx={() => setModal('style')}
+          view={view} stageSize={stageSize}
+          onNav={(ix, iy) => setView((v) => ({
+            ...v, ox: stageSize.w / 2 - ix * v.scale, oy: stageSize.h / 2 - iy * v.scale,
+          }))}
           wbPick={wbPick} onWbPick={() => setWbPick((v) => !v)}
           comparing={compare != null} onCompare={() => setCompare((c) => (c != null ? null : 0.5))}
           dental={{
@@ -629,6 +715,16 @@ export default function Studio() {
       <OpenPhotoModal open={modal === 'refpick'} onClose={() => setModal(null)} wsId={wsId} onPick={pickRefPhoto} />
       <MontageModal open={modal === 'montage'} onClose={() => setModal(null)} wsId={wsId} onCreate={openMontage} />
       <SheetModal open={modal === 'sheet'} onClose={() => setModal(null)} wsId={wsId} onCompose={composeSheet} />
+      <LayerStyleModal open={modal === 'style'} onClose={() => setModal(null)}
+        layer={editor.active}
+        onApply={(fx, lOpt) => {
+          const l = editor.active
+          if (!l) return
+          editor.snapshot()
+          l.fx = fx
+          l.opacity = lOpt.opacity; l.fill = lOpt.fill; l.blend = lOpt.blend
+          bump()
+        }} />
       <ExportModal open={modal === 'export'} onClose={() => setModal(null)}
         docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
     </Flex>

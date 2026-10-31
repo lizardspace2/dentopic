@@ -3,17 +3,22 @@ import {
   FiCrop, FiEdit2, FiFeather, FiMove, FiRotateCw,
   FiSquare, FiType, FiZoomIn, FiZap,
 } from 'react-icons/fi'
-import { LuHand } from 'react-icons/lu'
-import { TbColorPicker } from 'react-icons/tb'
+import { LuHand, LuPaintBucket, LuStamp } from 'react-icons/lu'
+import { MdGradient } from 'react-icons/md'
+import { TbColorPicker, TbLassoPolygon } from 'react-icons/tb'
 
 // Barre d'outils verticale (ordre = affichage)
 export const TOOLS = [
   { key: 'move', icon: FiMove, label: 'Déplacement', hint: 'Déplace le calque actif — V' },
   { key: 'crop', icon: FiCrop, label: 'Recadrage', hint: 'Trace une zone puis valide — C' },
   { key: 'rect', icon: FiSquare, label: 'Sélection', hint: 'Rectangle de sélection — M' },
+  { key: 'lasso', icon: TbLassoPolygon, label: 'Lasso', hint: 'Sélection à main levée — L' },
   { key: 'wand', icon: FiZap, label: 'Baguette', hint: 'Sélection par couleur — W' },
   { key: 'brush', icon: FiEdit2, label: 'Pinceau', hint: 'Dessine sur le calque actif — B' },
+  { key: 'clone', icon: LuStamp, label: 'Tampon', hint: 'Alt+clic = source, puis duplique — S' },
   { key: 'eraser', icon: FiFeather, label: 'Gomme', hint: 'Efface le calque actif — E' },
+  { key: 'gradient', icon: MdGradient, label: 'Dégradé', hint: 'Glisser = dégradé 1er plan → arrière-plan — G' },
+  { key: 'bucket', icon: LuPaintBucket, label: 'Pot de peinture', hint: 'Remplit la zone contiguë — K' },
   { key: 'text', icon: FiType, label: 'Texte', hint: 'Clique puis saisis — T' },
   { key: 'picker', icon: TbColorPicker, label: 'Pipette', hint: 'Prélève une couleur — I' },
   { key: 'rotate', icon: FiRotateCw, label: 'Rotation', hint: 'Pivote le document de 90°' },
@@ -45,6 +50,8 @@ export const ADJUST_GROUPS = [
       { key: 'inBlack', label: 'Noirs entrée', min: 0, max: 254, tip: 'Seuil des ombres — tout en dessous devient noir' },
       { key: 'gamma', label: 'Gamma', min: 10, max: 400, fmt: (v) => (v / 100).toFixed(2), tip: 'Luminosité des tons moyens (courbe)' },
       { key: 'inWhite', label: 'Blancs entrée', min: 1, max: 255, tip: 'Seuil des hautes lumières — tout au-dessus devient blanc' },
+      { key: 'outBlack', label: 'Noirs sortie', min: 0, max: 254, tip: 'Plancher de sortie — remonte le noir (voile)' },
+      { key: 'outWhite', label: 'Blancs sortie', min: 1, max: 255, tip: 'Plafond de sortie — limite les blancs' },
     ],
   },
   {

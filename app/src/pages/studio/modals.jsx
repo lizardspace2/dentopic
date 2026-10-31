@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react'
 import { Box, Button, HStack, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiDownload, FiFolder, FiSave } from 'react-icons/fi'
-import { Card, Modal, SearchInput, Select, Tag, isTestName } from '../../components/ui'
+import { Card, Modal, SearchInput, Select, Tag, Tip, isTestName } from '../../components/ui'
 import { C } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
-import { SHEET_SLOTS } from './constants'
+import { BLEND_MODES, SHEET_SLOTS } from './constants'
+import { DEFAULT_FX } from './engine'
 
 // ---- Ouvrir : photo du workspace (ou import local géré par la page) -------------
 
@@ -282,6 +283,154 @@ export function SheetModal({ open, onClose, wsId, onCompose }) {
           )}
         </SimpleGrid>
       </VStack>
+    </Modal>
+  )
+}
+
+// ---- Style de calque (copie du dialogue Photoshop « Layer Style ») ----------------
+// Liste à gauche (cases), paramètres à droite, aperçu en direct (draft appliqué).
+
+const FX_SECTIONS = [
+  { key: 'blending', label: 'Options de fusion', fixed: true },
+  { key: 'bevel', label: 'Biseautage et estampage' },
+  { key: 'stroke', label: 'Contour' },
+  { key: 'innerShadow', label: 'Ombre interne' },
+  { key: 'innerGlow', label: 'Lueur interne' },
+  { key: 'satin', label: 'Satin' },
+  { key: 'colorOverlay', label: 'Incrustation en couleur' },
+  { key: 'gradientOverlay', label: 'Incrustation en dégradé' },
+  { key: 'glow', label: 'Lueur externe' },
+  { key: 'shadow', label: 'Ombre portée' },
+]
+
+const lbl = { fontSize: '2xs', color: 'gray.500', w: '72px', flexShrink: 0 }
+
+function FxSlider({ label, value, min, max, step = 1, unit = '', onChange }) {
+  return (
+    <HStack gap="2">
+      <Text {...lbl}>{label}</Text>
+      <input type="range" min={min} max={max} step={step} value={value}
+        style={{ flex: 1 }} onChange={(e) => onChange(+e.target.value)} />
+      <Text fontSize="2xs" color="gray.300" w="52px" textAlign="right">{value}{unit}</Text>
+    </HStack>
+  )
+}
+
+function FxColor({ label, value, onChange }) {
+  return (
+    <HStack gap="2">
+      <Text {...lbl}>{label}</Text>
+      <input type="color" value={value} onChange={(e) => onChange(e.target.value)}
+        style={{ width: 40, height: 22, border: 'none', background: 'none', padding: 0 }} />
+      <Text fontSize="2xs" color="gray.300">{value}</Text>
+    </HStack>
+  )
+}
+
+function FxParams({ sel, fx, setFx, layer, setLayer }) {
+  const set = (k, v) => setFx({ ...fx, [sel]: { ...fx[sel], [k]: v } })
+  if (sel === 'blending') {
+    return (
+      <VStack align="stretch" gap="3">
+        <HStack gap="2">
+          <Text {...lbl}>Mode de fusion</Text>
+          <Box as="select" flex="1" fontSize="xs" bg="#1c2433" color="gray.100" borderRadius="sm"
+            border="1px solid" borderColor="whiteAlpha.200" h="24px" px="1"
+            value={layer.blend || 'source-over'} onChange={(e) => setLayer({ ...layer, blend: e.target.value })}>
+            {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+          </Box>
+        </HStack>
+        <FxSlider label="Opacité" value={Math.round((layer.opacity ?? 1) * 100)} min={0} max={100} unit=" %"
+          onChange={(v) => setLayer({ ...layer, opacity: v / 100 })} />
+        <FxSlider label="Remplissage" value={Math.round((layer.fill ?? 1) * 100)} min={0} max={100} unit=" %"
+          onChange={(v) => setLayer({ ...layer, fill: v / 100 })} />
+        <Text fontSize="2xs" color="gray.500">
+          L'opacité agit sur les pixels et les effets ; le remplissage n'agit que sur les pixels.
+        </Text>
+      </VStack>
+    )
+  }
+  const f = fx[sel] || {}
+  return (
+    <VStack align="stretch" gap="3">
+      {'color' in f && <FxColor label="Couleur" value={f.color} onChange={(v) => set('color', v)} />}
+      {'from' in f && (
+        <>
+          <FxColor label="Début" value={f.from} onChange={(v) => set('from', v)} />
+          <FxColor label="Fin" value={f.to} onChange={(v) => set('to', v)} />
+        </>
+      )}
+      {'opacity' in f && <FxSlider label="Opacité" value={f.opacity} min={0} max={100} unit=" %" onChange={(v) => set('opacity', v)} />}
+      {'angle' in f && <FxSlider label="Angle" value={f.angle} min={0} max={360} unit="°" onChange={(v) => set('angle', v)} />}
+      {'dist' in f && <FxSlider label="Distance" value={f.dist} min={0} max={100} unit=" px" onChange={(v) => set('dist', v)} />}
+      {'size' in f && <FxSlider label="Taille" value={f.size} min={0} max={120} unit=" px" onChange={(v) => set('size', v)} />}
+    </VStack>
+  )
+}
+
+export function LayerStyleModal({ open, onClose, layer, onApply }) {
+  const [sel, setSel] = useState('shadow')
+  const [fx, setFx] = useState(null)       // brouillon des effets
+  const [lOpt, setLOpt] = useState(null)   // brouillon opacity/fill/blend
+
+  useEffect(() => {
+    if (open && layer) {
+      const base = JSON.parse(JSON.stringify(DEFAULT_FX))
+      const cur = layer.fx || {}
+      for (const k of Object.keys(base)) if (cur[k]) base[k] = { ...base[k], ...cur[k] }
+      setFx(base)
+      setLOpt({ opacity: layer.opacity ?? 1, fill: layer.fill ?? 1, blend: layer.blend || 'source-over' })
+      setSel('shadow')
+    }
+  }, [open, layer])
+
+  if (!open || !layer || !fx) return null
+
+  const toggle = (k, on) => setFx({ ...fx, [k]: { ...fx[k], on } })
+  const apply = () => { onApply(fx, lOpt); onClose() }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Style de calque"
+      subtitle={`Effets du calque « ${layer.name} »`} width="640px"
+      footer={
+        <HStack justify="flex-end" gap="2">
+          <Button size="sm" variant="outline" onClick={onClose}>Annuler</Button>
+          <Button size="sm" colorPalette="blue" onClick={apply}>OK</Button>
+        </HStack>
+      }>
+      <HStack align="stretch" gap="0" h="360px">
+        {/* Liste des styles (comme Photoshop) */}
+        <VStack align="stretch" w="200px" flexShrink="0" gap="0" overflowY="auto"
+          borderRight="1px solid" borderColor="whiteAlpha.100" pr="1">
+          <Text fontSize="2xs" fontWeight="700" color="gray.400" px="2" py="1">Styles</Text>
+          {FX_SECTIONS.map(({ key, label, fixed }) => {
+            const on = fixed || fx[key]?.on
+            return (
+              <Tip key={key} label={fixed ? 'Fusion, opacité, remplissage' : `${on ? 'Actif' : 'Inactif'} — cocher pour activer, cliquer pour régler`}>
+                <HStack px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
+                  bg={sel === key ? 'whiteAlpha.100' : 'transparent'} borderRadius="sm"
+                  color={sel === key ? 'white' : 'gray.300'}
+                  onClick={() => setSel(key)}>
+                  <Box w="14px" h="14px" borderRadius="sm" border="1px solid" flexShrink={0}
+                    borderColor={on ? '#4f8fe8' : 'gray.600'} bg={on ? '#4f8fe8' : 'transparent'}
+                    color="#ffffff" fontSize="2xs" lineHeight="14px" textAlign="center"
+                    onClick={(e) => { if (!fixed) { e.stopPropagation(); toggle(key, !on); setSel(key) } }}>
+                    {on ? '✓' : ''}
+                  </Box>
+                  {label}
+                </HStack>
+              </Tip>
+            )
+          })}
+        </VStack>
+        {/* Paramètres de l'effet sélectionné */}
+        <VStack align="stretch" flex="1" px="4" py="2" gap="3" overflowY="auto">
+          <Text fontSize="xs" fontWeight="700" color="gray.100">
+            {FX_SECTIONS.find((s) => s.key === sel)?.label}
+          </Text>
+          <FxParams sel={sel} fx={fx} setFx={setFx} layer={lOpt} setLayer={setLOpt} />
+        </VStack>
+      </HStack>
     </Modal>
   )
 }

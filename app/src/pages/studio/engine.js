@@ -8,10 +8,26 @@ export const DEFAULT_ADJUST = {
   hue: 0, blur: 0, grayscale: 0, sepia: 0, invert: 0,
   // Niveaux : in-black 0..254, gamma x100 (100=1.0), in-white 1..255
   inBlack: 0, gamma: 100, inWhite: 255,
+  // Niveaux de sortie : plancher/plafond de la sortie (0..255)
+  outBlack: 0, outWhite: 255,
   // Exposition en EV (-3..+3) et balance des blancs (temp/teinte -100..+100)
   exposure: 0, temp: 0, tint: 0,
   // Netteté (unsharp 0..100)
   sharp: 0,
+}
+
+// Styles de calque (fx) — copie du dialogue « Style de calque » de Photoshop.
+// Chaque effet : on + paramètres ; rendu non destructif au composite.
+export const DEFAULT_FX = {
+  shadow: { on: false, color: '#000000', opacity: 65, angle: 120, dist: 8, size: 10 },
+  innerShadow: { on: false, color: '#000000', opacity: 60, angle: 120, dist: 6, size: 12 },
+  glow: { on: false, color: '#4f8fe8', opacity: 80, size: 18 },
+  innerGlow: { on: false, color: '#ffffff', opacity: 60, size: 16 },
+  bevel: { on: false, size: 6, opacity: 60 },
+  satin: { on: false, opacity: 40, size: 14 },
+  colorOverlay: { on: false, color: '#dc2626', opacity: 60 },
+  gradientOverlay: { on: false, from: '#111827', to: '#ffffff', angle: 90, opacity: 60 },
+  stroke: { on: false, color: '#4f8fe8', size: 4, opacity: 100 },
 }
 
 export const filterString = (a) =>
@@ -60,7 +76,8 @@ export function applyLUTs(cv, luts) {
   return cv
 }
 
-// Histogramme de luminance (256 cases) du composite, pour le panneau Courbes
+// Histogramme de luminance (256 cases) + stats du composite —
+// panneau Histogramme façon Photoshop (moyenne, écart-type, médiane, pixels).
 export function histogram(cv, step = 8) {
   const ctx = cv.getContext('2d')
   const { width, height } = cv
@@ -68,11 +85,17 @@ export function histogram(cv, step = 8) {
   const d = ctx.getImageData(0, 0, width, height, { willReadFrequently: true })
   const h = new Float32Array(256)
   const px = d.data
+  let sum = 0, sum2 = 0, n = 0
   for (let i = 0; i < px.length; i += 4 * sx) {
-    h[Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2])]++
+    const v = Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2])
+    h[v]++; sum += v; sum2 += v * v; n++
   }
   const max = Math.max(...h)
-  return { h, max }
+  const mean = n ? sum / n : 0
+  const stdDev = n ? Math.sqrt(Math.max(0, sum2 / n - mean * mean)) : 0
+  let acc = 0, median = 0
+  for (let i = 0; i < 256; i++) { acc += h[i]; if (acc >= n / 2) { median = i; break } }
+  return { h, max, mean, stdDev, median, pixels: width * height }
 }
 
 // ---- Niveaux / exposition / balance des blancs : LUTs par canal -----------------
@@ -84,14 +107,15 @@ const composeLUT = (l1, l2) => { // applique l1 puis l2
   return o
 }
 
-/** LUT « niveaux » : remap in-black/in-white puis courbe gamma. */
-export function levelsLUT(inBlack, inWhite, gamma100) {
+/** LUT « niveaux » : remap in-black/in-white, gamma, puis niveaux de sortie. */
+export function levelsLUT(inBlack, inWhite, gamma100, outBlack = 0, outWhite = 255) {
   const lut = new Uint8ClampedArray(256)
   const g = Math.max(10, gamma100) / 100
   const span = Math.max(1, inWhite - inBlack)
+  const oSpan = Math.max(1, outWhite - outBlack)
   for (let i = 0; i < 256; i++) {
-    let v = Math.min(1, Math.max(0, (i - inBlack) / span))
-    lut[i] = Math.pow(v, 1 / g) * 255
+    const v = Math.min(1, Math.max(0, (i - inBlack) / span))
+    lut[i] = outBlack + Math.pow(v, 1 / g) * oSpan
   }
   return lut
 }
@@ -129,6 +153,10 @@ const mkCanvas = (w, h) => {
   cv.height = Math.max(1, Math.round(h))
   return cv
 }
+
+// Au moins un effet interne actif → la silhouette du calque est nécessaire
+const sil0Needed = (fx) =>
+  fx.innerShadow?.on || fx.innerGlow?.on || fx.bevel?.on || fx.satin?.on
 
 let uid = 1
 
@@ -174,7 +202,7 @@ export class Editor {
 
   _mkLayer(name) {
     const cv = mkCanvas(this.w, this.h)
-    return { id: uid++, name, cv, ctx: cv.getContext('2d'), visible: true, opacity: 1, dx: 0, dy: 0, blend: 'source-over' }
+    return { id: uid++, name, cv, ctx: cv.getContext('2d'), visible: true, opacity: 1, fill: 1, dx: 0, dy: 0, blend: 'source-over', fx: null }
   }
 
   /** Invalide le composite caché — à appeler après toute mutation (la page le fait via bump). */
@@ -231,33 +259,45 @@ export class Editor {
     if (!l) return
     const copy = this._mkLayer(`${l.name} copie`)
     copy.ctx.drawImage(l.cv, 0, 0)
-    copy.dx = l.dx; copy.dy = l.dy; copy.opacity = l.opacity
+    copy.dx = l.dx; copy.dy = l.dy; copy.opacity = l.opacity; copy.fill = l.fill ?? 1
+    copy.blend = l.blend
+    copy.fx = l.fx ? JSON.parse(JSON.stringify(l.fx)) : null
     this.layers.splice(this.layers.indexOf(l) + 1, 0, copy)
     this.activeId = copy.id
   }
 
   flatten() {
-    const base = this.layers[0]
     const flat = this._mkLayer('Arrière-plan')
     flat.locked = true
-    for (const l of this.layers) if (l.visible) {
-      flat.ctx.globalAlpha = l.opacity
-      flat.ctx.drawImage(l.cv, l.dx, l.dy)
-    }
-    flat.ctx.globalAlpha = 1
+    flat.ctx.drawImage(this.composite(), 0, 0)
     this.layers = [flat]
     this.activeId = flat.id
   }
 
-  // ---- Sélection rectangulaire ---------------------------------------------------
+  // ---- Sélection (rectangle ou lasso polygonal) --------------------------------
 
-  selectAll() { this.sel = [0, 0, this.w, this.h] }
-  deselect() { this.sel = null }
+  selectAll() { this.sel = [0, 0, this.w, this.h]; this.selPoly = null }
+  deselect() { this.sel = null; this.selPoly = null }
 
-  /** Clip la zone de dessin à la sélection (ou tout le doc si aucune). */
+  /** Sélection lasso : liste de points image — la bbox met à jour `sel`. */
+  lassoSelect(pts) {
+    if (!pts || pts.length < 3) { this.selPoly = null; this.sel = null; return }
+    this.selPoly = pts
+    let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9
+    for (const [x, y] of pts) {
+      if (x < minX) minX = x; if (x > maxX) maxX = x
+      if (y < minY) minY = y; if (y > maxY) maxY = y
+    }
+    this.sel = [minX, minY, maxX - minX, maxY - minY]
+  }
+
+  /** Clip la zone de dessin à la sélection (polygone ou rect, ou tout le doc). */
   _clipSel(ctx) {
     ctx.beginPath()
-    if (this.sel) ctx.rect(this.sel[0], this.sel[1], this.sel[2], this.sel[3])
+    if (this.selPoly) {
+      this.selPoly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
+      ctx.closePath()
+    } else if (this.sel) ctx.rect(this.sel[0], this.sel[1], this.sel[2], this.sel[3])
     else ctx.rect(0, 0, this.w, this.h)
     ctx.clip()
   }
@@ -285,27 +325,182 @@ export class Editor {
     return true
   }
 
-  // ---- Composite --------------------------------------------------------------
+  // ---- Styles de calque (fx) ----------------------------------------------------
+  //
+  // Pipeline par calque : effets externes (contour, lueur, ombre) dessinés sous
+  // les pixels (alpha = Opacité), pixels teintés éventuels par incrustation
+  // (alpha = Remplissage), puis effets internes (ombre interne, lueur interne,
+  // biseautage, satin) écrêtés à la forme du calque.
+
+  /** Silhouette opaque du calque (alpha → blanc) — base de tous les effets. */
+  _sil(l) {
+    const c = mkCanvas(this.w, this.h)
+    const x = c.getContext('2d')
+    x.drawImage(l.cv, 0, 0)
+    x.globalCompositeOperation = 'source-in'
+    x.fillStyle = '#ffffff'
+    x.fillRect(0, 0, this.w, this.h)
+    return c
+  }
+
+  /** Copie teintée d'une silhouette (alpha conservé, couleur remplacée). */
+  _tint(src, color) {
+    const c = mkCanvas(this.w, this.h)
+    const x = c.getContext('2d')
+    x.drawImage(src, 0, 0)
+    x.globalCompositeOperation = 'source-in'
+    x.fillStyle = color
+    x.fillRect(0, 0, this.w, this.h)
+    return c
+  }
+
+  /** Croissant interne = silhouette moins silhouette décalée, écrêté au calque. */
+  _innerRing(sil, ox, oy) {
+    const c = mkCanvas(this.w, this.h)
+    const x = c.getContext('2d')
+    x.drawImage(sil, 0, 0)
+    x.globalCompositeOperation = 'destination-out'
+    x.drawImage(sil, ox, oy)
+    return c
+  }
 
   /** Composite pleine résolution (tous calques visibles, sans filtres) */
   composite() {
     const cv = mkCanvas(this.w, this.h)
     const ctx = cv.getContext('2d')
+    const { w: W, h: H } = this
+    this._silCache = {}
+
     for (const l of this.layers) {
       if (!l.visible) continue
-      ctx.globalAlpha = l.opacity
-      ctx.globalCompositeOperation = l.blend || 'source-over'
-      if (l.fx?.shadow) {
-        ctx.shadowColor = 'rgba(0,0,0,0.45)'
-        ctx.shadowBlur = Math.round(this.w / 80)
-        ctx.shadowOffsetX = Math.round(this.w / 150)
-        ctx.shadowOffsetY = Math.round(this.w / 120)
+      const fx = l.fx || {}
+      const hasFx = Object.values(fx).some((f) => f?.on)
+      const fill = l.fill ?? 1
+      const off = (e) => {
+        const a = ((e.angle ?? 120) * Math.PI) / 180
+        const d = e.dist ?? 0
+        return [Math.cos(a) * d, Math.sin(a) * d]
       }
-      ctx.drawImage(l.cv, l.dx, l.dy)
-      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = ctx.shadowOffsetY = 0
+
+      ctx.save()
+      ctx.globalCompositeOperation = l.blend || 'source-over'
+
+      // --- Effets externes (sous les pixels) : alpha = opacité calque ---
+      if (hasFx) {
+        const sil = this._silCache[l.id] || (this._silCache[l.id] = this._sil(l))
+        ctx.globalAlpha = l.opacity
+        if (fx.stroke?.on && fx.stroke.size > 0) {
+          const t = this._tint(sil, fx.stroke.color)
+          const s = Math.max(1, fx.stroke.size)
+          const n = s > 6 ? 20 : 12
+          ctx.globalAlpha = l.opacity * (fx.stroke.opacity / 100)
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2
+            ctx.drawImage(t, l.dx + Math.cos(a) * s, l.dy + Math.sin(a) * s)
+          }
+          ctx.globalAlpha = l.opacity
+        }
+        if (fx.glow?.on && fx.glow.size > 0) {
+          const t = this._tint(sil, fx.glow.color)
+          ctx.filter = `blur(${fx.glow.size}px)`
+          ctx.globalAlpha = l.opacity * (fx.glow.opacity / 100)
+          ctx.drawImage(t, l.dx, l.dy)
+          ctx.filter = 'none'
+          ctx.globalAlpha = l.opacity
+        }
+        if (fx.shadow?.on) {
+          const t = this._tint(sil, fx.shadow.color)
+          const [ox, oy] = off(fx.shadow)
+          ctx.filter = `blur(${Math.max(0, fx.shadow.size) / 2}px)`
+          ctx.globalAlpha = l.opacity * (fx.shadow.opacity / 100)
+          ctx.drawImage(t, l.dx + ox, l.dy + oy)
+          ctx.filter = 'none'
+          ctx.globalAlpha = l.opacity
+        }
+      }
+
+      // --- Pixels du calque : alpha = remplissage (+ incrustations) ---
+      let drawn = l.cv
+      if (fx.colorOverlay?.on || fx.gradientOverlay?.on) {
+        const ov = mkCanvas(W, H)
+        const x = ov.getContext('2d')
+        x.drawImage(l.cv, 0, 0)
+        x.globalCompositeOperation = 'source-atop'
+        if (fx.colorOverlay?.on) {
+          x.globalAlpha = fx.colorOverlay.opacity / 100
+          x.fillStyle = fx.colorOverlay.color
+          x.fillRect(0, 0, W, H)
+        }
+        if (fx.gradientOverlay?.on) {
+          const g = fx.gradientOverlay
+          const a = ((g.angle ?? 90) * Math.PI) / 180
+          const cx = W / 2, cy = H / 2, r = Math.max(W, H) / 2
+          const lg = x.createLinearGradient(cx - Math.cos(a) * r, cy - Math.sin(a) * r, cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+          lg.addColorStop(0, g.from)
+          lg.addColorStop(1, g.to)
+          x.globalAlpha = g.opacity / 100
+          x.fillStyle = lg
+          x.fillRect(0, 0, W, H)
+        }
+        drawn = ov
+      }
+      ctx.globalAlpha = fill
+      ctx.drawImage(drawn, l.dx, l.dy)
+
+      // --- Effets internes (au-dessus) : alpha = opacité calque ---
+      if (hasFx && sil0Needed(fx)) {
+        const sil = this._silCache[l.id]
+        ctx.globalAlpha = l.opacity
+        if (fx.innerShadow?.on) {
+          const [ox, oy] = off(fx.innerShadow)
+          const m = this._tint(this._innerRing(sil, ox, oy), fx.innerShadow.color)
+          ctx.filter = `blur(${Math.max(1, fx.innerShadow.size / 2)}px)`
+          ctx.globalAlpha = l.opacity * (fx.innerShadow.opacity / 100)
+          ctx.drawImage(m, l.dx, l.dy)
+          ctx.filter = 'none'
+        }
+        if (fx.innerGlow?.on && fx.innerGlow.size > 0) {
+          // silhouette floutée écrêtée à l'intérieur = halo interne
+          const m = mkCanvas(W, H)
+          const x = m.getContext('2d')
+          x.filter = `blur(${fx.innerGlow.size}px)`
+          x.drawImage(sil, 0, 0)
+          x.filter = 'none'
+          x.globalCompositeOperation = 'destination-in'
+          x.drawImage(l.cv, 0, 0)
+          const t = this._tint(m, fx.innerGlow.color)
+          ctx.globalAlpha = l.opacity * (fx.innerGlow.opacity / 100)
+          ctx.drawImage(t, l.dx, l.dy)
+        }
+        if (fx.bevel?.on && fx.bevel.size > 0) {
+          const s = Math.max(1, fx.bevel.size / 2)
+          const hi = this._tint(this._innerRing(sil, s, s), '#ffffff')
+          const lo = this._tint(this._innerRing(sil, -s, -s), '#000000')
+          ctx.globalCompositeOperation = 'screen'
+          ctx.globalAlpha = l.opacity * (fx.bevel.opacity / 100)
+          ctx.drawImage(hi, l.dx, l.dy)
+          ctx.globalCompositeOperation = 'multiply'
+          ctx.drawImage(lo, l.dx, l.dy)
+          ctx.globalCompositeOperation = l.blend || 'source-over'
+        }
+        if (fx.satin?.on && fx.satin.size > 0) {
+          const s = fx.satin.size / 2
+          const m1 = this._tint(this._innerRing(sil, s, s), '#000000')
+          const m2 = this._tint(this._innerRing(sil, -s, -s), '#000000')
+          ctx.globalCompositeOperation = 'overlay'
+          ctx.globalAlpha = l.opacity * (fx.satin.opacity / 100)
+          ctx.drawImage(m1, l.dx, l.dy)
+          ctx.drawImage(m2, l.dx, l.dy)
+          ctx.globalCompositeOperation = l.blend || 'source-over'
+        }
+        ctx.globalAlpha = l.opacity
+      }
+
+      ctx.restore()
+      ctx.globalAlpha = 1
     }
-    ctx.globalAlpha = 1
     ctx.globalCompositeOperation = 'source-over'
+    this._silCache = null
     return cv
   }
 
@@ -315,7 +510,7 @@ export class Editor {
     const src = this.composite()
     const a = this.adjust, cv0 = this.curves
     const hasCurves = cv0.rgb || cv0.r || cv0.g || cv0.b
-    const hasLevels = a.inBlack > 0 || a.inWhite < 255 || a.gamma !== 100
+    const hasLevels = a.inBlack > 0 || a.inWhite < 255 || a.gamma !== 100 || a.outBlack > 0 || a.outWhite < 255
     const hasExp = a.exposure !== 0
     const hasWB = a.temp !== 0 || a.tint !== 0 || (this.wb && (this.wb.r !== 1 || this.wb.g !== 1 || this.wb.b !== 1))
     const hasPx = hasCurves || hasLevels || hasExp || hasWB
@@ -329,7 +524,7 @@ export class Editor {
     if (hasPx) {
       // LUT RGB : niveaux -> exposition -> courbe RGB
       let rgb = null
-      if (hasLevels) rgb = levelsLUT(a.inBlack, a.inWhite, a.gamma)
+      if (hasLevels) rgb = levelsLUT(a.inBlack, a.inWhite, a.gamma, a.outBlack ?? 0, a.outWhite ?? 255)
       if (hasExp) {
         const m = Math.pow(2, a.exposure)
         const base = rgb || IDENTITY
@@ -398,8 +593,65 @@ export class Editor {
       if (y > 0) stack.push([x, y - 1]); if (y < H - 1) stack.push([x, y + 1])
     }
     if (n < 10) return null
+    this.selPoly = null
     this.sel = [minX, minY, maxX - minX + 1, maxY - minY + 1]
     return this.sel
+  }
+
+  /** Pot de peinture : remplit la région contiguë de couleur proche du calque actif. */
+  bucketFill(ix, iy, color, tolerance = 32) {
+    const l = this.active
+    if (!l || l.locked) return false
+    const W = this.w, H = this.h
+    ix = Math.floor(ix - l.dx); iy = Math.floor(iy - l.dy)
+    if (ix < 0 || iy < 0 || ix >= W || iy >= H) return false
+    const d = l.ctx.getImageData(0, 0, W, H).data
+    const o0 = (iy * W + ix) * 4
+    const t0 = [d[o0], d[o0 + 1], d[o0 + 2], d[o0 + 3]]
+    const seen = new Uint8Array(W * H)
+    const stack = [[ix, iy]]
+    const region = []
+    const match = (o) =>
+      Math.abs(d[o] - t0[0]) + Math.abs(d[o + 1] - t0[1]) + Math.abs(d[o + 2] - t0[2]) + Math.abs(d[o + 3] - t0[3]) <= tolerance * 4
+    while (stack.length) {
+      const [x, y] = stack.pop()
+      const k = y * W + x
+      if (seen[k]) continue
+      seen[k] = 1
+      if (!match(k * 4)) continue
+      region.push(x, y)
+      if (x > 0) stack.push([x - 1, y]); if (x < W - 1) stack.push([x + 1, y])
+      if (y > 0) stack.push([x, y - 1]); if (y < H - 1) stack.push([x, y + 1])
+    }
+    if (region.length < 20) return false
+    // masque de la région → remplissage couleur à travers ce masque
+    const m = mkCanvas(W, H)
+    const mx = m.getContext('2d')
+    const md = mx.createImageData(W, H)
+    for (let i = 0; i < region.length; i += 2) md.data[(region[i + 1] * W + region[i]) * 4 + 3] = 255
+    mx.putImageData(md, 0, 0)
+    const fill = mkCanvas(W, H)
+    const fx2 = fill.getContext('2d')
+    fx2.fillStyle = color
+    fx2.fillRect(0, 0, W, H)
+    fx2.globalCompositeOperation = 'destination-in'
+    fx2.drawImage(m, 0, 0)
+    l.ctx.drawImage(fill, 0, 0)
+    return true
+  }
+
+  /** Dégradé : remplit le calque actif (ou la sélection) d'un dégradé fg→bg. */
+  gradientFill(x1, y1, x2, y2, c1, c2) {
+    const l = this.active?.locked ? this.addLayer() : this.active || this.addLayer()
+    l.ctx.save()
+    this._clipSel(l.ctx)
+    const g = l.ctx.createLinearGradient(x1 - l.dx, y1 - l.dy, x2 - l.dx, y2 - l.dy)
+    g.addColorStop(0, c1)
+    g.addColorStop(1, c2)
+    l.ctx.fillStyle = g
+    l.ctx.fillRect(0, 0, this.w, this.h)
+    l.ctx.restore()
+    return true
   }
 
   /** Image d'origine (calque 0, sans filtres ni calques) — mode « Avant » */
@@ -481,15 +733,22 @@ export class Editor {
     ctx.strokeStyle = 'rgba(255,255,255,0.25)'
     ctx.lineWidth = 1 / view.scale
     ctx.strokeRect(0, 0, this.w, this.h)
-    // sélection en cours (marching ants)
-    if (this.sel) {
+    // sélection en cours (marching ants — rectangle ou lasso)
+    if (this.selPoly || this.sel) {
+      const path = () => {
+        ctx.beginPath()
+        if (this.selPoly) {
+          this.selPoly.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
+          ctx.closePath()
+        } else ctx.rect(this.sel[0], this.sel[1], this.sel[2], this.sel[3])
+      }
       ctx.lineWidth = 1 / view.scale
       ctx.setLineDash([6 / view.scale, 4 / view.scale])
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'
-      ctx.strokeRect(this.sel[0], this.sel[1], this.sel[2], this.sel[3])
+      path(); ctx.stroke()
       ctx.lineDashOffset = 10 / view.scale
       ctx.strokeStyle = 'rgba(20,24,31,0.9)'
-      ctx.strokeRect(this.sel[0], this.sel[1], this.sel[2], this.sel[3])
+      path(); ctx.stroke()
       ctx.setLineDash([])
       ctx.lineDashOffset = 0
     }
@@ -660,6 +919,7 @@ export class Editor {
       layers: this.layers.map((l) => ({
         id: l.id, name: l.name, visible: l.visible, opacity: l.opacity,
         dx: l.dx, dy: l.dy, locked: l.locked, png: l.cv.toDataURL('image/png'),
+        fill: l.fill ?? 1, blend: l.blend || 'source-over', fx: l.fx || null,
       })),
     }
   }
