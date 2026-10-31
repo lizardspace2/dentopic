@@ -13,7 +13,7 @@ import {
   Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, isTestName,
 } from '../../components/ui'
 import { C } from '../../theme'
-import { HELP_STEPS, SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS } from './constants'
+import { HELP_STEPS, SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS, devKind } from './constants'
 
 // ---- Petits morceaux partagés ------------------------------------------------
 
@@ -38,15 +38,19 @@ function SourceRow({ def, active, badge, onClick }) {
 
 function DeviceRow({ dev, selected, onClick }) {
   const online = dev.status === 'online'
+  const kind = devKind(dev)
+  const hint = kind === 'ftp'
+    ? `FTP · ${dev.metadata?.ftp?.host || ''}${dev.metadata?.ftp?.path ? ' ' + dev.metadata.ftp.path : ''}`
+    : kind === 'watch'
+      ? `Surveillé · ${dev.metadata?.watch?.path || ''}`
+      : [dev.manufacturer, dev.model, dev.connection_type].filter(Boolean).join(' · ')
   return (
     <HStack px="3" py="2" gap="3" borderRadius="lg" cursor="pointer"
       bg={selected ? C.softBlue : 'transparent'} _hover={{ bg: C.softBlue }} onClick={onClick}>
       <IconTile icon={FiMonitor} />
       <Box flex="1" minW="0">
         <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>{dev.name}</Text>
-        <Text fontSize="xs" color="gray.500" isTruncated>
-          {[dev.manufacturer, dev.model, dev.connection_type].filter(Boolean).join(' · ')}
-        </Text>
+        <Text fontSize="xs" color="gray.500" isTruncated>{hint}</Text>
       </Box>
       <HStack gap="1.5">
         <Box w="7px" h="7px" borderRadius="full" bg={online ? '#22c55e' : '#cbd5e1'} />
@@ -93,6 +97,13 @@ export function GuideModal({ step, onStep, onClose }) {
 // ---- 2. Source d'acquisition (clic sur DÉPART) --------------------------------
 
 export function SourceModal({ open, onClose, source, devices, onPick }) {
+  // Répartition des appareils par type de source — badges « n sources » comme la caméra
+  const cams = devices.filter((x) => devKind(x) === 'camera')
+  const ftps = devices.filter((x) => devKind(x) === 'ftp')
+  const watches = devices.filter((x) => devKind(x) === 'watch')
+  const counts = { camera: cams.length, ftp: ftps.length, watch: watches.length }
+  // clic sur un appareil listé -> retrouve la clé de source selon son type
+  const keyFor = devKind
   return (
     <Modal open={open} onClose={onClose}
       title="Source d'acquisition" subtitle="Choisissez d'où viennent les photos" width="460px">
@@ -100,7 +111,7 @@ export function SourceModal({ open, onClose, source, devices, onPick }) {
         {SOURCE_DEFS.map((def) => (
           <SourceRow
             key={def.key} def={def} active={source?.key === def.key}
-            badge={def.key === 'camera' && devices.length > 0 ? <Tag color="blue">{devices.length}</Tag> : null}
+            badge={counts[def.key] > 0 ? <Tag color="blue">{counts[def.key]}</Tag> : null}
             onClick={() => onPick(def)}
           />
         ))}
@@ -112,7 +123,7 @@ export function SourceModal({ open, onClose, source, devices, onPick }) {
         {devices.map((dev) => (
           <DeviceRow key={dev.id} dev={dev}
             selected={source?.deviceId === dev.id}
-            onClick={() => onPick({ key: 'camera', modal: null, deviceId: dev.id, label: dev.name })} />
+            onClick={() => onPick({ key: keyFor(dev), modal: null, deviceId: dev.id, label: dev.name })} />
         ))}
         <SourceRow
           def={{ icon: FiCamera, label: 'Session directe (sans appareil)', hint: '' }}
@@ -309,78 +320,168 @@ export function CameraModal({ open, onClose, devices, selectedId, onPick, onCrea
   )
 }
 
-// ---- 6. FTP : chemin et identifiants ----------------------------------------------
+// ---- 6. FTP : liste des sources enregistrées + formulaire ---------------------------
+// Comme la caméra : une source FTP enregistrée reste réutilisable — on la retrouve
+// dans la liste (badge dans SourceModal), on clique pour la reprendre, ✎ pour éditer.
 
-export function FtpModal({ open, onClose, device, onSave }) {
-  const meta = device?.metadata?.ftp || {}
-  const [form, setForm] = useState(meta)
+export function FtpModal({ open, onClose, devices = [], selectedId, onPick, onSave }) {
+  const [editing, setEditing] = useState(null) // device en cours d'édition | 'new' | null
+  const [form, setForm] = useState({})
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const startNew = () => { setEditing('new'); setForm({ name: '', host: '', port: '21', path: '', user: '' }) }
+  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.ftp || {}) }) }
+  const save = async () => {
+    const ok = await onSave(editing === 'new' ? null : editing, form)
+    if (ok) setEditing(null)
+  }
+  const hint = (d) => d.metadata?.ftp?.host
+    ? `${d.metadata.ftp.host}${d.metadata.ftp.port ? ':' + d.metadata.ftp.port : ''}${d.metadata.ftp.path ? ' ' + d.metadata.ftp.path : ''}`
+    : 'FTP'
   return (
     <Modal open={open} onClose={onClose}
-      title="Source FTP" subtitle="L'appareil dépose ses clichés sur le serveur FTP" width="440px">
-      <VStack align="stretch" gap="3">
-        <Field label="Appareil relié">
-          <Select w="100%" value={form.deviceId || device?.id || ''} onChange={set('deviceId')} disabled={!!device?.id}>
-            {device ? <option value={device.id}>{device.name}</option> : <option value="">Session directe (sans appareil)</option>}
-          </Select>
-        </Field>
-        <SimpleGrid columns={2} gap="3">
-          <Field label="Hôte">
-            <Input fontSize="sm" placeholder="192.168.1.20" value={form.host || ''} onChange={set('host')} />
-          </Field>
-          <Field label="Port">
-            <Input fontSize="sm" placeholder="21" value={form.port || ''} onChange={set('port')} />
-          </Field>
-        </SimpleGrid>
-        <Field label="Chemin surveillé">
-          <Input fontSize="sm" placeholder="/photos/dentaire" value={form.path || ''} onChange={set('path')} />
-        </Field>
-        <Field label="Utilisateur">
-          <Input fontSize="sm" placeholder="dentopic" value={form.user || ''} onChange={set('user')} />
-        </Field>
-        <HStack justify="end" gap="2" mt="1">
-          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <PrimaryButton onClick={() => onSave(form)}>Enregistrer la source</PrimaryButton>
-        </HStack>
+      title="Source FTP" subtitle="Sources enregistrées — réutilisables à tout moment" width="460px">
+      <VStack align="stretch" gap="1.5" maxH="240px" overflowY="auto">
+        {devices.map((dev) => (
+          <HStack key={dev.id} px="3" py="2" gap="3" borderRadius="lg" cursor="pointer"
+            bg={selectedId === dev.id ? C.softBlue : 'transparent'} _hover={{ bg: C.softBlue }}
+            onClick={() => onPick(dev)}>
+            <IconTile icon={FiWifi} />
+            <Box flex="1" minW="0">
+              <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>{dev.name}</Text>
+              <Text fontSize="xs" color="gray.500" isTruncated>{hint(dev)}</Text>
+            </Box>
+            {selectedId === dev.id && <Box as={FiCheck} color={C.primary} />}
+            <Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" px="1"
+              onClick={(e) => { e.stopPropagation(); startEdit(dev) }}>
+              Modifier
+            </Box>
+          </HStack>
+        ))}
+        {devices.length === 0 && !editing && (
+          <Text fontSize="sm" color="gray.500" textAlign="center" py="4">
+            Aucune source FTP — enregistrez-en une ci-dessous, elle restera réutilisable.
+          </Text>
+        )}
       </VStack>
+
+      {!editing ? (
+        <HStack mt="4" px="3" py="2" gap="3" cursor="pointer" _hover={{ bg: C.softBlue }}
+          borderRadius="lg" onClick={startNew}>
+          <IconTile icon={FiPlus} />
+          <Text fontSize="sm" color={C.primary} fontWeight="500">Nouvelle source FTP</Text>
+        </HStack>
+      ) : (
+        <Card p="4" mt="4">
+          <VStack align="stretch" gap="3">
+            <Field label="Nom de la source *">
+              <Input fontSize="sm" placeholder="ex. FTP — Canon Salle 1" value={form.name || ''} onChange={set('name')} />
+            </Field>
+            <SimpleGrid columns={2} gap="3">
+              <Field label="Hôte">
+                <Input fontSize="sm" placeholder="192.168.1.20" value={form.host || ''} onChange={set('host')} />
+              </Field>
+              <Field label="Port">
+                <Input fontSize="sm" placeholder="21" value={form.port || ''} onChange={set('port')} />
+              </Field>
+            </SimpleGrid>
+            <Field label="Chemin surveillé">
+              <Input fontSize="sm" placeholder="/photos/dentaire" value={form.path || ''} onChange={set('path')} />
+            </Field>
+            <Field label="Utilisateur">
+              <Input fontSize="sm" placeholder="dentopic" value={form.user || ''} onChange={set('user')} />
+            </Field>
+            <HStack justify="end" gap="2">
+              <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Annuler</Button>
+              <PrimaryButton onClick={save} disabled={!form.name?.trim()}>
+                {editing === 'new' ? 'Enregistrer la source' : 'Mettre à jour'}
+              </PrimaryButton>
+            </HStack>
+          </VStack>
+        </Card>
+      )}
     </Modal>
   )
 }
 
-// ---- 7. Dossier surveillé : chemin paramétré ---------------------------------------
+// ---- 7. Dossier surveillé : liste + formulaire ---------------------------------------
 
-export function WatchModal({ open, onClose, device, onSave }) {
-  const meta = device?.metadata?.watch || {}
-  const [form, setForm] = useState(meta)
+export function WatchModal({ open, onClose, devices = [], selectedId, onPick, onSave }) {
+  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState({})
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const startNew = () => { setEditing('new'); setForm({ name: '', path: '', grouping: 'date', exts: '' }) }
+  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.watch || {}) }) }
+  const save = async () => {
+    const ok = await onSave(editing === 'new' ? null : editing, form)
+    if (ok) setEditing(null)
+  }
   return (
     <Modal open={open} onClose={onClose}
-      title="Dossier surveillé" subtitle="Auto-import depuis un dossier (Nikon WMU, EOS Utility…)" width="440px">
-      <VStack align="stretch" gap="3">
-        <Field label="Chemin du dossier">
-          <Input fontSize="sm" placeholder="C:\Photos\Import ou /Volumes/SD/DCIM" value={form.path || ''} onChange={set('path')} />
-        </Field>
-        <Field label="Rangement">
-          <Select w="100%" value={form.grouping || 'date'} onChange={set('grouping')}>
-            <option value="date">Sous-dossiers par date (AAAA-MM-JJ)</option>
-            <option value="flat">Tout au même niveau</option>
-            <option value="prefix">Sous-dossiers par préfixe de nom</option>
-          </Select>
-        </Field>
-        <Field label="Extensions acceptées">
-          <Input fontSize="sm" placeholder="jpg, jpeg, png, webp" value={form.exts || ''} onChange={set('exts')} />
-        </Field>
-        <HStack bg={C.softBlue} borderRadius="md" px="3" py="2" gap="2">
-          <Box as={FiHardDrive} color={C.primary} />
-          <Text fontSize="xs" color={C.body}>
-            Toute photo déposée dans ce dossier est importée et rangée automatiquement dans le dossier de destination.
+      title="Dossier surveillé" subtitle="Auto-import depuis un dossier (Nikon WMU, EOS Utility…)" width="460px">
+      <VStack align="stretch" gap="1.5" maxH="240px" overflowY="auto">
+        {devices.map((dev) => (
+          <HStack key={dev.id} px="3" py="2" gap="3" borderRadius="lg" cursor="pointer"
+            bg={selectedId === dev.id ? C.softBlue : 'transparent'} _hover={{ bg: C.softBlue }}
+            onClick={() => onPick(dev)}>
+            <IconTile icon={FiHardDrive} />
+            <Box flex="1" minW="0">
+              <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>{dev.name}</Text>
+              <Text fontSize="xs" color="gray.500" isTruncated>{dev.metadata?.watch?.path || 'Dossier surveillé'}</Text>
+            </Box>
+            {selectedId === dev.id && <Box as={FiCheck} color={C.primary} />}
+            <Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" px="1"
+              onClick={(e) => { e.stopPropagation(); startEdit(dev) }}>
+              Modifier
+            </Box>
+          </HStack>
+        ))}
+        {devices.length === 0 && !editing && (
+          <Text fontSize="sm" color="gray.500" textAlign="center" py="4">
+            Aucun dossier surveillé — enregistrez-en un ci-dessous, il restera réutilisable.
           </Text>
-        </HStack>
-        <HStack justify="end" gap="2" mt="1">
-          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <PrimaryButton onClick={() => onSave(form)}>Enregistrer la source</PrimaryButton>
-        </HStack>
+        )}
       </VStack>
+
+      {!editing ? (
+        <HStack mt="4" px="3" py="2" gap="3" cursor="pointer" _hover={{ bg: C.softBlue }}
+          borderRadius="lg" onClick={startNew}>
+          <IconTile icon={FiPlus} />
+          <Text fontSize="sm" color={C.primary} fontWeight="500">Nouveau dossier surveillé</Text>
+        </HStack>
+      ) : (
+        <Card p="4" mt="4">
+          <VStack align="stretch" gap="3">
+            <Field label="Nom de la source *">
+              <Input fontSize="sm" placeholder="ex. SD — Nikon WMU" value={form.name || ''} onChange={set('name')} />
+            </Field>
+            <Field label="Chemin du dossier">
+              <Input fontSize="sm" placeholder="C:\Photos\Import ou /Volumes/SD/DCIM" value={form.path || ''} onChange={set('path')} />
+            </Field>
+            <Field label="Rangement">
+              <Select w="100%" value={form.grouping || 'date'} onChange={set('grouping')}>
+                <option value="date">Sous-dossiers par date (AAAA-MM-JJ)</option>
+                <option value="flat">Tout au même niveau</option>
+                <option value="prefix">Sous-dossiers par préfixe de nom</option>
+              </Select>
+            </Field>
+            <Field label="Extensions acceptées">
+              <Input fontSize="sm" placeholder="jpg, jpeg, png, webp" value={form.exts || ''} onChange={set('exts')} />
+            </Field>
+            <HStack bg={C.softBlue} borderRadius="md" px="3" py="2" gap="2">
+              <Box as={FiHardDrive} color={C.primary} />
+              <Text fontSize="xs" color={C.body}>
+                Toute photo déposée dans ce dossier est importée et rangée automatiquement dans le dossier de destination.
+              </Text>
+            </HStack>
+            <HStack justify="end" gap="2">
+              <Button variant="outline" size="sm" onClick={() => setEditing(null)}>Annuler</Button>
+              <PrimaryButton onClick={save} disabled={!form.name?.trim()}>
+                {editing === 'new' ? 'Enregistrer la source' : 'Mettre à jour'}
+              </PrimaryButton>
+            </HStack>
+          </VStack>
+        </Card>
+      )}
     </Modal>
   )
 }

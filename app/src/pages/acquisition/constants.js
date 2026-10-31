@@ -52,6 +52,13 @@ export const SOURCE_DEFS = [
 export const sourceLabel = (key) => SOURCE_DEFS.find((s) => s.key === key)?.label || key
 export const sourceIcon = (key) => SOURCE_DEFS.find((s) => s.key === key)?.icon || FiLayers
 
+// Type fonctionnel d'un appareil : metadata.kind ('ftp'|'watch') ou connection_type.
+// (La contrainte SQL n'autorise que wifi/usb/mobile/other -> les sources FTP et
+// dossier surveillé sont des appareils 'other' marqués par metadata.kind.)
+export const devKind = (d) =>
+  d?.metadata?.kind || (d?.connection_type === 'ftp' ? 'ftp'
+    : d?.connection_type === 'watch_folder' ? 'watch' : 'camera')
+
 // Types de connexion proposés dans le formulaire « Ajouter un appareil »
 export const CONNECTION_TYPES = [
   ['wifi', 'Wi-Fi direct (Canon, Sony…)'],
