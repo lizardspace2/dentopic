@@ -23,6 +23,8 @@ import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal 
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 
+const RULER_W = 22 // largeur des règles (px écran)
+
 export default function Studio() {
   const { workspace } = useApp()
   const wsId = workspace?.id
@@ -67,12 +69,27 @@ export default function Studio() {
   const [refImg, setRefImg] = useState(null)         // photo de référence (img)
   const [refOverlay, setRefOverlay] = useState(false)// incrustation sur le canevas
   const [shade, setShade] = useState(null)           // teinte VITA de la photo
+  // -- Affichage : règles, grille, guides, magnétisme -------------------------------
+  const [rulers, setRulers] = useState(false)
+  const [gridOn, setGridOn] = useState(false)
+  const [guidesOn, setGuidesOn] = useState(true)
+  const [guides, setGuides] = useState({ v: [], h: [] }) // positions en coords doc
+  const [snapOn, setSnapOn] = useState(false)
+  const ovlRef = useRef(null)
+  const ruleTopRef = useRef(null)
+  const ruleLeftRef = useRef(null)
 
   const bump = useCallback(() => { editor.markDirty(); setVersion((v) => v + 1) }, [editor])
   const toImg = useCallback(
     (sx, sy) => [(sx - view.ox) / view.scale, (sy - view.oy) / view.scale],
     [view]
   )
+  // position souris en coords conteneur — fiable même pendant setPointerCapture
+  // (offsetX devient viewport-relatif quand le pointeur est capturé)
+  const evPt = (e) => {
+    const r = containerRef.current.getBoundingClientRect()
+    return [e.clientX - r.left, e.clientY - r.top]
+  }
 
   // ---- Ouvrir / importer ---------------------------------------------------------
 
@@ -124,6 +141,69 @@ export default function Studio() {
     })
   }
 
+  const setZoom = (z) => {
+    const c = containerRef.current
+    if (!c || !editor.w) return
+    setView({ scale: z, ox: (c.clientWidth - editor.w * z) / 2, oy: (c.clientHeight - editor.h * z) / 2 })
+  }
+
+  // ---- Règles / grille / guides / magnétisme ----------------------------------------
+
+  // pas de la grille : plus petite graduation "ronde" lisible à l'écran
+  const gridStep = () => {
+    const steps = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
+    return steps.find((s) => s * view.scale >= 40) || 5000
+  }
+
+  // magnétisme : accroche un point doc aux guides / bords / grille (rayon 8 px écran)
+  const snapPair = (x, y) => {
+    if (!snapOn) return [x, y]
+    const th = 8 / view.scale
+    const xs = [0, editor.w, ...(guidesOn ? guides.v : [])]
+    const ys = [0, editor.h, ...(guidesOn ? guides.h : [])]
+    if (gridOn) {
+      const st = gridStep()
+      for (let g = st; g < editor.w; g += st) xs.push(g)
+      for (let g = st; g < editor.h; g += st) ys.push(g)
+    }
+    let bx = x, by = y, dx = th, dy = th
+    for (const g of xs) { const d = Math.abs(x - g); if (d < dx) { dx = d; bx = g } }
+    for (const g of ys) { const d = Math.abs(y - g); if (d < dy) { dy = d; by = g } }
+    return [bx, by]
+  }
+
+  // drag depuis une règle -> nouveau guide (supprimé si relâché hors du document)
+  const ruleDown = (axis) => (e) => {
+    if (!guidesOn) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const [cx, cy] = evPt(e)
+    const doc = ((axis === 'v' ? cx : cy) - (axis === 'v' ? view.ox : view.oy)) / view.scale
+    const ref = { idx: -1 }
+    setGuides((g) => { const a = [...g[axis]]; a.push(doc); ref.idx = a.length - 1; return { ...g, [axis]: a } })
+    stroke.current = { kind: 'guideNew', axis, ref }
+  }
+  const ruleMove = (axis) => (e) => {
+    const s = stroke.current
+    if (!s || s.kind !== 'guideNew' || s.axis !== axis) return
+    const [cx, cy] = evPt(e)
+    const doc = ((axis === 'v' ? cx : cy) - (axis === 'v' ? view.ox : view.oy)) / view.scale
+    setGuides((g) => { const a = [...g[axis]]; a[s.ref.idx] = doc; return { ...g, [axis]: a } })
+  }
+  const ruleUp = (axis) => (e) => {
+    const s = stroke.current
+    if (!s || s.kind !== 'guideNew' || s.axis !== axis) return
+    const [cx, cy] = evPt(e)
+    const doc = ((axis === 'v' ? cx : cy) - (axis === 'v' ? view.ox : view.oy)) / view.scale
+    const lim = axis === 'v' ? editor.w : editor.h
+    setGuides((g) => {
+      const a = [...g[axis]]
+      if (doc < -5 || doc > lim + 5) a.splice(s.ref.idx, 1)
+      else a[s.ref.idx] = clamp(doc, 0, lim)
+      return { ...g, [axis]: a }
+    })
+    stroke.current = null
+  }
+
   // ---- Rendu ----------------------------------------------------------------------
 
   const render = useCallback(() => {
@@ -139,6 +219,82 @@ export default function Studio() {
     straighten, refOverlay, refImg, gradLine])
 
   useEffect(render, [render, version])
+
+  // Overlay (canvas au-dessus) : grille + guides
+  useEffect(() => {
+    const cv = ovlRef.current, c = containerRef.current
+    if (!cv || !c) return
+    cv.width = c.clientWidth; cv.height = c.clientHeight
+    const ctx = cv.getContext('2d')
+    ctx.clearRect(0, 0, cv.width, cv.height)
+    if (!docOpen || !editor.w) return
+    const { scale, ox, oy } = view
+    const docL = ox, docT = oy, docR = ox + editor.w * scale, docB = oy + editor.h * scale
+    if (gridOn) {
+      const st = gridStep()
+      ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 1; ctx.beginPath()
+      for (let x = Math.ceil(-ox / scale / st) * st; x <= editor.w; x += st) {
+        const sx = Math.round(x * scale + ox) + .5
+        ctx.moveTo(sx, Math.max(0, docT)); ctx.lineTo(sx, Math.min(cv.height, docB))
+      }
+      for (let y = Math.ceil(-oy / scale / st) * st; y <= editor.h; y += st) {
+        const sy = Math.round(y * scale + oy) + .5
+        ctx.moveTo(Math.max(0, docL), sy); ctx.lineTo(Math.min(cv.width, docR), sy)
+      }
+      ctx.stroke()
+    }
+    if (guidesOn) {
+      ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1
+      for (const g of guides.v) {
+        const sx = Math.round(g * scale + ox) + .5
+        ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, cv.height); ctx.stroke()
+      }
+      for (const g of guides.h) {
+        const sy = Math.round(g * scale + oy) + .5
+        ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(cv.width, sy); ctx.stroke()
+      }
+    }
+  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor])
+
+  // Règles : graduations en px document + repère de curseur
+  useEffect(() => {
+    if (!rulers) return
+    const c = containerRef.current, t = ruleTopRef.current, l = ruleLeftRef.current
+    if (!c || !t || !l) return
+    t.width = c.clientWidth - RULER_W; t.height = RULER_W
+    l.width = RULER_W; l.height = c.clientHeight - RULER_W
+    const { scale, ox, oy } = view
+    const steps = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
+    const st = steps.find((s) => s * scale >= 55) || 5000
+    const draw = (ctx, horiz) => {
+      ctx.fillStyle = '#1c2433'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+      ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.fillStyle = 'rgba(255,255,255,.62)'
+      ctx.font = '9px monospace'; ctx.lineWidth = 1; ctx.beginPath()
+      const off = horiz ? ox : oy
+      const lim = horiz ? t.width : l.height
+      const dim = horiz ? (editor.w || 0) : (editor.h || 0)
+      for (let p = Math.ceil(-off / scale / st) * st; ; p += st) {
+        const s = p * scale + off - (horiz ? 0 : 0)
+        if (s > lim) break
+        if (s < 0) continue
+        if (horiz) { ctx.moveTo(s + .5, RULER_W); ctx.lineTo(s + .5, RULER_W - 8); ctx.fillText(String(p), s + 3, 9) }
+        else {
+          ctx.moveTo(RULER_W, s + .5); ctx.lineTo(RULER_W - 8, s + .5)
+          ctx.save(); ctx.translate(9, s - 2); ctx.rotate(-Math.PI / 2); ctx.fillText(String(p), -ctx.measureText(String(p)).width, 3); ctx.restore()
+        }
+        if (p >= dim + st * 4) break
+      }
+      ctx.stroke()
+      if (cursor) {
+        ctx.strokeStyle = '#22d3ee'; ctx.beginPath()
+        const s = (horiz ? cursor.x * scale + ox : cursor.y * scale + oy)
+        if (s >= 0 && s <= lim) { horiz ? (ctx.moveTo(s + .5, 0), ctx.lineTo(s + .5, RULER_W)) : (ctx.moveTo(0, s + .5), ctx.lineTo(RULER_W, s + .5)) }
+        ctx.stroke()
+      }
+    }
+    draw(t.getContext('2d'), true)
+    draw(l.getContext('2d'), false)
+  }, [rulers, view, cursor, stageSize, docOpen, version, editor])
 
   // Taille du canevas = taille du conteneur
   useEffect(() => {
@@ -285,6 +441,17 @@ export default function Studio() {
             break
           }
         }
+        // saisir un guide (comme Photoshop avec l'outil Déplacement) —
+        // capture du pointeur : le pointerup sur la règle doit aussi le recevoir
+        if (guidesOn) {
+          const gv = guides.v.findIndex((g) => Math.abs(ix - g) < 6 / view.scale)
+          const gh = guides.h.findIndex((g) => Math.abs(iy - g) < 6 / view.scale)
+          if (gv >= 0 || gh >= 0) {
+            e.currentTarget.setPointerCapture?.(e.pointerId)
+            stroke.current = gv >= 0 ? { kind: 'guide', axis: 'v', idx: gv } : { kind: 'guide', axis: 'h', idx: gh }
+            break
+          }
+        }
         editor.snapshot()
         stroke.current = { kind: 'move', ox: ix, oy: iy, dx: l.dx, dy: l.dy }
         break
@@ -319,10 +486,12 @@ export default function Studio() {
         paint(ix, iy, l)
         break
       }
-      case 'gradient':
-        stroke.current = { kind: 'gradient', x0: ix, y0: iy }
-        setGradLine([ix, iy, ix, iy])
+      case 'gradient': {
+        const [sx, sy] = snapPair(ix, iy)
+        stroke.current = { kind: 'gradient', x0: sx, y0: sy }
+        setGradLine([sx, sy, sx, sy])
         break
+      }
       case 'hand':
         stroke.current = { kind: 'pan', sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ox: view.ox, oy: view.oy }
         break
@@ -349,15 +518,19 @@ export default function Studio() {
         setOpts((o) => ({ ...o, fg: rgbToHex(px[0], px[1], px[2]) }))
         break
       }
-      case 'crop':
-        setCropRect([ix, iy, 0, 0])
-        stroke.current = { kind: 'crop', x0: ix, y0: iy }
+      case 'crop': {
+        const [sx, sy] = snapPair(ix, iy)
+        setCropRect([sx, sy, 0, 0])
+        stroke.current = { kind: 'crop', x0: sx, y0: sy }
         break
-      case 'rect':
+      }
+      case 'rect': {
         editor.selPoly = null
-        editor.sel = [ix, iy, 0, 0]
-        stroke.current = { kind: 'sel', x0: ix, y0: iy }
+        const [sx, sy] = snapPair(ix, iy)
+        editor.sel = [sx, sy, 0, 0]
+        stroke.current = { kind: 'sel', x0: sx, y0: sy }
         break
+      }
       case 'zoom':
         zoomAt(e.altKey ? 0.7 : 1.4, e.nativeEvent.offsetX, e.nativeEvent.offsetY)
         break
@@ -437,12 +610,19 @@ export default function Studio() {
       editor.lassoSelect(s.pts)
       bump()
     }
-    else if (s.kind === 'gradient') setGradLine([s.x0, s.y0, ix, iy])
+    else if (s.kind === 'gradient') { const [sx, sy] = snapPair(ix, iy); setGradLine([s.x0, s.y0, sx, sy]) }
     else if (s.kind === 'divider') setCompare(clamp(ix / editor.w, 0.02, 0.98))
     else if (s.kind === 'ruler') setStraighten((st) => ({ ...st, line: [s.x0, s.y0, ix, iy] }))
+    else if (s.kind === 'guide') {
+      const [gx, gy] = toImg(...evPt(e))
+      const lim = s.axis === 'v' ? editor.w : editor.h
+      const pos = s.axis === 'v' ? gx : gy
+      setGuides((g) => { const a = [...g[s.axis]]; a[s.idx] = clamp(pos, 0, lim); return { ...g, [s.axis]: a } })
+    }
     else if (s.kind === 'move') {
-      editor.active.dx = s.dx + (ix - s.ox)
-      editor.active.dy = s.dy + (iy - s.oy)
+      const [sx, sy] = snapPair(ix, iy)
+      editor.active.dx = s.dx + (sx - s.ox)
+      editor.active.dy = s.dy + (sy - s.oy)
       bump()
     } else if (s.kind === 'pan') {
       setView((v) => ({ ...v, ox: s.ox + e.nativeEvent.offsetX - s.sx, oy: s.oy + e.nativeEvent.offsetY - s.sy }))
@@ -459,15 +639,28 @@ export default function Studio() {
       ctx.restore()
       bump()
     } else if (s.kind === 'crop') {
-      setCropRect([Math.min(s.x0, ix), Math.min(s.y0, iy), Math.abs(ix - s.x0), Math.abs(iy - s.y0)])
+      const [sx, sy] = snapPair(ix, iy)
+      setCropRect([Math.min(s.x0, sx), Math.min(s.y0, sy), Math.abs(sx - s.x0), Math.abs(sy - s.y0)])
     } else if (s.kind === 'sel') {
-      editor.sel = [Math.min(s.x0, ix), Math.min(s.y0, iy), Math.abs(ix - s.x0), Math.abs(iy - s.y0)]
+      const [sx, sy] = snapPair(ix, iy)
+      editor.sel = [Math.min(s.x0, sx), Math.min(s.y0, sy), Math.abs(sx - s.x0), Math.abs(sy - s.y0)]
       bump()
     }
   }
 
-  const onPointerUp = () => {
+  const onPointerUp = (e) => {
     const s = stroke.current
+    // guide relâché sur la règle ou hors du document -> supprimé (Photoshop)
+    if (s?.kind === 'guide') {
+      const [mx, my] = evPt(e)
+      const [ix, iy] = toImg(mx, my)
+      const pos = s.axis === 'v' ? ix : iy
+      const lim = s.axis === 'v' ? editor.w : editor.h
+      const onRuler = (s.axis === 'v' && my < RULER_W) || (s.axis === 'h' && mx < RULER_W)
+      if (onRuler || pos < -5 || pos > lim + 5) {
+        setGuides((g) => ({ ...g, [s.axis]: g[s.axis].filter((_, i) => i !== s.idx) }))
+      }
+    }
     if (s?.kind === 'sel' && editor.sel && (editor.sel[2] < 3 || editor.sel[3] < 3)) editor.sel = null
     if (s?.kind === 'lasso') {
       if (!s.pts || s.pts.length < 3) editor.deselect()
@@ -585,11 +778,22 @@ export default function Studio() {
       { label: 'Dupliquer le calque', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.duplicateLayer(editor.activeId); bump() } },
       { label: 'Supprimer le calque', disabled: !docOpen, onClick: () => { editor.snapshot(); editor.removeLayer(editor.activeId); bump() } },
     ]},
-    { label: 'Affichage', tip: 'Zoom et comparaison avant/après', items: [
+    { label: 'Affichage', tip: 'Zoom, règles, guides, grille, magnétisme', items: [
       { label: 'Zoom +', shortcut: '+', onClick: () => zoomAt(1.25) },
       { label: 'Zoom −', shortcut: '−', onClick: () => zoomAt(0.8) },
       { label: 'Ajuster à l\'écran', shortcut: '0', disabled: !docOpen, onClick: fitView },
-      { label: 'Taille réelle (100 %)', shortcut: '1', disabled: !docOpen, onClick: () => setView({ scale: 1, ox: 60, oy: 60 }) },
+      { label: 'Taille réelle (100 %)', shortcut: '1', disabled: !docOpen, onClick: () => setZoom(1) },
+      { label: '50 %', disabled: !docOpen, onClick: () => setZoom(0.5) },
+      { label: '200 %', disabled: !docOpen, onClick: () => setZoom(2) },
+      { label: 'Taille d\'impression (300 dpi)', disabled: !docOpen, onClick: () => setZoom(96 / 300) },
+      '-',
+      { label: `${rulers ? '✓ ' : ''}Règles`, shortcut: 'Ctrl+R', disabled: !docOpen, onClick: () => setRulers((v) => !v) },
+      { label: `${guidesOn ? '✓ ' : ''}Guides`, shortcut: 'Ctrl+;', disabled: !docOpen, onClick: () => setGuidesOn((v) => !v) },
+      { label: `${gridOn ? '✓ ' : ''}Grille`, shortcut: 'Ctrl+G', disabled: !docOpen, onClick: () => setGridOn((v) => !v) },
+      { label: `${snapOn ? '✓ ' : ''}Magnétisme`, disabled: !docOpen, onClick: () => setSnapOn((v) => !v) },
+      { label: 'Effacer les guides', disabled: !docOpen || (!guides.v.length && !guides.h.length), onClick: () => setGuides({ v: [], h: [] }) },
+      '-',
+      { label: 'Plein écran', shortcut: 'F', onClick: () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()) },
       '-',
       { label: compare != null ? 'Quitter la comparaison' : 'Comparer AVANT / APRÈS', shortcut: 'Q', disabled: !docOpen,
         onClick: () => setCompare(compare != null ? null : 0.5) },
@@ -611,6 +815,9 @@ export default function Studio() {
         else if (k === 's') { e.preventDefault(); setModal('export') }
         else if (k === 'a') { e.preventDefault(); editor.selectAll(); bump() }
         else if (k === 'd') { e.preventDefault(); editor.deselect(); bump() }
+        else if (k === 'r') { e.preventDefault(); setRulers((v) => !v) }
+        else if (k === 'g') { e.preventDefault(); setGridOn((v) => !v) }
+        else if (k === ';' || k === ':') { e.preventDefault(); setGuidesOn((v) => !v) }
         return
       }
       const map = { v: 'move', c: 'crop', m: 'rect', l: 'lasso', w: 'wand', b: 'brush', s: 'clone', e: 'eraser', g: 'gradient', k: 'bucket', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate' }
@@ -620,6 +827,7 @@ export default function Studio() {
       else if (k === '0') fitView()
       else if (k === 'x') setOpts((o) => ({ ...o, fg: o.bg, bg: o.fg }))
       else if (k === 'q' && docOpen) setCompare((c) => (c != null ? null : 0.5))
+      else if (k === 'f') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() }
       else if (k === 'delete' || k === 'backspace') { if (docOpen) { if (editor.active?.locked) editor.addLayer(); editor.snapshot(); editor.deleteContent(); bump() } }
       else if (k === 'escape') { editor.deselect(); setCropRect(null); bump() }
     }
@@ -665,6 +873,25 @@ export default function Studio() {
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
             onWheel={(e) => zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.nativeEvent.offsetX, e.nativeEvent.offsetY)}
           />
+          {docOpen && (
+            <canvas ref={ovlRef} style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none' }} />
+          )}
+          {docOpen && rulers && (
+            <>
+              <canvas
+                ref={ruleTopRef}
+                style={{ position: 'absolute', top: 0, left: RULER_W, right: 0, height: RULER_W, zIndex: 6, cursor: 'ew-resize' }}
+                onPointerDown={ruleDown('v')} onPointerMove={ruleMove('v')} onPointerUp={ruleUp('v')}
+              />
+              <canvas
+                ref={ruleLeftRef}
+                style={{ position: 'absolute', top: RULER_W, left: 0, bottom: 0, width: RULER_W, zIndex: 6, cursor: 'ns-resize' }}
+                onPointerDown={ruleDown('h')} onPointerMove={ruleMove('h')} onPointerUp={ruleUp('h')}
+              />
+              <Box position="absolute" top="0" left="0" w={`${RULER_W}px`} h={`${RULER_W}px`}
+                bg="#1c2433" zIndex="7" borderRight="1px solid" borderBottom="1px solid" borderColor="#2a3345" />
+            </>
+          )}
           {!docOpen && (
             <Box position="absolute" inset="0" zIndex="10" display="flex">
               <EmptyCanvas onPick={() => setModal('open')} onOpen={() => fileInput.current?.click()} />
@@ -672,7 +899,7 @@ export default function Studio() {
           )}
           {docOpen && (
             <Box
-              as="button" position="absolute" top="3" right="3" px="3" py="1.5" fontSize="xs"
+              as="button" position="absolute" top={rulers ? `${RULER_W + 12}px` : '3'} right="3" px="3" py="1.5" fontSize="xs"
               borderRadius="md" bg="blackAlpha.600" color="#ffffff" cursor="pointer" zIndex="5"
               onPointerDown={() => setShowOriginal(true)}
               onPointerUp={() => setShowOriginal(false)}
