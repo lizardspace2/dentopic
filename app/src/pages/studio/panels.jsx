@@ -2,7 +2,7 @@
 // panneaux droits (Calques / Réglages / Infos), barre de statut.
 // Thème sombre fixe (comme Photoshop) via C.dark* — indépendant du mode clair/sombre global.
 import { useEffect, useRef, useState } from 'react'
-import { Box, Center, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
+import { Box, Center, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiLayers, FiPlus,
   FiRefreshCw, FiTrash2,
@@ -94,42 +94,48 @@ export function MenuBar({ menus, docName, zoom }) {
 
 export function ToolBar({ tool, setTool, fgColor, bgColor, onSwap, onPickColor }) {
   return (
-    <VStack w="44px" py="2" gap="1" bg={panelBg} borderRight="1px solid" borderColor={panelBorder} flexShrink={0}>
-      {TOOLS.map((t) => (
-        <Tip key={t.key} label={`${t.label} — ${t.hint}`}>
-          <Center
-            w="32px" h="32px" borderRadius="md" cursor="pointer" fontSize="15px"
-            color={tool === t.key ? '#ffffff' : muted}
-            bg={tool === t.key ? C.primary : 'transparent'}
-            _hover={{ color: '#ffffff', bg: tool === t.key ? C.primary : 'whiteAlpha.100' }}
-            onClick={() => setTool(t.key)}
-          >
-            <Box as={t.icon} />
-          </Center>
-        </Tip>
-      ))}
+    <Flex w="78px" direction="column" py="2" px="1" gap="1"
+      bg={panelBg} borderRight="1px solid" borderColor={panelBorder} flexShrink={0} overflowY="auto">
+      {/* 2 colonnes façon Photoshop — toutes les icônes tiennent sans scroll */}
+      <SimpleGrid columns={2} gap="1" justifyItems="center">
+        {TOOLS.map((t) => (
+          <Tip key={t.key} label={`${t.label} — ${t.hint}`}>
+            <Center
+              w="32px" h="32px" borderRadius="md" cursor="pointer" fontSize="15px"
+              color={tool === t.key ? '#ffffff' : muted}
+              bg={tool === t.key ? C.primary : 'transparent'}
+              _hover={{ color: '#ffffff', bg: tool === t.key ? C.primary : 'whiteAlpha.100' }}
+              onClick={() => setTool(t.key)}
+            >
+              <Box as={t.icon} />
+            </Center>
+          </Tip>
+        ))}
+      </SimpleGrid>
       <Box flex="1" />
       {/* Premier plan / arrière-plan + swap — clic = sélecteur détaillé */}
-      <Tip label="Premier plan — clic : sélecteur de couleurs détaillé · X permute">
-        <Box position="relative" w="26px" h="26px">
-          <Box
-            w="20px" h="20px" borderRadius="sm" border="1.5px solid" borderColor="white"
-            bg={fgColor} position="absolute" top="0" left="0" zIndex="2" cursor="pointer"
-            onClick={() => onPickColor?.('fg')}
-          />
-          <Box w="20px" h="20px" borderRadius="sm" border="1.5px solid" borderColor="gray.500"
-            bg={bgColor} position="absolute" bottom="0" right="0" cursor="pointer"
-            onClick={() => onPickColor?.('bg')} />
-        </Box>
-      </Tip>
-      <Tip label="Permuter premier plan / arrière-plan — X">
-        <Center w="26px" h="20px" cursor="pointer" color={muted} fontSize="12px"
-          _hover={{ color: '#ffffff' }} onClick={onSwap}>
-          <Box as={FiRefreshCw} />
-        </Center>
-      </Tip>
+      <HStack justify="center" gap="2">
+        <Tip label="Premier plan — clic : sélecteur de couleurs détaillé · X permute">
+          <Box position="relative" w="26px" h="26px">
+            <Box
+              w="20px" h="20px" borderRadius="sm" border="1.5px solid" borderColor="white"
+              bg={fgColor} position="absolute" top="0" left="0" zIndex="2" cursor="pointer"
+              onClick={() => onPickColor?.('fg')}
+            />
+            <Box w="20px" h="20px" borderRadius="sm" border="1.5px solid" borderColor="gray.500"
+              bg={bgColor} position="absolute" bottom="0" right="0" cursor="pointer"
+              onClick={() => onPickColor?.('bg')} />
+          </Box>
+        </Tip>
+        <Tip label="Permuter premier plan / arrière-plan — X">
+          <Center w="22px" h="20px" cursor="pointer" color={muted} fontSize="12px"
+            _hover={{ color: '#ffffff' }} onClick={onSwap}>
+            <Box as={FiRefreshCw} />
+          </Center>
+        </Tip>
+      </HStack>
       <Box h="1" />
-    </VStack>
+    </Flex>
   )
 }
 
