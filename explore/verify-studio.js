@@ -1,0 +1,57 @@
+const { chromium } = require('playwright')
+;(async () => {
+  const b = await chromium.launch()
+  const pg = await (await b.newContext({ viewport: { width: 1440, height: 860 } })).newPage()
+  const errs = []
+  pg.on('pageerror', (e) => errs.push(e.message))
+  pg.on('console', (m) => m.type() === 'error' && errs.push(m.text()))
+  await pg.goto('http://127.0.0.1:5431/login')
+  await pg.evaluate(() => localStorage.setItem('dentopic.theme','light'))
+  await pg.fill('input[type="email"]', '' + (process.env.DP_USER||'') + '')
+  await pg.fill('input[type="password"]', '' + (process.env.DP_PASS||'') + '')
+  await pg.click('button[type="submit"]')
+  await pg.waitForTimeout(3500)
+  await pg.goto('http://127.0.0.1:5431/studio')
+  await pg.waitForTimeout(1500)
+  console.log('EMPTY:', await pg.locator('text=Aucun document ouvert').count() ? 'ok' : 'non')
+  await pg.screenshot({ path: 'shots/studio-empty.png' })
+  // menus
+  await pg.click('text=Fichier'); await pg.waitForTimeout(300)
+  await pg.screenshot({ path: 'shots/studio-menu.png' })
+  await pg.click('text=Ouvrir une photo'); await pg.waitForTimeout(1500)
+  console.log('OPEN MODAL:', await pg.locator('text=Ouvrir une photo').count() ? 'ok' : 'non')
+  await pg.screenshot({ path: 'shots/studio-open.png' })
+  // cliquer la 1ère photo
+  await pg.locator('img').first().waitFor({ timeout: 8000 }).catch(() => {})
+  const imgs = await pg.locator('div[style] img, img').count()
+  await pg.locator('img').nth(1).click().catch(async () => { await pg.locator('img').first().click() })
+  await pg.waitForTimeout(2000)
+  console.log('doc:', await pg.evaluate(() => document.body.innerText.includes('Calques')))
+  await pg.screenshot({ path: 'shots/studio-doc.png' })
+  // pinceau : tracer un trait
+  await pg.keyboard.press('b')
+  const cv = pg.locator('canvas').first()
+  const box = await cv.boundingBox()
+  if (box) {
+    await pg.mouse.move(box.x + box.width/2 - 100, box.y + box.height/2)
+    await pg.mouse.down()
+    for (let i = 0; i < 10; i++) await pg.mouse.move(box.x + box.width/2 - 100 + i*20, box.y + box.height/2 + (i%2)*15, {steps:3})
+    await pg.mouse.up()
+  }
+  await pg.waitForTimeout(400)
+  await pg.screenshot({ path: 'shots/studio-brush.png' })
+  // undo
+  await pg.keyboard.press('Control+z')
+  await pg.waitForTimeout(400)
+  // réglages : preset N&B
+  await pg.click('text=Réglages'); await pg.waitForTimeout(300)
+  await pg.click('text=N&B'); await pg.waitForTimeout(400)
+  await pg.screenshot({ path: 'shots/studio-nb.png' })
+  // export modal
+  await pg.click('text=Fichier'); await pg.waitForTimeout(250)
+  await pg.click('text=Exporter / Enregistrer'); await pg.waitForTimeout(500)
+  console.log('EXPORT:', await pg.locator('text=Exporter le montage').count() ? 'ok' : 'non')
+  await pg.screenshot({ path: 'shots/studio-export.png' })
+  console.log('ERRORS:', errs.filter(e => !e.includes('favicon')))
+  await b.close()
+})().catch(e => console.log('FAIL', e.message))

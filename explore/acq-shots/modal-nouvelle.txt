@@ -1,0 +1,71 @@
+Recherche
+Accueil
+Acquisition Photo
+Dossier patient
+Studio
+Collection
+Publication
+Présentations
+Réglage
+Réduire
+DG
+
+Dr Guillaume
+
+Chirurgien-dentister
+
+/
+Source non configurée
+→
+E2E-1793333215997
+0
+⌘K
+Dossiers photo
+
+Créez un dossier patient et importez vos photos.
+
+?
+Aide
+Capturer depuis mobile
+Nouvelle acquisition
+DÉPART
+ghhf
+DentoPic
+ARRIVÉE
+Sélectionner un dossier patient
+Rangement automatique actif
+Source non configurée
+E2E-1793333215997
+Les photos entrantes sont rangées dans ce dossier.
+ouverte depuis il y a environ 3 heures
+Suivre la capture
+Terminer
+Nouvelle acquisition
+
+Choisissez le dossier de destination, puis la source des photos.
+
+DESTINATION
+
+MODE D'ACQUISITION
+
+Connexion smartphone / tablette
+
+Scanner le QR code depuis l'app
+
+Appareil photo
+
+Session live depuis un boîtier connecté
+
+Importer des photos
+
+Sélectionner des fichiers ou un dossier
+
+ghh ghhfh
+
+Wi-Fi
+
+Connecter un appareil
+
+Canon, Nikon, FTP, dossier surveillé — dans Réglages → Appareils
+
+Close

@@ -1,0 +1,23 @@
+# Dépendances
+node_modules/
+
+# Builds
+app/dist/
+
+# Secrets / env
+.env
+*.local
+
+# Logs
+*.log
+devserver.log
+
+# Artefacts d'exploration lourds
+site-assets/
+explore/shots/
+explore/screenshots/
+explore/auth-state.json
+
+# OS
+Thumbs.db
+.DS_Store
