@@ -4,7 +4,7 @@ import {
   FiSquare, FiSun, FiType, FiZoomIn, FiZap,
 } from 'react-icons/fi'
 import {
-  LuBandage, LuHand, LuPaintBucket, LuPencil, LuShapes,
+  LuBandage, LuHand, LuMousePointer2, LuPaintBucket, LuPencil, LuPenTool, LuShapes,
   LuSparkles, LuStamp, LuWaves,
 } from 'react-icons/lu'
 import { MdBlurOn, MdGradient } from 'react-icons/md'
@@ -13,6 +13,7 @@ import { TbColorPicker, TbLassoPolygon, TbPolygon } from 'react-icons/tb'
 // Barre d'outils verticale (ordre = affichage)
 export const TOOLS = [
   { key: 'move', icon: FiMove, label: 'Déplacement', hint: 'Déplace le calque actif — V' },
+  { key: 'pathsel', icon: LuMousePointer2, label: 'Sélection de tracé', hint: 'Déplace ou édite les ancres du tracé de la forme active — A' },
   { key: 'crop', icon: FiCrop, label: 'Recadrage', hint: 'Trace une zone puis valide — C' },
   { key: 'rect', icon: FiSquare, label: 'Sélection', hint: 'Rectangle ou ellipse — M' },
   { key: 'lasso', icon: TbLassoPolygon, label: 'Lasso', hint: 'Sélection à main levée — L' },
@@ -31,6 +32,7 @@ export const TOOLS = [
   { key: 'gradient', icon: MdGradient, label: 'Dégradé', hint: 'Glisser = dégradé 1er plan → arrière-plan — G' },
   { key: 'bucket', icon: LuPaintBucket, label: 'Pot de peinture', hint: 'Remplit la zone contiguë — K' },
   { key: 'shape', icon: LuShapes, label: 'Forme', hint: 'Rectangle, ellipse, triangle, ligne — Maj+M' },
+  { key: 'pen', icon: LuPenTool, label: 'Plume', hint: 'Tracé Bézier : clic = ancre, glisser = courbe, Entrée = terminer — P' },
   { key: 'text', icon: FiType, label: 'Texte', hint: 'Clique puis saisis — T' },
   { key: 'picker', icon: TbColorPicker, label: 'Pipette', hint: 'Prélève une couleur — I' },
   { key: 'rotate', icon: FiRotateCw, label: 'Rotation', hint: 'Pivote le document de 90°' },

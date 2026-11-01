@@ -279,6 +279,27 @@ export function OptionsBar({
           <Text {...row}>Peignez sur la pupille — le rouge est neutralisé</Text>
         </>
       )}
+      {tool === 'pen' && (
+        <>
+          <Tip label="Contour du tracé (couleur d'arrière-plan)">
+            <HStack gap="1">
+              <Box w="12px" h="12px" borderRadius="sm" border="1px solid" cursor="pointer"
+                borderColor={opts.shapeStrokeOn ? '#4f8fe8' : 'gray.500'}
+                bg={opts.shapeStrokeOn ? '#4f8fe8' : 'transparent'} color={opts.shapeStrokeOn ? '#ffffff' : fg}
+                fontSize="2xs" lineHeight="12px" textAlign="center"
+                onClick={() => setOpts({ ...opts, shapeStrokeOn: !opts.shapeStrokeOn })}>
+                {opts.shapeStrokeOn ? '✓' : ''}
+              </Box>
+              <Text {...row}>Contour</Text>
+            </HStack>
+          </Tip>
+          {opts.shapeStrokeOn && <>{slider('shapeStroke', 1, 60)}</>}
+          <Text {...row}>Clic = ancre · glisser = courbe · clic sur le 1ᵉʳ point = fermer · Entrée = terminer</Text>
+        </>
+      )}
+      {tool === 'pathsel' && (
+        <Text {...row}>Glissez pour déplacer le tracé de la forme active ou les ancres/poignées du tracé</Text>
+      )}
       {tool === 'shape' && (
         <>
           <Tip label="Forme à tracer">

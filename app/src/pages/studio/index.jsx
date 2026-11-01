@@ -95,6 +95,8 @@ export default function Studio() {
   const [shapePrev, setShapePrev] = useState(null)    // aperçu de forme en cours
   const [ft, setFt] = useState(null)                  // transformation manuelle (Ctrl+T)
   const plassoRef = useRef(null)                      // sommets du lasso polygonal
+  const [penPath, setPenPath] = useState(null)        // tracé plume en cours {pts, hover}
+  const [pathEdit, setPathEdit] = useState(null)      // calque de forme édité (sélection de tracé)
   const filterBase = useRef(null)                     // dump avant ouverture du filtre (aperçu live)
   const ovlRef = useRef(null)
   const ruleTopRef = useRef(null)
@@ -293,6 +295,22 @@ export default function Studio() {
     bump()
   }
 
+  // ---- Plume : Entrée termine le tracé (ouvert), clic sur le 1ᵉʳ point le ferme ----
+  const commitPen = (closed) => {
+    const p = penPath
+    setPenPath(null)
+    if (!p || p.pts.length < 2) { bump(); return }
+    editor.snapshot('Forme')
+    editor.addPathShape(p.pts, closed, {
+      fill: closed ? opts.fg : null,
+      stroke: (opts.shapeStrokeOn || !closed) ? opts.bg : null,
+      strokeW: opts.shapeStroke,
+    })
+    bump()
+  }
+  // changer d'outil abandonne le tracé plume / l'édition de tracé
+  useEffect(() => { setPenPath(null); setPathEdit(null) }, [tool])
+
   // ---- Rendu ----------------------------------------------------------------------
 
   const render = useCallback(() => {
@@ -382,7 +400,61 @@ export default function Studio() {
       const [ccx, ccy] = toS([ft.cx, ft.cy])
       ctx.arc(ccx, ccy, 3.5, 0, Math.PI * 2); ctx.fill()
     }
-  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor, shapePrev, opts.shapeKind, ft])
+    // ---- Plume : aperçu du tracé en cours + élastique vers le curseur ----
+    const tracePath = (pts, hover) => {
+      const toS = (x, y) => [x * scale + ox, y * scale + oy]
+      ctx.beginPath()
+      pts.forEach((p, i) => {
+        if (!i) { ctx.moveTo(...toS(p.x, p.y)); return }
+        const p0 = pts[i - 1]
+        if (p0.c2 || p.c1) {
+          const c2 = p0.c2 || [p0.x, p0.y], c1 = p.c1 || [p.x, p.y]
+          ctx.bezierCurveTo(...toS(c2[0], c2[1]), ...toS(c1[0], c1[1]), ...toS(p.x, p.y))
+        } else ctx.lineTo(...toS(p.x, p.y))
+      })
+      if (hover && pts.length) { const q = pts[pts.length - 1]; ctx.lineTo(...toS(hover[0], hover[1])) }
+      ctx.stroke()
+    }
+    if (penPath) {
+      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5
+      tracePath(penPath.pts, penPath.hover)
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1
+      penPath.pts.forEach((p, i) => {
+        const [x, y] = [p.x * scale + ox, p.y * scale + oy]
+        ctx.fillRect(x - 3.5, y - 3.5, 7, 7); ctx.strokeRect(x - 3.5, y - 3.5, 7, 7)
+        if (i === 0) { ctx.strokeStyle = '#4f8fe8'; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = '#1a1a1a' }
+      })
+    }
+    // ---- Sélection de tracé : ancres + poignées Bézier de la forme éditée ----
+    if (pathEdit?.l?.shape) {
+      const s = pathEdit.l.shape, dx = pathEdit.l.dx, dy = pathEdit.l.dy
+      const toS = (x, y) => [(x + dx) * scale + ox, (y + dy) * scale + oy]
+      if (s.kind === 'path') {
+        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1
+        tracePath(s.pts.map((p) => ({ x: p.x + dx, y: p.y + dy, c1: p.c1 ? [p.c1[0] + dx, p.c1[1] + dy] : null, c2: p.c2 ? [p.c2[0] + dx, p.c2[1] + dy] : null })), null)
+        ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(120,160,220,.9)'
+        ctx.fillStyle = '#ffd166'; ctx.strokeStyle = '#1a1a1a'
+        s.pts.forEach((p) => {
+          for (const w of ['c1', 'c2']) {
+            if (!p[w]) continue
+            const [ax, ay] = toS(p.x, p.y), [hx, hy] = toS(p[w][0], p[w][1])
+            ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(hx, hy); ctx.stroke()
+            ctx.beginPath(); ctx.arc(hx, hy, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+          }
+        })
+        ctx.setLineDash([])
+        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'
+        s.pts.forEach((p) => {
+          const [x, y] = toS(p.x, p.y)
+          ctx.fillRect(x - 4, y - 4, 8, 8); ctx.strokeRect(x - 4, y - 4, 8, 8)
+        })
+      } else {
+        const [x0, y0] = toS(s.x, s.y), [x1, y1] = toS(s.x + s.w, s.y + s.h)
+        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1; ctx.setLineDash([4, 4])
+        ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([])
+      }
+    }
+  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor, shapePrev, opts.shapeKind, ft, penPath, pathEdit])
 
   // Règles : graduations en px document + repère de curseur
   useEffect(() => {
@@ -733,6 +805,50 @@ export default function Studio() {
         stroke.current = { kind: 'shapeDrag', x0: ix, y0: iy }
         break
       }
+      case 'pen': {
+        // clic = ancre · glisser = poignées Bézier symétriques · clic sur le 1er point = fermer
+        if (!penPath) {
+          setPenPath({ pts: [{ x: ix, y: iy, c1: null, c2: null }], closed: false, hover: [ix, iy] })
+          stroke.current = { kind: 'penAnchor', i: 0 }
+        } else {
+          const first = penPath.pts[0]
+          if (penPath.pts.length > 2 && Math.hypot(ix - first.x, iy - first.y) < 10 / view.scale) {
+            commitPen(true)
+          } else {
+            setPenPath((p) => ({ ...p, pts: [...p.pts, { x: ix, y: iy, c1: null, c2: null }] }))
+            stroke.current = { kind: 'penAnchor', i: penPath.pts.length }
+          }
+        }
+        break
+      }
+      case 'pathsel': {
+        // sélection directe : déplace le tracé ou édite ancres/poignées du calque de forme
+        let l = editor.active?.type === 'shape' ? editor.active : null
+        if (!l) { const h = editor.layerAtPoint(ix, iy); if (h?.type === 'shape') l = h }
+        if (!l) { setPathEdit(null); break }
+        if (l.id !== editor.activeId) { editor.setActive(l.id); bump() }
+        setPathEdit({ l })
+        const s = l.shape, R = 10 / view.scale
+        if (s.kind === 'path') {
+          for (let i = 0; i < s.pts.length && !stroke.current; i++) {
+            const p = s.pts[i]
+            for (const w of ['c1', 'c2']) {
+              if (p[w] && Math.hypot(ix - (p[w][0] + l.dx), iy - (p[w][1] + l.dy)) < R) {
+                stroke.current = { kind: 'pathPt', l, i, w, px: ix, py: iy }; break
+              }
+            }
+            if (!stroke.current && Math.hypot(ix - (p.x + l.dx), iy - (p.y + l.dy)) < R) {
+              stroke.current = { kind: 'pathPt', l, i, w: null, px: ix, py: iy }
+            }
+          }
+        }
+        if (!stroke.current) {
+          const inside = ix >= s.x + l.dx && ix <= s.x + s.w + l.dx && iy >= s.y + l.dy && iy <= s.y + s.h + l.dy
+          if (inside) stroke.current = { kind: 'pathAll', l, ox: ix, oy: iy, x0: s.x, y0: s.y }
+        }
+        if (stroke.current) editor.snapshot('Déplacer tracé')
+        break
+      }
       case 'eraser': {
         // gommer un calque verrouillé = le « convertir en calque » (Photoshop) :
         // sinon on créait un calque vide et on n'effaçait rien
@@ -940,8 +1056,53 @@ export default function Studio() {
       editor.lassoSelect([...plassoRef.current.pts, plassoRef.current.hover])
       bump()
     }
+    // plume : élastique vers le curseur entre deux ancres
+    if (penPath && tool === 'pen' && stroke.current?.kind !== 'penAnchor') {
+      setPenPath((p) => p && ({ ...p, hover: [ix, iy] }))
+    }
     const s = stroke.current
     if (!s) return
+    // plume : le drag tire les deux poignées Bézier de la nouvelle ancre
+    if (s.kind === 'penAnchor') {
+      setPenPath((p) => p && ({
+        ...p,
+        pts: p.pts.map((q, j) => j === s.i
+          ? { ...q, c2: [q.x + (ix - q.x), q.y + (iy - q.y)], c1: [q.x - (ix - q.x), q.y - (iy - q.y)] }
+          : q),
+      }))
+      return
+    }
+    // sélection de tracé : déplacer une ancre (avec ses poignées) ou une poignée seule
+    if (s.kind === 'pathPt') {
+      const p = s.l.shape.pts[s.i], dx = ix - s.px, dy = iy - s.py
+      s.px = ix; s.py = iy
+      if (s.w) p[s.w] = [p[s.w][0] + dx, p[s.w][1] + dy]
+      else {
+        p.x += dx; p.y += dy
+        if (p.c1) p.c1 = [p.c1[0] + dx, p.c1[1] + dy]
+        if (p.c2) p.c2 = [p.c2[0] + dx, p.c2[1] + dy]
+      }
+      editor._pathBounds(s.l.shape)
+      editor.drawShapeLayer(s.l)
+      bump()
+      return
+    }
+    // sélection de tracé : déplacer tout le tracé (ou la géométrie de la forme)
+    if (s.kind === 'pathAll') {
+      const sh = s.l.shape
+      if (sh.kind === 'path') {
+        const dx = ix - s.ox, dy = iy - s.oy
+        sh.pts.forEach((p) => {
+          p.x += dx; p.y += dy
+          if (p.c1) p.c1 = [p.c1[0] + dx, p.c1[1] + dy]
+          if (p.c2) p.c2 = [p.c2[0] + dx, p.c2[1] + dy]
+        })
+        editor._pathBounds(sh); s.ox = ix; s.oy = iy
+      } else { sh.x = s.x0 + (ix - s.ox); sh.y = s.y0 + (iy - s.oy) }
+      editor.drawShapeLayer(s.l)
+      bump()
+      return
+    }
     // ---- Transformation manuelle : mise à jour de l'état ft pendant le drag ----
     if (s.kind === 'ftMove') {
       setFt((f) => f && ({ ...f, cx: s.cx0 + ix - s.ox, cy: s.cy0 + iy - s.oy }))
@@ -1430,8 +1591,10 @@ export default function Studio() {
       }
       if (k === 'enter' && plassoRef.current) { commitPlasso(); return }
       if (k === 'escape' && plassoRef.current) { cancelPlasso(); return }
+      if (k === 'enter' && penPath) { commitPen(false); return }
+      if (k === 'escape' && penPath) { setPenPath(null); return }
       const shiftMap = { l: 'plasso', b: 'pencil', u: 'sharpenTool', s: 'smudge', m: 'shape' }
-      const map = { v: 'move', c: 'crop', m: 'rect', l: 'lasso', w: 'wand', b: 'brush', s: 'clone', e: 'eraser', g: 'gradient', k: 'bucket', t: 'text', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate', j: 'heal', o: 'tone', u: 'blurTool', y: 'redeye' }
+      const map = { v: 'move', a: 'pathsel', c: 'crop', m: 'rect', l: 'lasso', w: 'wand', b: 'brush', s: 'clone', e: 'eraser', g: 'gradient', k: 'bucket', t: 'text', p: 'pen', i: 'picker', h: 'hand', z: 'zoom', r: 'rotate', j: 'heal', o: 'tone', u: 'blurTool', y: 'redeye' }
       if (e.shiftKey && shiftMap[k]) setTool(shiftMap[k])
       else if (map[k]) setTool(map[k])
       else if (k === '+') zoomAt(1.25)
@@ -1445,7 +1608,7 @@ export default function Studio() {
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [editor, bump, docOpen, ft]) // ft : Entrée/Échap doivent voir l'état courant
+  }, [editor, bump, docOpen, ft, penPath]) // ft/penPath : Entrée/Échap voient l'état courant
 
   // ---- Rendu --------------------------------------------------------------------------------
 

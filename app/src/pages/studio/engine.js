@@ -627,9 +627,31 @@ export class Editor {
 
   /** Trace le chemin de la forme (déjà contracté/dilaté selon l'alignement du contour). */
   _shapePath(ctx, s, inset = 0) {
-    const x = s.x + inset, y = s.y + inset, w = Math.max(0.01, s.w - inset * 2), h = Math.max(0.01, s.h - inset * 2)
     const k = s.kind
     ctx.beginPath()
+    if (k === 'path') { // tracé libre (plume) : ancres + poignées Bézier optionnelles
+      const pts = s.pts || []
+      if (!pts.length) return
+      ctx.moveTo(pts[0].x, pts[0].y)
+      for (let i = 1; i < pts.length; i++) {
+        const p0 = pts[i - 1], p1 = pts[i]
+        if (p0.c2 || p1.c1) {
+          const c2 = p0.c2 || [p0.x, p0.y], c1 = p1.c1 || [p1.x, p1.y]
+          ctx.bezierCurveTo(c2[0], c2[1], c1[0], c1[1], p1.x, p1.y)
+        } else ctx.lineTo(p1.x, p1.y)
+      }
+      if (s.closed && pts.length > 2) {
+        const p0 = pts[pts.length - 1], p1 = pts[0]
+        if (p0.c2 || p1.c1) {
+          const c2 = p0.c2 || [p0.x, p0.y], c1 = p1.c1 || [p1.x, p1.y]
+          ctx.bezierCurveTo(c2[0], c2[1], c1[0], c1[1], p1.x, p1.y)
+        }
+        ctx.closePath()
+      }
+      return
+    }
+    const x = s.x + inset, y = s.y + inset, w = Math.max(0.01, s.w - inset * 2), h = Math.max(0.01, s.h - inset * 2)
+    if (k === 'ellipse') ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2)
     if (k === 'ellipse') ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2)
     else if (k === 'triangle') { ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.closePath() }
     else if (k === 'line') { ctx.moveTo(x, y); ctx.lineTo(x + w, y + h) }
@@ -676,9 +698,40 @@ export class Editor {
     x.restore()
   }
 
+  /** Calque de forme depuis un tracé plume : pts [{x,y,c1:[x,y]|null,c2:[x,y]|null}]. */
+  addPathShape(pts, closed, params = {}) {
+    const l = this._mkLayer('Tracé')
+    l.type = 'shape'
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
+    l.shape = {
+      kind: 'path', pts: pts.map((p) => ({ x: p.x, y: p.y, c1: p.c1 ? [...p.c1] : null, c2: p.c2 ? [...p.c2] : null })),
+      closed: !!closed,
+      x: Math.min(...xs), y: Math.min(...ys),
+      w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys),
+      fill: 'fill' in params ? params.fill : '#dc2626',
+      stroke: 'stroke' in params ? params.stroke : null,
+      strokeW: params.strokeW ?? 4,
+      strokeAlign: params.strokeAlign || 'center',
+      dash: params.dash || 'solid',
+    }
+    this.drawShapeLayer(l)
+    this.layers.push(l)
+    this.activeId = l.id
+    return l
+  }
+
+  /** Resynchronise s.x/y/w/h avec la boîte des points après édition directe. */
+  _pathBounds(s) {
+    const all = s.pts.flatMap((p) => [[p.x, p.y], p.c1 || [], p.c2 || []]).filter((q) => q.length)
+    const xs = all.map((q) => q[0]), ys = all.map((q) => q[1])
+    s.x = Math.min(...xs); s.y = Math.min(...ys)
+    s.w = Math.max(...xs) - s.x; s.h = Math.max(...ys) - s.y
+  }
+
   updateShape(l, patch) {
     if (!l?.shape) return
     Object.assign(l.shape, patch)
+    if (l.shape.kind === 'path' && l.shape.pts?.length) this._pathBounds(l.shape)
     this.drawShapeLayer(l)
   }
 
