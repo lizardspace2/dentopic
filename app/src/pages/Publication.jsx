@@ -3,11 +3,9 @@ import { Box, Button, Center, Flex, HStack, Input, SimpleGrid, Text, VStack } fr
 import {
   FiBell, FiPlus, FiZap, FiShare2, FiEdit3, FiList, FiGlobe,
   FiChevronLeft, FiChevronRight, FiFilter, FiCalendar, FiCheck,
-  FiInstagram, FiFacebook, FiImage, FiLayers, FiVideo, FiTrash2,
-  FiClock, FiLink2, FiAlertCircle,
+  FiImage, FiLayers, FiVideo, FiTrash2,
+  FiClock, FiAlertCircle,
 } from 'react-icons/fi'
-import { FaYoutube, FaPinterestP, FaGoogle } from 'react-icons/fa'
-import { FaXTwitter, FaThreads } from 'react-icons/fa6'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, EmptyPane, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
@@ -15,6 +13,7 @@ import {
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
+import SocialIcon from '../components/SocialIcon'
 import { useApp } from '../context/AppContext'
 import {
   listSocialAccounts, connectSocialAccount, disconnectSocialAccount,
@@ -25,15 +24,15 @@ import {
 const DAYS = ['LUN 26', 'MAR 27', 'MER 28', 'JEU 29', 'VEN 30', 'SAM 31', 'DIM 1']
 
 const PROVIDERS = [
-  { id: 'instagram', label: 'Instagram', icon: FiInstagram, color: '#d62976' },
-  { id: 'facebook', label: 'Facebook', icon: FiFacebook, color: '#1877f2' },
-  { id: 'tiktok', label: 'TikTok', icon: FiVideo, color: '#000000' },
-  { id: 'linkedin', label: 'LinkedIn', icon: FiLink2, color: '#0a66c2' },
-  { id: 'youtube', label: 'YouTube', icon: FaYoutube, color: '#ff0000' },
-  { id: 'pinterest', label: 'Pinterest', icon: FaPinterestP, color: '#e60023' },
-  { id: 'x', label: 'X (Twitter)', icon: FaXTwitter, color: '#000000' },
-  { id: 'threads', label: 'Threads', icon: FaThreads, color: '#000000' },
-  { id: 'google_business', label: 'Google Business', icon: FaGoogle, color: '#4285f4' },
+  { id: 'instagram', label: 'Instagram', color: '#d62976' },
+  { id: 'facebook', label: 'Facebook', color: '#1877f2' },
+  { id: 'tiktok', label: 'TikTok', color: '#000000' },
+  { id: 'linkedin', label: 'LinkedIn', color: '#0a66c2' },
+  { id: 'youtube', label: 'YouTube', color: '#ff0000' },
+  { id: 'pinterest', label: 'Pinterest', color: '#e60023' },
+  { id: 'x', label: 'X (Twitter)', color: '#000000' },
+  { id: 'threads', label: 'Threads', color: '#000000' },
+  { id: 'google_business', label: 'Google Business', color: '#4285f4' },
 ]
 const providerOf = (id) => PROVIDERS.find((p) => p.id === id) || PROVIDERS[0]
 
@@ -282,7 +281,7 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
                     {p.status === 'scheduled' ? 'Programmé' : 'Brouillon'}
                   </Tag>
                   {p.kind && <Tag color="purple">{p.kind}</Tag>}
-                  {prov && <Box as={prov.icon} color={prov.color} fontSize="xs" />}
+                  {prov && <SocialIcon provider={p.account.provider} size={12} />}
                 </HStack>
                 <Text fontSize="2xs" color={C.body} isTruncated>{p.caption || '(sans légende)'}</Text>
                 <Text fontSize="2xs" color="gray.400">
@@ -348,8 +347,8 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
             const prov = providerOf(a.provider)
             return (
               <HStack key={a.id} border="1px solid" borderColor={C.cardBorder} borderRadius="md" px="3" py="2">
-                <Center w="30px" h="30px" borderRadius="md" bg={prov.color} color="#fff" fontSize="sm">
-                  <Box as={prov.icon} />
+                <Center w="30px" h="30px" borderRadius="md" bg="gray.100" fontSize="sm">
+                  <SocialIcon provider={a.provider} size={15} />
                 </Center>
                 <Box flex="1" minW="0">
                   <Text fontSize="sm" fontWeight="600" color={C.ink}>@{a.handle}</Text>
@@ -376,8 +375,9 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
               border="1.5px solid" fontSize="xs" fontWeight={provider === p.id ? '600' : '400'}
               borderColor={provider === p.id ? p.color : C.cardBorder}
               color={provider === p.id ? p.color : 'gray.600'}
+              display="inline-flex" alignItems="center" gap="6px"
               onClick={() => setProvider(p.id)}>
-              <Box as={p.icon} display="inline" mr="1" />{p.label}
+              <SocialIcon provider={p.id} size={13} />{p.label}
             </Box>
           ))}
         </HStack>

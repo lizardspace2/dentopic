@@ -9,15 +9,14 @@ import {
 import { Link } from 'react-router-dom'
 import {
   FiArrowLeft, FiShare2, FiPlus, FiTrash2, FiCheck, FiClock,
-  FiCalendar, FiAlertCircle, FiInstagram, FiFacebook, FiVideo, FiLink2,
+  FiCalendar, FiAlertCircle,
 } from 'react-icons/fi'
-import { FaYoutube, FaPinterestP, FaGoogle } from 'react-icons/fa'
-import { FaXTwitter, FaThreads } from 'react-icons/fa6'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
   Tip, ConfirmModal, SectionLabel, ago,
 } from '../components/ui'
 import { C } from '../theme'
+import SocialIcon from '../components/SocialIcon'
 import { useApp } from '../context/AppContext'
 import {
   listSocialAccounts, connectSocialAccount, disconnectSocialAccount,
@@ -25,15 +24,15 @@ import {
 } from '../api'
 
 const PROVIDERS = [
-  { id: 'instagram', label: 'Instagram', icon: FiInstagram, color: '#d62976' },
-  { id: 'facebook', label: 'Facebook', icon: FiFacebook, color: '#1877f2' },
-  { id: 'tiktok', label: 'TikTok', icon: FiVideo, color: '#000000' },
-  { id: 'linkedin', label: 'LinkedIn', icon: FiLink2, color: '#0a66c2' },
-  { id: 'youtube', label: 'YouTube', icon: FaYoutube, color: '#ff0000' },
-  { id: 'pinterest', label: 'Pinterest', icon: FaPinterestP, color: '#e60023' },
-  { id: 'x', label: 'X (Twitter)', icon: FaXTwitter, color: '#000000' },
-  { id: 'threads', label: 'Threads', icon: FaThreads, color: '#000000' },
-  { id: 'google_business', label: 'Google Business', icon: FaGoogle, color: '#4285f4' },
+  { id: 'instagram', label: 'Instagram', color: '#d62976' },
+  { id: 'facebook', label: 'Facebook', color: '#1877f2' },
+  { id: 'tiktok', label: 'TikTok', color: '#000000' },
+  { id: 'linkedin', label: 'LinkedIn', color: '#0a66c2' },
+  { id: 'youtube', label: 'YouTube', color: '#ff0000' },
+  { id: 'pinterest', label: 'Pinterest', color: '#e60023' },
+  { id: 'x', label: 'X (Twitter)', color: '#000000' },
+  { id: 'threads', label: 'Threads', color: '#000000' },
+  { id: 'google_business', label: 'Google Business', color: '#4285f4' },
 ]
 const providerOf = (id) => PROVIDERS.find((p) => p.id === id) || PROVIDERS[0]
 
@@ -118,8 +117,8 @@ export default function ReglageReseaux() {
               <HStack key={a.id} px="4" py="3" gap="3"
                 borderTop={i > 0 ? '1px solid' : 'none'} borderColor="gray.100">
                 <Center w="34px" h="34px" borderRadius="lg" flexShrink={0}
-                  bg={`${prov.color}18`} color={prov.color}>
-                  <Box as={prov.icon} fontSize="15px" />
+                  bg="gray.100">
+                  <SocialIcon provider={a.provider} size={16} />
                 </Center>
                 <Box flex="1" minW="0">
                   <HStack gap="2">
@@ -212,9 +211,8 @@ export default function ReglageReseaux() {
             <HStack key={p.id} px="4" py="3" gap="3"
               borderTop={i > 0 ? '1px solid' : 'none'} borderColor="gray.100">
               {prov && (
-                <Center w="30px" h="30px" borderRadius="lg" flexShrink={0}
-                  bg={`${prov.color}18`} color={prov.color}>
-                  <Box as={prov.icon} fontSize="13px" />
+                <Center w="30px" h="30px" borderRadius="lg" flexShrink={0} bg="gray.100">
+                  <SocialIcon provider={p.account.provider} size={14} />
                 </Center>
               )}
               <Box flex="1" minW="0">
@@ -260,7 +258,7 @@ export default function ReglageReseaux() {
                   borderColor={form.provider === p.id ? p.color : C.cardBorder}
                   color={form.provider === p.id ? p.color : 'gray.600'}
                   onClick={() => setForm({ ...form, provider: p.id })}>
-                  <Box as={p.icon} /> {p.label}
+                  <SocialIcon provider={p.id} size={13} /> {p.label}
                 </Box>
               ))}
             </HStack>
