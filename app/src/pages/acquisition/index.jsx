@@ -61,8 +61,9 @@ function HoverTip({ label, tipW = 300, children, ...rest }) {
       onMouseEnter={show} onMouseLeave={hide}>
       {children}
       {tip && createPortal(
-        <Box position="fixed" {...tip.style} bg="#1f2937" color="#fff"
-          fontSize="2xs" px="3" py="2.5" borderRadius="lg" boxShadow="xl"
+        <Box position="fixed" {...tip.style} bg="var(--tip-bg)" color="var(--tip-fg)"
+          fontSize="2xs" px="3" py="2.5" borderRadius="lg" boxShadow="var(--tip-shadow)"
+          border="1px solid" borderColor="var(--tip-border)"
           w={`${tipW}px`} textAlign="left" zIndex="9999"
           onMouseEnter={show} onMouseLeave={hide}>
           {label}
@@ -77,11 +78,11 @@ function HoverTip({ label, tipW = 300, children, ...rest }) {
 function TipAction({ icon, label, onClick }) {
   return (
     <HStack as="button" gap="1.5" px="2" py="1.5" borderRadius="md" cursor="pointer"
-      bg="whiteAlpha.100" _hover={{ bg: 'whiteAlpha.200' }}
+      bg="var(--tip-tile)" _hover={{ bg: 'var(--tip-hover)' }}
       onClick={(e) => { e.stopPropagation(); onClick?.() }}
       aria-label={label} title={label} flex="1" justify="center">
-      <Box as={icon} fontSize="xs" color="#93c5fd" />
-      <Text fontSize="2xs" color="#e5e7eb" fontWeight="600">{label}</Text>
+      <Box as={icon} fontSize="xs" color="var(--tip-accent)" />
+      <Text fontSize="2xs" color="var(--tip-fg)" fontWeight="600">{label}</Text>
     </HStack>
   )
 }
@@ -97,7 +98,7 @@ function TipThumbs({ photos }) {
         </Box>
       ))}
       {photos.length > 4 && (
-        <Text fontSize="2xs" color="#9ca3af" pl="1">+{photos.length - 4}</Text>
+        <Text fontSize="2xs" color="var(--tip-muted)" pl="1">+{photos.length - 4}</Text>
       )}
     </HStack>
   )
@@ -107,8 +108,8 @@ function TipRow({ k, v }) {
   if (!v) return null
   return (
     <HStack justify="space-between" gap="4" fontSize="2xs">
-      <Text color="#9ca3af" flexShrink={0}>{k}</Text>
-      <Text color="#f9fafb" fontWeight="600" textAlign="right" isTruncated maxW="190px">{v}</Text>
+      <Text color="var(--tip-muted)" flexShrink={0}>{k}</Text>
+      <Text color="var(--tip-fg)" fontWeight="600" textAlign="right" isTruncated maxW="190px">{v}</Text>
     </HStack>
   )
 }
@@ -118,15 +119,15 @@ function TipPickRow({ icon, title, sub, right, onClick }) {
   return (
     <HStack gap="2" px="1.5" py="1" mx="-1.5" borderRadius="md" cursor="pointer"
       role="button" aria-label={title}
-      _hover={{ bg: 'whiteAlpha.200' }} onClick={(e) => { e.stopPropagation(); onClick?.() }}>
+      _hover={{ bg: 'var(--tip-hover)' }} onClick={(e) => { e.stopPropagation(); onClick?.() }}>
       {icon && (
-        <Center w="6" h="6" borderRadius="md" bg="whiteAlpha.200" flexShrink={0}>
-          <Box as={icon} color="#93c5fd" fontSize="xs" />
+        <Center w="6" h="6" borderRadius="md" bg="var(--tip-tile)" flexShrink={0}>
+          <Box as={icon} color="var(--tip-accent)" fontSize="xs" />
         </Center>
       )}
       <Box flex="1" minW="0">
-        <Text fontSize="2xs" color="#f9fafb" fontWeight="600" isTruncated>{title}</Text>
-        {sub && <Text fontSize="2xs" color="#9ca3af" isTruncated>{sub}</Text>}
+        <Text fontSize="2xs" color="var(--tip-fg)" fontWeight="600" isTruncated>{title}</Text>
+        {sub && <Text fontSize="2xs" color="var(--tip-muted)" isTruncated>{sub}</Text>}
       </Box>
       {right}
     </HStack>
@@ -136,9 +137,9 @@ function TipPickRow({ icon, title, sub, right, onClick }) {
 function TipCard({ title, icon, badge, children }) {
   return (
     <VStack align="stretch" gap="1.5" py="0.5" minW="220px">
-      <HStack gap="2" pb="1" borderBottom="1px solid" borderColor="whiteAlpha.200">
-        <Box as={icon} color="#93c5fd" fontSize="sm" />
-        <Text fontWeight="700" color="#ffffff" fontSize="xs" flex="1" isTruncated>{title}</Text>
+      <HStack gap="2" pb="1" borderBottom="1px solid" borderColor="var(--tip-border)">
+        <Box as={icon} color="var(--tip-accent)" fontSize="sm" />
+        <Text fontWeight="700" color="var(--tip-fg)" fontSize="xs" flex="1" isTruncated>{title}</Text>
         {badge}
       </HStack>
       {children}
@@ -154,16 +155,16 @@ function SourceTip({ source, devices, rooms, stats, received, sessionActive, onC
   if (!source) {
     return (
       <TipCard title="Choisir la source" icon={FiUpload}
-        badge={<Text fontSize="2xs" color="#93c5fd" flexShrink={0}>Départ</Text>}>
-        <Text fontSize="2xs" color="#9ca3af">D'où viennent les photos :</Text>
+        badge={<Text fontSize="2xs" color="var(--tip-accent)" flexShrink={0}>Départ</Text>}>
+        <Text fontSize="2xs" color="var(--tip-muted)">D'où viennent les photos :</Text>
         {SOURCE_DEFS.map((def) => (
           <TipPickRow key={def.key} icon={def.icon} title={def.label} sub={def.hint}
-            right={<Box as={FiArrowRight} color="#6b7280" fontSize="xs" flexShrink={0} />}
+            right={<Box as={FiArrowRight} color="var(--tip-faint)" fontSize="xs" flexShrink={0} />}
             onClick={() => onPick?.(def)} />
         ))}
         {devices.length > 0 && (
           <>
-            <Text fontSize="2xs" color="#6b7280" pt="1" fontWeight="700" letterSpacing="0.06em">
+            <Text fontSize="2xs" color="var(--tip-faint)" pt="1" fontWeight="700" letterSpacing="0.06em">
               APPAREILS CONFIGURÉS ({devices.length})
             </Text>
             {devices.slice(0, 3).map((dev) => (
@@ -171,15 +172,15 @@ function SourceTip({ source, devices, rooms, stats, received, sessionActive, onC
                 sub={connLabel(dev.metadata?.conn || dev.connection_type)}
                 right={
                   <HStack gap="1" flexShrink={0}>
-                    <Box w="5px" h="5px" borderRadius="full" bg={dev.status === 'online' ? '#22c55e' : '#6b7280'} />
+                    <Box w="5px" h="5px" borderRadius="full" bg={dev.status === 'online' ? 'var(--tip-ok)' : 'var(--tip-faint)'} />
                   </HStack>
                 }
                 onClick={() => onPick?.({ key: devKind(dev), deviceId: dev.id, label: dev.name })} />
             ))}
-            {devices.length > 3 && <Text fontSize="2xs" color="#9ca3af" pl="1">+{devices.length - 3} autre(s)</Text>}
+            {devices.length > 3 && <Text fontSize="2xs" color="var(--tip-muted)" pl="1">+{devices.length - 3} autre(s)</Text>}
           </>
         )}
-        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="whiteAlpha.200">
+        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
           <TipAction icon={FiEdit3} label="Choisir" onClick={onChange} />
           <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
         </HStack>
@@ -195,8 +196,8 @@ function SourceTip({ source, devices, rooms, stats, received, sessionActive, onC
     <TipCard title={source.label || sourceLabel(source.key)} icon={sourceIcon(source.key)}
       badge={
         <HStack gap="1" flexShrink={0}>
-          <Box w="6px" h="6px" borderRadius="full" bg={dev ? (online ? '#22c55e' : '#f59e0b') : '#93c5fd'} />
-          <Text fontSize="2xs" color={dev ? (online ? '#86efac' : '#fcd34d') : '#93c5fd'}>
+          <Box w="6px" h="6px" borderRadius="full" bg={dev ? (online ? 'var(--tip-ok)' : 'var(--tip-warn)') : 'var(--tip-accent)'} />
+          <Text fontSize="2xs" color={dev ? (online ? 'var(--tip-ok)' : 'var(--tip-warn)') : 'var(--tip-accent)'}>
             {dev ? (online ? 'En ligne' : 'Hors ligne') : 'Prêt'}
           </Text>
         </HStack>
@@ -216,12 +217,12 @@ function SourceTip({ source, devices, rooms, stats, received, sessionActive, onC
       {photoN != null && <TipRow k="Photos reçues" v={`${photoN} au total`} />}
       {sessionActive && <TipRow k="Session" v={`en direct — ${received} reçue(s)`} />}
       {!dev && (
-        <Text fontSize="2xs" color="#d1d5db">
+        <Text fontSize="2xs" color="var(--tip-muted)">
           {SOURCE_DEFS.find((s) => s.key === source.key)?.hint || ''}
         </Text>
       )}
       <TipThumbs photos={stats?.latest} />
-      <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="whiteAlpha.200">
+      <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
         <TipAction icon={FiEdit3} label="Changer" onClick={onChange} />
         <TipAction icon={FiSettings} label="Configurer" onClick={onConfigure} />
         <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
@@ -241,23 +242,23 @@ function DestTip({ target, photoCount, photos, dossiers = [], onOpen, onChange, 
       .slice(0, 5)
     return (
       <TipCard title="Choisir la destination" icon={FiFolder}
-        badge={<Text fontSize="2xs" color="#93c5fd" flexShrink={0}>Arrivée</Text>}>
-        <Text fontSize="2xs" color="#9ca3af">
+        badge={<Text fontSize="2xs" color="var(--tip-accent)" flexShrink={0}>Arrivée</Text>}>
+        <Text fontSize="2xs" color="var(--tip-muted)">
           Les photos seront rangées dans ce dossier :
         </Text>
         {recent.map((ds) => (
           <TipPickRow key={ds.id} icon={FiFolder} title={ds.name}
             sub={ds.updated_at ? `Modifié ${ago(ds.updated_at)}` : undefined}
-            right={<Box as={FiArrowRight} color="#6b7280" fontSize="xs" flexShrink={0} />}
+            right={<Box as={FiArrowRight} color="var(--tip-faint)" fontSize="xs" flexShrink={0} />}
             onClick={() => onPick?.(ds)} />
         ))}
         {dossiers.length > 5 && (
-          <Text fontSize="2xs" color="#9ca3af" pl="1">+{dossiers.length - 5} autre(s) dossier(s)</Text>
+          <Text fontSize="2xs" color="var(--tip-muted)" pl="1">+{dossiers.length - 5} autre(s) dossier(s)</Text>
         )}
         {dossiers.length === 0 && (
-          <Text fontSize="2xs" color="#d1d5db">Aucun dossier — créez-en un pour commencer.</Text>
+          <Text fontSize="2xs" color="var(--tip-muted)">Aucun dossier — créez-en un pour commencer.</Text>
         )}
-        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="whiteAlpha.200">
+        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
           <TipAction icon={FiFolder} label="Parcourir" onClick={onChange} />
           <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
         </HStack>
@@ -268,7 +269,7 @@ function DestTip({ target, photoCount, photos, dossiers = [], onOpen, onChange, 
   const specs = Array.isArray(target.specialties) ? target.specialties.join(', ') : target.specialties
   return (
     <TipCard title={target.name} icon={FiFolder}
-      badge={<Text fontSize="2xs" color="#93c5fd" flexShrink={0}>Destination</Text>}>
+      badge={<Text fontSize="2xs" color="var(--tip-accent)" flexShrink={0}>Destination</Text>}>
       {patient && <TipRow k="Patient" v={patient} />}
       {target.patient_dossier_number && <TipRow k="N° dossier" v={target.patient_dossier_number} />}
       {target.birth_date && <TipRow k="Naissance" v={new Date(target.birth_date).toLocaleDateString('fr-FR')} />}
@@ -278,7 +279,7 @@ function DestTip({ target, photoCount, photos, dossiers = [], onOpen, onChange, 
       {target.created_at && <TipRow k="Créé" v={ago(target.created_at)} />}
       {target.updated_at && <TipRow k="Modifié" v={ago(target.updated_at)} />}
       <TipThumbs photos={photos} />
-      <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="whiteAlpha.200">
+      <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
         <TipAction icon={FiFolder} label="Ouvrir" onClick={onOpen} />
         <TipAction icon={FiEdit3} label="Changer" onClick={onChange} />
         <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />

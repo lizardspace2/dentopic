@@ -38,6 +38,19 @@
   --s-a200: rgba(0, 0, 0, 0.12);
   --s-a300: rgba(0, 0, 0, 0.2);
   --s-a400: rgba(0, 0, 0, 0.32);
+
+  /* Infobulles interactives (HoverTip, portal) — thème clair : carte blanche */
+  --tip-bg: #ffffff;
+  --tip-fg: #111827;
+  --tip-muted: #6b7280;
+  --tip-faint: #9ca3af;
+  --tip-accent: #2563eb;
+  --tip-border: #e5e7eb;
+  --tip-hover: rgba(0, 0, 0, 0.05);
+  --tip-tile: rgba(0, 0, 0, 0.06);
+  --tip-ok: #16a34a;
+  --tip-warn: #d97706;
+  --tip-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
 }
 
 /* ---- Palette sombre : les mêmes variables, valeurs adaptées -----------------
@@ -104,6 +117,19 @@ html[data-theme='dark'] {
   --s-a200: rgba(255, 255, 255, 0.12);
   --s-a300: rgba(255, 255, 255, 0.2);
   --s-a400: rgba(255, 255, 255, 0.32);
+
+  /* Infobulles interactives — thème sombre : carte ardoise */
+  --tip-bg: #1f2937;
+  --tip-fg: #f9fafb;
+  --tip-muted: #9ca3af;
+  --tip-faint: #6b7280;
+  --tip-accent: #93c5fd;
+  --tip-border: rgba(255, 255, 255, 0.14);
+  --tip-hover: rgba(255, 255, 255, 0.09);
+  --tip-tile: rgba(255, 255, 255, 0.1);
+  --tip-ok: #86efac;
+  --tip-warn: #fcd34d;
+  --tip-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
 }
 
 /* ---- Base ------------------------------------------------------------------- */
