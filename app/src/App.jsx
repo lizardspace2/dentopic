@@ -16,6 +16,7 @@ import Presentations from './pages/Presentations'
 import Reglages from './pages/Reglages'
 import ReglageProfil from './pages/ReglageProfil'
 import ReglageAppareils from './pages/ReglageAppareils'
+import ReglageMembres from './pages/ReglageMembres'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="/reglage" element={<Reglages />} />
         <Route path="/reglage/profil" element={<ReglageProfil />} />
         <Route path="/reglage/appareils" element={<ReglageAppareils />} />
+        <Route path="/reglage/membres" element={<ReglageMembres />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

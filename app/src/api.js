@@ -715,3 +715,64 @@ export function updateSocialPost(id, fields) {
 export function deleteSocialPost(id) {
   return supabase.from('social_posts').delete().eq('id', id).then(({ error }) => !error)
 }
+
+// ---- Membres du workspace -----------------------------------------------------
+// workspace_members : workspace_id, user_id (FK auth.users), role, created_at.
+// Pas de FK vers profiles → le nom est récupéré par requête séparée.
+
+export function listWorkspaceMembers(wsId) {
+  return supabase
+    .from('workspace_members').select('*').eq('workspace_id', wsId)
+    .order('created_at', { ascending: true })
+    .then(async ({ data }) => {
+      const members = data || []
+      const ids = members.map((m) => m.user_id)
+      if (!ids.length) return members
+      const { data: profiles } = await supabase
+        .from('profiles').select('*').in('id', ids)
+      const byId = Object.fromEntries((profiles || []).map((p) => [p.id, p]))
+      return members.map((m) => ({ ...m, profile: byId[m.user_id] || null }))
+    })
+}
+
+/** Crée un vrai compte (auth.signUp) puis le rattache au workspace avec un rôle.
+ *  La session courante est sauvegardée puis restaurée si le nouveau compte
+ *  prend le relais (confirmation e-mail désactivée côté projet). */
+export async function createMemberAccount(wsId, { email, password, full_name, role }) {
+  const { data: sess } = await supabase.auth.getSession()
+  const prev = sess?.session
+  const { data, error } = await supabase.auth.signUp({
+    email, password,
+    options: { data: { full_name } },
+  })
+  if (error) return { error: error.message }
+  if (prev && data?.session && data.session.user.id !== prev.user.id) {
+    await supabase.auth.setSession({
+      access_token: prev.access_token, refresh_token: prev.refresh_token,
+    })
+  }
+  const uid = data?.user?.id
+  if (!uid) return { error: 'Compte non créé' }
+  const { error: insErr } = await supabase
+    .from('workspace_members')
+    .insert({ workspace_id: wsId, user_id: uid, role })
+  if (insErr) {
+    console.warn('createMemberAccount member:', insErr.message)
+    return { error: `Compte créé mais rattachement impossible : ${insErr.message}` }
+  }
+  return { user: data.user, needsConfirm: !data?.session }
+}
+
+export function updateMemberRole(wsId, userId, role) {
+  return supabase
+    .from('workspace_members').update({ role })
+    .eq('workspace_id', wsId).eq('user_id', userId)
+    .then(({ error }) => !error)
+}
+
+export function removeWorkspaceMember(wsId, userId) {
+  return supabase
+    .from('workspace_members').delete()
+    .eq('workspace_id', wsId).eq('user_id', userId)
+    .then(({ error }) => !error)
+}
