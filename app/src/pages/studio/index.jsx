@@ -1697,17 +1697,18 @@ export default function Studio() {
             ref={canvasRef} style={{ position: 'absolute', inset: 0 }}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
             onDoubleClick={(e) => {
-              // double-clic sur un calque de texte → ré-édition du contenu
               if (!docOpen || ft) return
+              // double-clic sur un calque de texte → ré-édition du contenu
               const [ix, iy] = toImg(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
               const hit = textLayerAt(ix, iy)
               if (hit) {
                 editor.setActive(hit.id)
                 setTextInput({ sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ix, iy, t: Date.now(), edit: hit, value: hit.text?.value || '' })
                 bump()
+                return
               }
+              if (tool === 'plasso') commitPlasso()
             }}
-            onDoubleClick={() => tool === 'plasso' && commitPlasso()}
             onWheel={(e) => zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.nativeEvent.offsetX, e.nativeEvent.offsetY)}
           />
           {docOpen && (
