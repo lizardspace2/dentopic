@@ -920,6 +920,16 @@ export async function saveWorkspaceBrand(wsId, brand) {
   return true
 }
 
+/** Bascule le plan du workspace (slug workspace_plans : free|pro|team|clinic). */
+export function setWorkspacePlan(wsId, slug) {
+  return supabase
+    .from('workspaces').update({ plan: slug }).eq('id', wsId)
+    .then(({ error }) => {
+      if (error) { console.warn('setWorkspacePlan:', error.message); return false }
+      return true
+    })
+}
+
 /** Écrit une clé dans workspaces.settings (merge non destructif). */
 export async function saveWorkspaceSetting(wsId, key, value) {
   const settings = await getWorkspaceSettings(wsId)

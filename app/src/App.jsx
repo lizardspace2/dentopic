@@ -21,6 +21,7 @@ import ReglageBrand from './pages/ReglageBrand'
 import ReglageProtocoles from './pages/ReglageProtocoles'
 import ReglageStockage from './pages/ReglageStockage'
 import ReglageReseaux from './pages/ReglageReseaux'
+import ReglagePro from './pages/ReglagePro'
 import NotFound from './pages/NotFound'
 
 export default function App() {
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/reglage/protocoles" element={<ReglageProtocoles />} />
         <Route path="/reglage/stockage" element={<ReglageStockage />} />
         <Route path="/reglage/reseaux" element={<ReglageReseaux />} />
+        <Route path="/reglage/pro" element={<ReglagePro />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
