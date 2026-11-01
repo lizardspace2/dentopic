@@ -73,7 +73,7 @@ export default function Studio() {
   const [pickColor, setPickColor] = useState(null) // 'fg' | 'bg' | null — sélecteur détaillé
   const [fxKey, setFxKey] = useState(null) // effet présélectionné dans Style de calque
   const [cropRect, setCropRect] = useState(null)
-  const [textInput, setTextInput] = useState(null) // {sx, sy, ix, iy}
+  const [textInput, setTextInput] = useState(null) // {sx, sy, ix, iy, t, edit?: calque texte à rééditer}
   const [cursor, setCursor] = useState(null)
   const [showOriginal, setShowOriginal] = useState(false)
   const [compare, setCompare] = useState(null) // fraction 0..1 du séparateur avant/après
@@ -893,9 +893,19 @@ export default function Studio() {
       case 'rotate':
         editor.snapshot(); editor.rotate90(); bump()
         break
-      case 'text':
+      case 'text': {
+        // clic sur un calque de texte existant → ré-édition du contenu (comme Photoshop)
+        const hitT = textLayerAt(ix, iy)
+        if (hitT) {
+          const t = hitT.text
+          editor.setActive(hitT.id)
+          setTextInput({ sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ix, iy, t: Date.now(), edit: hitT, value: t?.value || '' })
+          bump()
+          break
+        }
         setTextInput({ sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ix, iy, t: Date.now() })
         break
+      }
     }
   }
 
@@ -1252,15 +1262,38 @@ export default function Studio() {
 
   // ---- Texte ------------------------------------------------------------------------
 
+  // calque de texte sous le point : pixel exact, sinon boîte du calque actif
+  // (tolérance ~14 px écran — comme la zone de clic des poignées)
+  const textLayerAt = (ix, iy) => {
+    const hit = editor.layerAtPoint(ix, iy)
+    if (hit?.type === 'text') return hit
+    const l = editor.active
+    if (l?.type === 'text' && l.text?.box) {
+      const b = l.text.box, M = 14 / view.scale
+      if (ix >= l.dx - M && ix <= l.dx + b.w + M && iy >= l.dy - M && iy <= l.dy + b.h + M) return l
+    }
+    return null
+  }
+
   const commitText = (value) => {
-    if (!textInput || !value.trim()) { setTextInput(null); return }
+    if (!textInput) return
+    const edit = textInput.edit
+    setTextInput(null)
+    if (edit) { // ré-édition : met à jour le contenu du calque existant
+      if (value !== (edit.text?.value || '')) {
+        editor.snapshot('Texte')
+        editor.updateText(edit, { value })
+      }
+      bump()
+      return
+    }
+    if (!value.trim()) return
     editor.snapshot('Texte')
     editor.addTextLayer(value, {
       font: opts.textFont, size: opts.textSize, bold: opts.textBold,
       italic: opts.textItalic, tracking: opts.textTracking, color: opts.fg,
       align: opts.textAlign, smooth: opts.textSmooth,
     }, textInput.ix, textInput.iy)
-    setTextInput(null)
     bump()
   }
 
@@ -1663,6 +1696,17 @@ export default function Studio() {
           <canvas
             ref={canvasRef} style={{ position: 'absolute', inset: 0 }}
             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+            onDoubleClick={(e) => {
+              // double-clic sur un calque de texte → ré-édition du contenu
+              if (!docOpen || ft) return
+              const [ix, iy] = toImg(e.nativeEvent.offsetX, e.nativeEvent.offsetY)
+              const hit = textLayerAt(ix, iy)
+              if (hit) {
+                editor.setActive(hit.id)
+                setTextInput({ sx: e.nativeEvent.offsetX, sy: e.nativeEvent.offsetY, ix, iy, t: Date.now(), edit: hit, value: hit.text?.value || '' })
+                bump()
+              }
+            }}
             onDoubleClick={() => tool === 'plasso' && commitPlasso()}
             onWheel={(e) => zoomAt(e.deltaY < 0 ? 1.1 : 0.9, e.nativeEvent.offsetX, e.nativeEvent.offsetY)}
           />
@@ -1705,7 +1749,7 @@ export default function Studio() {
             <Input
               position="absolute" left={textInput.sx} top={textInput.sy - 14} w="240px" h="28px"
               fontSize="sm" bg={S.input} color={S.fg} border="1px solid" borderColor={C.primary}
-              autoFocus placeholder="Texte…" zIndex="6"
+              autoFocus placeholder="Texte…" zIndex="6" defaultValue={textInput.value || ''}
               onKeyDown={(e) => { if (e.key === 'Enter') commitText(e.target.value); if (e.key === 'Escape') setTextInput(null) }}
               onBlur={(e) => {
                 // blur parasite du clic qui a ouvert le champ : on refocus
