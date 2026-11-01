@@ -113,6 +113,26 @@ function TipRow({ k, v }) {
   )
 }
 
+/** Ligne cliquable dans une bulle (choix d'une source / d'un dossier). */
+function TipPickRow({ icon, title, sub, right, onClick }) {
+  return (
+    <HStack gap="2" px="1.5" py="1" mx="-1.5" borderRadius="md" cursor="pointer"
+      role="button" aria-label={title}
+      _hover={{ bg: 'whiteAlpha.200' }} onClick={(e) => { e.stopPropagation(); onClick?.() }}>
+      {icon && (
+        <Center w="6" h="6" borderRadius="md" bg="whiteAlpha.200" flexShrink={0}>
+          <Box as={icon} color="#93c5fd" fontSize="xs" />
+        </Center>
+      )}
+      <Box flex="1" minW="0">
+        <Text fontSize="2xs" color="#f9fafb" fontWeight="600" isTruncated>{title}</Text>
+        {sub && <Text fontSize="2xs" color="#9ca3af" isTruncated>{sub}</Text>}
+      </Box>
+      {right}
+    </HStack>
+  )
+}
+
 function TipCard({ title, icon, badge, children }) {
   return (
     <VStack align="stretch" gap="1.5" py="0.5" minW="220px">
@@ -129,8 +149,43 @@ function TipCard({ title, icon, badge, children }) {
 /** Bulle détaillée et interactive de la source DÉPART :
  *  type, appareil, connexion, salle, FTP/dossier + photos reçues
  *  (vignettes) + icônes d'action (changer / configurer / nouvelle acquisition). */
-function SourceTip({ source, devices, rooms, stats, received, sessionActive, onChange, onConfigure, onNew }) {
-  if (!source) return null
+function SourceTip({ source, devices, rooms, stats, received, sessionActive, onChange, onConfigure, onNew, onPick }) {
+  // État vide : catalogue complet des sources — chaque ligne choisit directement.
+  if (!source) {
+    return (
+      <TipCard title="Choisir la source" icon={FiUpload}
+        badge={<Text fontSize="2xs" color="#93c5fd" flexShrink={0}>Départ</Text>}>
+        <Text fontSize="2xs" color="#9ca3af">D'où viennent les photos :</Text>
+        {SOURCE_DEFS.map((def) => (
+          <TipPickRow key={def.key} icon={def.icon} title={def.label} sub={def.hint}
+            right={<Box as={FiArrowRight} color="#6b7280" fontSize="xs" flexShrink={0} />}
+            onClick={() => onPick?.(def)} />
+        ))}
+        {devices.length > 0 && (
+          <>
+            <Text fontSize="2xs" color="#6b7280" pt="1" fontWeight="700" letterSpacing="0.06em">
+              APPAREILS CONFIGURÉS ({devices.length})
+            </Text>
+            {devices.slice(0, 3).map((dev) => (
+              <TipPickRow key={dev.id} icon={FiMonitor} title={dev.name}
+                sub={connLabel(dev.metadata?.conn || dev.connection_type)}
+                right={
+                  <HStack gap="1" flexShrink={0}>
+                    <Box w="5px" h="5px" borderRadius="full" bg={dev.status === 'online' ? '#22c55e' : '#6b7280'} />
+                  </HStack>
+                }
+                onClick={() => onPick?.({ key: devKind(dev), deviceId: dev.id, label: dev.name })} />
+            ))}
+            {devices.length > 3 && <Text fontSize="2xs" color="#9ca3af" pl="1">+{devices.length - 3} autre(s)</Text>}
+          </>
+        )}
+        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="whiteAlpha.200">
+          <TipAction icon={FiEdit3} label="Choisir" onClick={onChange} />
+          <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
+        </HStack>
+      </TipCard>
+    )
+  }
   const dev = source.deviceId ? devices.find((x) => x.id === source.deviceId) : null
   const room = dev?.room_id ? rooms.find((r) => r.id === dev.room_id) : null
   const m = dev?.metadata || {}
@@ -178,8 +233,37 @@ function SourceTip({ source, devices, rooms, stats, received, sessionActive, onC
 /** Bulle détaillée et interactive du dossier ARRIVÉE :
  *  patient, n°, spécialités, dates + vignettes des dernières photos
  *  + icônes (ouvrir le dossier / changer / nouvelle acquisition). */
-function DestTip({ target, photoCount, photos, onOpen, onChange, onNew }) {
-  if (!target) return null
+function DestTip({ target, photoCount, photos, dossiers = [], onOpen, onChange, onNew, onPick }) {
+  // État vide : dossiers récents — un clic choisit la destination directement.
+  if (!target) {
+    const recent = [...dossiers]
+      .sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0))
+      .slice(0, 5)
+    return (
+      <TipCard title="Choisir la destination" icon={FiFolder}
+        badge={<Text fontSize="2xs" color="#93c5fd" flexShrink={0}>Arrivée</Text>}>
+        <Text fontSize="2xs" color="#9ca3af">
+          Les photos seront rangées dans ce dossier :
+        </Text>
+        {recent.map((ds) => (
+          <TipPickRow key={ds.id} icon={FiFolder} title={ds.name}
+            sub={ds.updated_at ? `Modifié ${ago(ds.updated_at)}` : undefined}
+            right={<Box as={FiArrowRight} color="#6b7280" fontSize="xs" flexShrink={0} />}
+            onClick={() => onPick?.(ds)} />
+        ))}
+        {dossiers.length > 5 && (
+          <Text fontSize="2xs" color="#9ca3af" pl="1">+{dossiers.length - 5} autre(s) dossier(s)</Text>
+        )}
+        {dossiers.length === 0 && (
+          <Text fontSize="2xs" color="#d1d5db">Aucun dossier — créez-en un pour commencer.</Text>
+        )}
+        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="whiteAlpha.200">
+          <TipAction icon={FiFolder} label="Parcourir" onClick={onChange} />
+          <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
+        </HStack>
+      </TipCard>
+    )
+  }
   const patient = [target.first_name, target.last_name].filter(Boolean).join(' ')
   const specs = Array.isArray(target.specialties) ? target.specialties.join(', ') : target.specialties
   return (
@@ -405,13 +489,14 @@ export default function Acquisition() {
       {/* ---- Flux : DÉPART → DentoPic → ARRIVÉE (une carte épurée) ---- */}
       <Card px="5" py="4" my="5">
         <HStack gap="5" align="stretch">
-          <HoverTip label={source
-            ? <SourceTip source={source} devices={d.devices} rooms={d.rooms}
-                stats={srcStats} received={received} sessionActive={!!active}
-                onChange={() => setModal('source')}
-                onConfigure={() => setModal(SOURCE_DEFS.find((s) => s.key === source.key)?.modal || 'source')}
-                onNew={() => setModal('new')} />
-            : 'Cliquer pour choisir la source des photos'}
+          <HoverTip label={
+            <SourceTip source={source} devices={d.devices} rooms={d.rooms}
+              stats={srcStats} received={received} sessionActive={!!active}
+              onChange={() => setModal('source')}
+              onConfigure={() => setModal(source ? (SOURCE_DEFS.find((s) => s.key === source.key)?.modal || 'source') : 'source')}
+              onNew={() => setModal('new')}
+              onPick={pickSource} />
+          }
             tipW={300}>
             <Box flex="1" cursor="pointer" onClick={() => setModal('source')}>
               <HStack mb="2" gap="2">
@@ -442,12 +527,14 @@ export default function Acquisition() {
             <Box as={FiArrowRight} color={C.primary} fontSize="sm" />
           </Center>
 
-          <HoverTip label={target
-            ? <DestTip target={target} photoCount={photoCount} photos={destPhotos}
-                onOpen={() => navigate(`/dossier-patient/dossier/${target.id}`)}
-                onChange={() => setModal('dossier')}
-                onNew={() => setModal('new')} />
-            : 'Cliquer pour choisir le dossier de destination'}
+          <HoverTip label={
+            <DestTip target={target} photoCount={photoCount} photos={destPhotos}
+              dossiers={d.dossiers}
+              onOpen={() => target && navigate(`/dossier-patient/dossier/${target.id}`)}
+              onChange={() => setModal('dossier')}
+              onNew={() => setModal('new')}
+              onPick={(ds) => setTarget(ds)} />
+          }
             tipW={300}>
             <Box flex="1" cursor="pointer" onClick={() => setModal('dossier')}>
               <HStack mb="2" gap="2">
