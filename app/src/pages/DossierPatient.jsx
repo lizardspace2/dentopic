@@ -81,8 +81,18 @@ function DossierGrid() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
   const [menuFor, setMenuFor] = useState(null)
+  const [hover, setHover] = useState(null) // dossier id survolé
+  const [patients, setPatients] = useState({}) // cache fiche patient par dossier
   const importTarget = useRef(null) // dossier id de l'import
   const fileInput = useRef(null)
+
+  // fiche patient chargée à la demande au premier survol de la carte
+  const onCardHover = (ds) => {
+    setHover(ds.id)
+    if (!(ds.id in patients)) {
+      getPatient(ds.id).then((pat) => setPatients((m) => ({ ...m, [ds.id]: pat })))
+    }
+  }
 
   const reload = async () => {
     if (!wsId) return
@@ -321,12 +331,19 @@ function DossierGrid() {
                   <Box as={FiFolder} color="gray.400" fontSize="sm" />
                 </Tip>
               </HStack>
-              {/* vignette = dernière photo du dossier — clic ouvre la fiche */}
-              <Link to={`/dossier-patient/dossier/${ds.id}`}>
-                <Tip label="Ouvrir le dossier : photos, montages, sous-dossiers" display="block" mb="3">
+              {/* vignette = dernière photo du dossier — clic ouvre la fiche,
+                  survol = fiche récapitulative du patient + actions rapides */}
+              <Box position="relative" mb="3"
+                onMouseEnter={() => onCardHover(ds)} onMouseLeave={() => setHover(null)}>
+                <Link to={`/dossier-patient/dossier/${ds.id}`}>
                   <PhotoImg storagePath={p?.coverPath} ratio="16/9" />
-                </Tip>
-              </Link>
+                </Link>
+                {hover === ds.id && (
+                  <PatientHover ds={ds} pat={patients[ds.id]}
+                    onView={() => nav(`/dossier-patient/dossier/${ds.id}`)}
+                    onEdit={() => openEdit(ds)} />
+                )}
+              </Box>
               {(ds.specialties || []).length > 0 && (
                 <HStack gap="1.5" mb="2" flexWrap="wrap">
                   {ds.specialties.slice(0, 3).map((s) => (
@@ -549,6 +566,71 @@ function DossierGrid() {
           </HStack>
         </VStack>
       </Modal>
+    </Box>
+  )
+}
+
+// Survol d'une carte : fiche récapitulative du patient + actions rapides.
+// Posé sur la vignette — cliquable (contrairement à <Tip> qui est pointerEvents:none).
+const SYS_KEYS = new Set(['id', 'workspace_id', 'dossier_id', 'created_at', 'updated_at', 'deleted_at'])
+const FIELD_LABELS = {
+  phone: 'Téléphone', email: 'E-mail', address: 'Adresse', city: 'Ville',
+  notes: 'Notes', gender: 'Sexe', blood_type: 'Groupe', allergies: 'Allergies',
+}
+
+function PatientHover({ ds, pat, onView, onEdit }) {
+  const birth = pat?.birth_date
+    ? new Date(pat.birth_date).toLocaleDateString('fr-FR')
+    : null
+  const age = pat?.birth_date
+    ? Math.floor((Date.now() - new Date(pat.birth_date)) / (365.25 * 864e5))
+    : null
+  // champs supplémentaires renseignés dans la fiche (téléphone, e-mail, notes…)
+  const extras = pat
+    ? Object.entries(pat)
+        .filter(([k, v]) => !SYS_KEYS.has(k) && !['last_name', 'first_name', 'birth_date'].includes(k) && v != null && v !== '')
+        .slice(0, 3)
+    : []
+  const row = (k, v) => (
+    <HStack key={k} justify="space-between" fontSize="2xs" gap="3">
+      <Text color="gray.500" flexShrink="0">{k}</Text>
+      <Text color={C.ink} fontWeight="600" textAlign="right" isTruncated>{v}</Text>
+    </HStack>
+  )
+  return (
+    <Box
+      position="absolute" inset="0" borderRadius="lg" overflow="hidden" zIndex="5"
+      bg="white" opacity="0.98" border="1px solid" borderColor={C.cardBorder}
+      boxShadow="lg" p="3" display="flex" flexDirection="column" gap="1.5"
+      cursor="default" onClick={(e) => e.preventDefault()}
+    >
+      <HStack justify="space-between" mb="0.5">
+        <Text fontSize="xs" fontWeight="700" color={C.ink} isTruncated>
+          {[pat?.last_name, pat?.first_name].filter(Boolean).join(' ') || ds.name}
+        </Text>
+        <Tag color="blue"><FiUser style={{ marginRight: 3 }} />Fiche</Tag>
+      </HStack>
+      {pat === undefined ? (
+        <Text fontSize="2xs" color="gray.400">Chargement de la fiche…</Text>
+      ) : (
+        <VStack align="stretch" gap="1" flex="1" overflow="auto">
+          {ds.patient_dossier_number && row('N° dossier', ds.patient_dossier_number)}
+          {birth && row('Né(e) le', `${birth}${age != null ? ` — ${age} ans` : ''}`)}
+          {(ds.specialties || []).length > 0 && row('Spécialité(s)', ds.specialties.join(', '))}
+          {ds.description && row('Notes', ds.description)}
+          {extras.map(([k, v]) => row(FIELD_LABELS[k] || k, typeof v === 'string' ? v : JSON.stringify(v)))}
+          {!pat && <Text fontSize="2xs" color="gray.400">Aucune fiche patient liée — « Modifier » la crée.</Text>}
+        </VStack>
+      )}
+      <HStack gap="2" pt="1" mt="auto">
+        <Button size="xs" flex="1" bg={C.primary} color="#ffffff" borderRadius="md"
+          _hover={{ filter: 'brightness(1.1)' }} onClick={onView}>
+          <FiEye style={{ marginRight: 4 }} /> Voir la fiche
+        </Button>
+        <Button size="xs" flex="1" variant="outline" borderRadius="md" onClick={onEdit}>
+          <FiEdit2 style={{ marginRight: 4 }} /> Modifier
+        </Button>
+      </HStack>
     </Box>
   )
 }
