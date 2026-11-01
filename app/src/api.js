@@ -558,3 +558,74 @@ export async function createMontage(wsId, fields) {
   if (error) { console.warn('createMontage:', error.message); return null }
   return data
 }
+
+// ---- Réseaux sociaux & publications -------------------------------------------
+// social_accounts : provider, handle, access_token (NOT NULL — la vraie connexion
+// OAuth nécessite une app Meta/TikTok côté backend ; en attendant on enregistre
+// la connexion "en attente" avec meta.pending_oauth = true).
+// social_posts : brouillons/programmations (status draft|scheduled|published|
+// failed), liés à photo_id / montage_id / video_id + dossier patient + account.
+
+export function listSocialAccounts(wsId) {
+  return supabase
+    .from('social_accounts').select('*').eq('workspace_id', wsId)
+    .order('created_at', { ascending: true })
+    .then(({ data }) => data || [])
+}
+
+export function connectSocialAccount(wsId, { provider, handle }) {
+  return supabase
+    .from('social_accounts')
+    .insert({
+      workspace_id: wsId, provider, handle,
+      access_token: `pending:${crypto.randomUUID()}`,
+      meta: { pending_oauth: true },
+    })
+    .select().single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('connectSocialAccount:', error.message); return null }
+      return data
+    })
+}
+
+export function disconnectSocialAccount(id) {
+  return supabase.from('social_accounts').delete().eq('id', id)
+    .then(({ error }) => !error)
+}
+
+export function listSocialPosts(wsId, { status } = {}) {
+  let q = supabase
+    .from('social_posts')
+    .select('*,account:social_accounts(provider,handle),photo:patient_photos(storage_path),montage:montages(name,export_url),patient:patients(first_name,last_name,dossier_id)')
+    .eq('workspace_id', wsId)
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (status) q = q.eq('status', status)
+  return q.then(({ data }) => data || [])
+}
+
+export function createSocialPost(wsId, fields) {
+  return supabase
+    .from('social_posts')
+    .insert({ workspace_id: wsId, status: fields.scheduled_at ? 'scheduled' : 'draft', ...fields })
+    .select().single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('createSocialPost:', error.message); return null }
+      return data
+    })
+}
+
+export function updateSocialPost(id, fields) {
+  return supabase
+    .from('social_posts')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id).select().single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('updateSocialPost:', error.message); return null }
+      return data
+    })
+}
+
+export function deleteSocialPost(id) {
+  return supabase.from('social_posts').delete().eq('id', id).then(({ error }) => !error)
+}
