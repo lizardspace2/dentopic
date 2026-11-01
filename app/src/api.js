@@ -323,6 +323,21 @@ export function endCaptureSession(id) {
 }
 
 /** Photos reçues pendant une session (capture_session_id) */
+/** Photos reçues via un appareil de capture : total + 4 dernières (sessions liées). */
+export async function devicePhotoStats(wsId, deviceId) {
+  const { data: sess } = await supabase
+    .from('capture_sessions').select('id')
+    .eq('workspace_id', wsId).eq('device_id', deviceId)
+  const ids = (sess || []).map((s) => s.id)
+  if (!ids.length) return { count: 0, latest: [] }
+  const [{ count }, { data: latest }] = await Promise.all([
+    supabase.from('patient_photos').select('*', { count: 'exact', head: true }).in('capture_session_id', ids),
+    supabase.from('patient_photos').select('id,storage_path').in('capture_session_id', ids)
+      .order('created_at', { ascending: false }).limit(4),
+  ])
+  return { count: count || 0, latest: latest || [] }
+}
+
 export function countSessionPhotos(sessionId) {
   return supabase
     .from('patient_photos')
