@@ -68,8 +68,9 @@ export function MenuBar({ menus, docName, zoom }) {
               {m.items.filter(Boolean).map((it, i) => it === '-' ? (
                 <Box key={i} h="1px" bg={panelBorder} my="1" />
               ) : (
-                <HStack key={i} px="3" py="1.5" gap="2" fontSize="xs" cursor="pointer"
-                  color={it.disabled ? muted : fg}
+                <HStack key={i} px="3" py="1.5" gap="2" fontSize="xs" userSelect="none"
+                  cursor={it.disabled ? 'not-allowed' : 'pointer'}
+                  color={fg} opacity={it.disabled ? 0.38 : 1}
                   _hover={{ bg: it.disabled ? 'transparent' : 'var(--s-a100)' }}
                   onClick={() => { if (!it.disabled) { it.onClick?.(); setOpen(null) } }}>
                   <Box flex="1">{it.label}</Box>
