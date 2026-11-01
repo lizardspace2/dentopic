@@ -224,7 +224,7 @@ export function Modal({ open, onClose, title, subtitle, children, width = '480px
 // rails étroits (toolbar), en bas près du bord haut, en haut sinon ; clampé au
 // viewport. `place` = 'auto' | 'top' | 'bottom' | 'left' | 'right'.
 
-export function Tip({ label, children, place = 'auto', ...rest }) {
+export function Tip({ label, children, place = 'auto', tipW, ...rest }) {
   const [tip, setTip] = useState(null)
   if (!label) return <>{children}</>
 
@@ -233,7 +233,7 @@ export function Tip({ label, children, place = 'auto', ...rest }) {
     const vw = window.innerWidth
     const cx = r.left + r.width / 2
     const cy = r.top + r.height / 2
-    const estW = Math.min(340, 16 + String(label).length * 6)
+    const estW = tipW || Math.min(340, 16 + String(label).length * 6)
 
     let p = place
     if (p === 'auto') {
@@ -257,7 +257,7 @@ export function Tip({ label, children, place = 'auto', ...rest }) {
         ? { left: x, top: r.bottom + 8, transform: 'translateX(-50%)' }
         : { left: x, top: r.top - 8, transform: 'translate(-50%, -100%)' }
     }
-    setTip({ style, long: estW >= 300 })
+    setTip({ style, long: tipW != null ? tipW >= 240 : estW >= 300 })
   }
 
   return (
@@ -270,7 +270,7 @@ export function Tip({ label, children, place = 'auto', ...rest }) {
         <Box
           className="dentip" position="fixed" {...tip.style}
           bg="#1f2937" color="#ffffff" fontSize="2xs" px="2" py="1"
-          borderRadius="md" boxShadow="md" maxW="320px"
+          borderRadius="md" boxShadow="md" maxW={tipW ? `${tipW}px` : '320px'}
           whiteSpace={tip.long ? 'normal' : 'nowrap'} textAlign="left"
           pointerEvents="none" zIndex="9999"
         >
