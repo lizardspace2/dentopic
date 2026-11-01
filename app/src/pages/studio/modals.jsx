@@ -44,53 +44,132 @@ export function OpenPhotoModal({ open, onClose, wsId, onPick }) {
 
 // ---- Exporter : PNG/JPEG + sauvegarde dans DentoPic ------------------------------
 
-export function ExportModal({ open, onClose, docName, dossiers, onExport, onSave }) {
-  const [format, setFormat] = useState('png')
+const fmtBytes = (n) => n == null ? '…' : n >= 1048576 ? `${(n / 1048576).toFixed(2)} M`
+  : n >= 1024 ? `${Math.round(n / 1024)} K` : `${n} o`
+
+export function ExportModal({ open, onClose, editor, docName, dossiers, onExport, onSave }) {
+  const [format, setFormat] = useState('jpeg')
+  const [quality, setQuality] = useState(92)
+  const [scale, setScale] = useState(100)
   const [dossierId, setDossierId] = useState('')
   const [saved, setSaved] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [preview, setPreview] = useState(null) // dataURL de l'aperçu
+  const [est, setEst] = useState(null)         // taille estimée (octets)
+  const W = editor?.w || 0, H = editor?.h || 0
+  const outW = Math.max(1, Math.round(W * scale / 100))
+  const outH = Math.max(1, Math.round(H * scale / 100))
+
+  // aperçu + estimation de taille — recalculés (debounce) à chaque réglage
+  useEffect(() => {
+    if (!open || !editor?.w) return
+    let dead = false
+    const t = setTimeout(() => {
+      try {
+        const src = editor.compositeFiltered()
+        const c = document.createElement('canvas')
+        c.width = outW; c.height = outH
+        const cx = c.getContext('2d')
+        if (format === 'jpeg') { cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, outW, outH) }
+        cx.drawImage(src, 0, 0, outW, outH)
+        const q = format === 'png' ? undefined : quality / 100
+        c.toBlob((b) => { if (!dead && b) setEst(b.size) }, `image/${format}`, q)
+        if (!dead) setPreview(c.toDataURL('image/jpeg', 0.72))
+      } catch { /* composite pas prêt */ }
+    }, 140)
+    return () => { dead = true; clearTimeout(t) }
+  }, [open, format, quality, scale]) // eslint-disable-line
+
   const save = async () => {
     setBusy(true)
     const ok = await onSave(dossierId || null)
     setBusy(false)
     setSaved(ok)
   }
+  const lossy = format !== 'png'
+  const ext = format === 'jpeg' ? 'JPG' : format.toUpperCase()
   return (
     <Modal open={open} onClose={() => { setSaved(false); onClose() }}
-      title="Exporter le montage" subtitle="Télécharger ou ranger dans DentoPic" width="440px">
-      <VStack align="stretch" gap="3">
-        <HStack gap="3">
-          <Text fontSize="xs" color="gray.500" w="70px">Format</Text>
-          <Select flex="1" value={format} onChange={(e) => setFormat(e.target.value)}>
-            <option value="png">PNG (sans perte)</option>
-            <option value="jpeg">JPEG (léger)</option>
-          </Select>
-        </HStack>
-        <Button variant="outline" size="sm" onClick={() => onExport(format)}>
-          <FiDownload /> Télécharger {format.toUpperCase()}
-        </Button>
-        <Box h="1px" bg="gray.100" />
-        <HStack gap="3">
-          <Text fontSize="xs" color="gray.500" w="70px">Dossier</Text>
-          <Select flex="1" value={dossierId} onChange={(e) => setDossierId(e.target.value)}>
-            <option value="">Non triées</option>
-            {dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </Select>
-        </HStack>
-        <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
-          loading={busy} onClick={save}>
-          <FiSave /> Enregistrer dans DentoPic
-        </Button>
-        {saved && (
-          <HStack bg={C.greenBg} border="1px solid" borderColor={C.greenBorder}
-            borderRadius="md" px="3" py="2" gap="2">
-            <Box as={FiFolder} color={C.greenText} />
-            <Text fontSize="xs" color={C.greenText}>
-              Enregistré — visible dans Recherche et Dossier patient.
-            </Text>
+      title="Exporter sous…" subtitle="Format, qualité et dimensions — façon Photoshop"
+      width="560px">
+      <HStack align="stretch" gap="4">
+        {/* colonne réglages */}
+        <VStack align="stretch" gap="3" flex="1.1">
+          <Text fontSize="2xs" fontWeight="700" color={S.muted} textTransform="uppercase"
+            letterSpacing="wider">Paramètres du fichier</Text>
+          <HStack gap="3">
+            <Text fontSize="xs" color={S.muted} w="58px">Format</Text>
+            <Box as="select" flex="1" fontSize="xs" bg={S.input} color={S.fg} borderRadius="md"
+              border="1px solid" borderColor={S.border} h="28px" px="2" cursor="pointer"
+              value={format} onChange={(e) => setFormat(e.target.value)}>
+              <option value="jpeg">JPG</option>
+              <option value="png">PNG</option>
+              <option value="webp">WebP</option>
+            </Box>
           </HStack>
-        )}
-      </VStack>
+          <HStack gap="3" opacity={lossy ? 1 : 0.45}>
+            <Text fontSize="xs" color={S.muted} w="58px">Qualité</Text>
+            <Input type="range" flex="1" min="1" max="100" value={quality} disabled={!lossy}
+              onChange={(e) => setQuality(+e.target.value)} />
+            <Input type="number" w="52px" h="22px" fontSize="2xs" px="1" textAlign="center"
+              bg={S.input} color={S.fg} border="1px solid" borderColor={S.border}
+              min="1" max="100" value={quality} disabled={!lossy}
+              onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setQuality(Math.min(100, Math.max(1, v))) }} />
+            <Text fontSize="2xs" color={S.muted}>%</Text>
+          </HStack>
+          <Text fontSize="2xs" fontWeight="700" color={S.muted} textTransform="uppercase"
+            letterSpacing="wider" pt="1">Dimensions de l'image</Text>
+          <HStack gap="3">
+            <Text fontSize="xs" color={S.muted} w="58px">Échelle</Text>
+            <Input type="number" w="64px" h="22px" fontSize="2xs" px="1" textAlign="center"
+              bg={S.input} color={S.fg} border="1px solid" borderColor={S.border}
+              min="1" max="400" value={scale}
+              onChange={(e) => { const v = +e.target.value; if (!isNaN(v) && v > 0) setScale(Math.min(400, v)) }} />
+            <Text fontSize="2xs" color={S.muted}>%</Text>
+            <Text fontSize="2xs" color={S.fg}>{outW} × {outH} px</Text>
+          </HStack>
+          {/* rangée sauvegarde DentoPic — spécifique à l'app */}
+          <Box h="1px" bg="var(--s-a50)" />
+          <HStack gap="3">
+            <Text fontSize="xs" color={S.muted} w="58px">Dossier</Text>
+            <Box as="select" flex="1" fontSize="xs" bg={S.input} color={S.fg} borderRadius="md"
+              border="1px solid" borderColor={S.border} h="26px" px="2" cursor="pointer"
+              value={dossierId} onChange={(e) => setDossierId(e.target.value)}>
+              <option value="">Non triées</option>
+              {dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </Box>
+          </HStack>
+          <Button size="xs" variant="outline" loading={busy} onClick={save}>
+            <FiSave /> Enregistrer dans DentoPic (PNG)
+          </Button>
+          {saved && (
+            <HStack bg={C.greenBg} border="1px solid" borderColor={C.greenBorder}
+              borderRadius="md" px="3" py="1.5" gap="2">
+              <Box as={FiFolder} color={C.greenText} />
+              <Text fontSize="2xs" color={C.greenText}>Enregistré — visible dans Recherche.</Text>
+            </HStack>
+          )}
+        </VStack>
+        {/* colonne aperçu */}
+        <VStack align="stretch" gap="1" flex="1" minW="0">
+          <Box borderRadius="md" border="1px solid" borderColor={S.border} overflow="hidden"
+            bg={S.canvas} flex="1" minH="200px" display="flex" alignItems="center" justifyContent="center">
+            {preview
+              ? <img src={preview} alt="" style={{ maxWidth: '100%', maxHeight: '260px', objectFit: 'contain' }} />
+              : <Text fontSize="2xs" color={S.muted}>Aperçu…</Text>}
+          </Box>
+          <Text fontSize="2xs" color={S.muted}>{ext} ≈ {fmtBytes(est)}</Text>
+        </VStack>
+      </HStack>
+      <HStack justify="end" gap="2" mt="4">
+        <Box as="button" px="4" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
+          bg="var(--s-a100)" color={S.fg} onClick={onClose}>Annuler</Box>
+        <Box as="button" px="5" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
+          bg="#1a1a1a" color="#ffffff" _hover={{ bg: '#333333' }}
+          onClick={() => { onExport({ format, quality, scale }); }}>
+          <HStack gap="1.5" as="span"><FiDownload /> Exporter</HStack>
+        </Box>
+      </HStack>
     </Modal>
   )
 }

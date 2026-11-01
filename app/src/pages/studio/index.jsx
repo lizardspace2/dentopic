@@ -954,12 +954,21 @@ export default function Studio() {
     bump()
   }
 
-  const doExport = async (format) => {
-    const cv = editor.compositeFiltered()
-    const blob = await new Promise((r) => cv.toBlob(r, `image/${format}`, 0.92))
+  const doExport = async (formatOrOpts) => {
+    const o = typeof formatOrOpts === 'string' ? { format: formatOrOpts } : formatOrOpts
+    const { format = 'png', quality = 92, scale = 100 } = o || {}
+    const src = editor.compositeFiltered()
+    const w = Math.max(1, Math.round(src.width * scale / 100))
+    const h = Math.max(1, Math.round(src.height * scale / 100))
+    const cv = document.createElement('canvas')
+    cv.width = w; cv.height = h
+    const cx = cv.getContext('2d')
+    if (format === 'jpeg') { cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, w, h) }
+    cx.drawImage(src, 0, 0, w, h)
+    const blob = await new Promise((r) => cv.toBlob(r, `image/${format}`, format === 'png' ? undefined : quality / 100))
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `${editor.docName.replace(/\.\w+$/, '')}-edit.${format === 'jpeg' ? 'jpg' : 'png'}`
+    a.download = `${editor.docName.replace(/\.\w+$/, '')}-edit.${format === 'jpeg' ? 'jpg' : format}`
     a.click()
   }
 
@@ -1382,6 +1391,9 @@ export default function Studio() {
           onNav={(ix, iy) => setView((v) => ({
             ...v, ox: stageSize.w / 2 - ix * v.scale, oy: stageSize.h / 2 - iy * v.scale,
           }))}
+          fgColor={opts.fg} bgColor={opts.bg}
+          onColor={(k, v) => setOpts((o) => ({ ...o, [k]: v }))}
+          onPickColor={setPickColor}
           wbPick={wbPick} onWbPick={() => setWbPick((v) => !v)}
           comparing={compare != null} onCompare={() => setCompare((c) => (c != null ? null : 0.5))}
           dental={{
@@ -1421,7 +1433,7 @@ export default function Studio() {
           bump()
         }} />
       <ExportModal open={modal === 'export'} onClose={() => setModal(null)}
-        docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
+        editor={editor} docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
       <FilterModal open={!!filterKey} def={filterKey ? FILTER_DEFS[filterKey] : null}
         onPreview={previewFilter} onApply={applyFilter} onCancel={cancelFilter} />
       <SelectMaskModal open={modal === 'selmask'} onClose={() => setModal(null)}

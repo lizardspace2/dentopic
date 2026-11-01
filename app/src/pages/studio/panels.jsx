@@ -1871,6 +1871,61 @@ export function HistoryPanel({ editor, version, onJump }) {
   )
 }
 
+// ---- Panneau milieu : Nuancier (clic = 1er plan, clic droit = arrière-plan) ---------
+
+// palette fixe façon Photopea : gris / pastel / vif / foncé
+const SWATCH_GRID = [
+  '#000000', '#2b2b2b', '#4a4a4a', '#6b6b6b', '#8a8a8a', '#a8a8a8', '#c4c4c4', '#dedede', '#efefef', '#ffffff',
+  '#f3c0b3', '#f6d59a', '#f0e9a8', '#d6e8b0', '#b7e4c7', '#a8dddb', '#aacdeb', '#c3b8e8', '#deb8e0', '#f0b8cc',
+  '#e2574c', '#f29441', '#f2c200', '#c8d92e', '#6fc94a', '#2ebd6e', '#2eb8a8', '#3a9bd9', '#6b6bd9', '#b357c9',
+  '#8e2f28', '#9c5a1e', '#9c7c0e', '#6e8318', '#3a7a24', '#187a48', '#177a6e', '#1f6391', '#3a3a8e', '#74308a',
+]
+
+export function SwatchesPanel({ fg, bg, onColor, onPickColor }) {
+  return (
+    <VStack align="stretch" gap="2" px="3" py="2.5" flex="1" overflowY="auto">
+      {/* 1er plan / arrière-plan superposés comme Photoshop */}
+      <HStack gap="2" align="center">
+        <Box position="relative" w="30px" h="26px">
+          <Tip label="Arrière-plan — clic droit sur un échantillon pour le changer">
+            <Box position="absolute" right="0" bottom="0" w="16px" h="16px" borderRadius="sm"
+              bg={bg} border="1.5px solid" borderColor={fg} cursor="pointer"
+              onClick={() => onPickColor?.('bg')} />
+          </Tip>
+          <Tip label="Premier plan — clic gauche sur un échantillon, « + » pour le sélecteur">
+            <Box position="absolute" left="0" top="0" w="18px" h="18px" borderRadius="sm"
+              bg={fg} border="1.5px solid" borderColor={panelBorder} cursor="pointer"
+              onClick={() => onPickColor?.('fg')} />
+          </Tip>
+        </Box>
+        <VStack align="stretch" gap="0" flex="1">
+          <Text fontSize="2xs" color={fg}>{fg}</Text>
+          <Text fontSize="2xs" color={muted}>{bg}</Text>
+        </VStack>
+        <Tip label="Permuter 1er plan ↔ arrière-plan (X)">
+          <Box as="button" fontSize="2xs" px="1.5" h="18px" borderRadius="sm" cursor="pointer"
+            bg="var(--s-a100)" color={fg} onClick={() => { const f = fg; onColor('fg', bg); onColor('bg', f) }}>⇄</Box>
+        </Tip>
+        <Tip label="Réinitialiser noir/blanc (D)">
+          <Box as="button" fontSize="2xs" px="1.5" h="18px" borderRadius="sm" cursor="pointer"
+            bg="var(--s-a100)" color={fg} onClick={() => { onColor('fg', '#000000'); onColor('bg', '#ffffff') }}>⭯</Box>
+        </Tip>
+      </HStack>
+      <SimpleGrid columns={10} gap="1">
+        {SWATCH_GRID.map((c) => (
+          <Tip key={c} label={`${c} — clic : 1er plan · clic droit : arrière-plan`}>
+            <Box w="16px" h="16px" borderRadius="sm" cursor="pointer" bg={c}
+              border="1px solid" borderColor={fg === c ? '#4f8fe8' : 'var(--s-a200)'}
+              onClick={() => onColor('fg', c)}
+              onContextMenu={(e) => { e.preventDefault(); onColor('bg', c) }} />
+          </Tip>
+        ))}
+      </SimpleGrid>
+      <Text fontSize="2xs" color={muted}>Clic = 1er plan · clic droit = arrière-plan</Text>
+    </VStack>
+  )
+}
+
 // ---- Panneau bas : Tracés (comme l'onglet Tracés de Photoshop) --------------------
 
 export function PathsPanel({ editor, version, onChange }) {
@@ -1959,11 +2014,12 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
           }}
         />
       </Tip>
-      <Tip label="Outil actif"><Text>{t?.label}</Text></Tip>
+      {editor.w > 0 && <Tip label="Espace colorimétrique du document"><Text>RVB · 8 bit</Text></Tip>}
       <Tip label="Dimensions du document"><Text>{editor.w ? `${editor.w} × ${editor.h} px` : ''}</Text></Tip>
-      {editor.w > 0 && <Tip label="Espace colorimétrique et nombre de calques"><Text>RGB • 8 bit • {editor.layers.length} calque(s)</Text></Tip>}
+      {editor.w > 0 && <Tip label="Nombre de calques"><Text>{editor.layers.length} calque(s)</Text></Tip>}
+      <Tip label="Outil actif"><Text>{t?.label}</Text></Tip>
       <Box flex="1" />
-      <Text isTruncated maxW="280px">{editor.docName}</Text>
+      {editor.docName && <Text isTruncated maxW="280px">Ouvert : {editor.docName}</Text>}
     </HStack>
   )
 }
@@ -1991,7 +2047,7 @@ function TabRow({ tabs, value, onChange }) {
 // Structure façon Photoshop : Propriétés/Réglages en haut — Nav/Histo/Infos au
 // milieu — Calques/Canaux/Histoire en bas.
 
-export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, onAdjust, onJump, view, stageSize, onNav, curveTarget }) {
+export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, onAdjust, onJump, view, stageSize, onNav, curveTarget, fgColor, bgColor, onColor, onPickColor }) {
   const [topTab, setTopTab] = useState('props')
   const [midTab, setMidTab] = useState('nav')
   const [botTab, setBotTab] = useState('layers')
@@ -2026,11 +2082,13 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
       <Flex direction="column" h="168px" flexShrink={0} borderBottom="1px solid" borderColor={panelBorder}>
         <TabRow value={midTab} onChange={setMidTab} tabs={[
           ['nav', 'Nav.', 'Vue d\'ensemble et déplacement du cadre visible'],
-          ['histo', 'Histo', 'Histogramme et statistiques de luminance'],
+          ['swatch', 'Nuancier', 'Échantillons : clic = 1er plan, clic droit = arrière-plan'],
+          ['histo', 'Histo', 'Histogramme et statistiques par canal'],
           ['info', 'Infos', 'Document, dimensions, curseur, couleur'],
         ]} />
         <Flex flex="1" direction="column" overflow="hidden">
           {midTab === 'nav' && <NavigatorPanel editor={editor} version={version} view={view} stageSize={stageSize} onNav={onNav} />}
+          {midTab === 'swatch' && <SwatchesPanel fg={fgColor} bg={bgColor} onColor={onColor} onPickColor={onPickColor} />}
           {midTab === 'histo' && <HistogramPanel editor={editor} version={version} />}
           {midTab === 'info' && <InfoPanel editor={editor} zoom={zoom} cursor={cursor} />}
         </Flex>
