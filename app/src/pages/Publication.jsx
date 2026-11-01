@@ -6,6 +6,8 @@ import {
   FiInstagram, FiFacebook, FiImage, FiLayers, FiVideo, FiTrash2,
   FiClock, FiLink2, FiAlertCircle,
 } from 'react-icons/fi'
+import { FaYoutube, FaPinterestP, FaGoogle } from 'react-icons/fa'
+import { FaXTwitter, FaThreads } from 'react-icons/fa6'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, EmptyPane, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
@@ -27,6 +29,11 @@ const PROVIDERS = [
   { id: 'facebook', label: 'Facebook', icon: FiFacebook, color: '#1877f2' },
   { id: 'tiktok', label: 'TikTok', icon: FiVideo, color: '#000000' },
   { id: 'linkedin', label: 'LinkedIn', icon: FiLink2, color: '#0a66c2' },
+  { id: 'youtube', label: 'YouTube', icon: FaYoutube, color: '#ff0000' },
+  { id: 'pinterest', label: 'Pinterest', icon: FaPinterestP, color: '#e60023' },
+  { id: 'x', label: 'X (Twitter)', icon: FaXTwitter, color: '#000000' },
+  { id: 'threads', label: 'Threads', icon: FaThreads, color: '#000000' },
+  { id: 'google_business', label: 'Google Business', icon: FaGoogle, color: '#4285f4' },
 ]
 const providerOf = (id) => PROVIDERS.find((p) => p.id === id) || PROVIDERS[0]
 
