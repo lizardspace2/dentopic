@@ -50,8 +50,8 @@ export const ADJUST_PARAMS = {
   bc: {
     brightness: 0, contrast: 0, // -100..100
   },
-  hsl: { hue: 0, sat: 0, light: 0 },               // -180..180 / -100..100
-  levels: { inBlack: 0, inWhite: 255, gamma: 100, outBlack: 0, outWhite: 255 },
+  hsl: { hue: 0, sat: 0, light: 0, colorize: false }, // -180..180 / -100..100 (hue/sat absolus si colorize)
+  levels: { inBlack: 0, inWhite: 255, gamma: 100, outBlack: 0, outWhite: 255, ch: 'rgb' },
   curves: { rgb: null, r: null, g: null, b: null },
   invert: {},
   bw: { r: 40, g: 60, b: 20 },                     // poids relatifs des canaux
@@ -77,22 +77,38 @@ export function applyAdjust(cv, adj) {
     }
     case 'hsl': {
       const d = ctx.getImageData(0, 0, W, H), px = d.data
-      const dh = (p.hue || 0) / 360, ds = (p.sat || 0) / 100, dl = (p.light || 0) / 100
-      for (let i = 0; i < px.length; i += 4) {
-        if (px[i + 3] < 4) continue
-        let { h, s, v } = rgbToHsv(px[i], px[i + 1], px[i + 2])
-        h = (h / 360 + dh + 1) % 1 * 360
-        s = Math.max(0, Math.min(1, s * (1 + ds)))
-        v = Math.max(0, Math.min(1, dl > 0 ? v + (1 - v) * dl : v * (1 + dl)))
-        const [r, g, bb] = hsvToRgb(h, s, v)
-        px[i] = r; px[i + 1] = g; px[i + 2] = bb
+      const dl = (p.light || 0) / 100
+      if (p.colorize) {
+        // Colorier : teinte 0-360 et saturation 0-100 imposées, luminance conservée
+        const hue = ((p.hue || 0) % 360 + 360) % 360, sat = Math.max(0, Math.min(1, (p.sat ?? 25) / 100))
+        for (let i = 0; i < px.length; i += 4) {
+          if (px[i + 3] < 4) continue
+          let v = Math.max(px[i], px[i + 1], px[i + 2]) / 255
+          v = Math.max(0, Math.min(1, dl > 0 ? v + (1 - v) * dl : v * (1 + dl)))
+          const [r, g, bb] = hsvToRgb(hue, sat, v)
+          px[i] = r; px[i + 1] = g; px[i + 2] = bb
+        }
+      } else {
+        const dh = (p.hue || 0) / 360, ds = (p.sat || 0) / 100
+        for (let i = 0; i < px.length; i += 4) {
+          if (px[i + 3] < 4) continue
+          let { h, s, v } = rgbToHsv(px[i], px[i + 1], px[i + 2])
+          h = (h / 360 + dh + 1) % 1 * 360
+          s = Math.max(0, Math.min(1, s * (1 + ds)))
+          v = Math.max(0, Math.min(1, dl > 0 ? v + (1 - v) * dl : v * (1 + dl)))
+          const [r, g, bb] = hsvToRgb(h, s, v)
+          px[i] = r; px[i + 1] = g; px[i + 2] = bb
+        }
       }
       ctx.putImageData(d, 0, 0)
       break
     }
-    case 'levels':
-      applyLUTs(cv, { rgb: levelsLUT(p.inBlack ?? 0, p.inWhite ?? 255, p.gamma ?? 100, p.outBlack ?? 0, p.outWhite ?? 255) })
+    case 'levels': {
+      const lut = levelsLUT(p.inBlack ?? 0, p.inWhite ?? 255, p.gamma ?? 100, p.outBlack ?? 0, p.outWhite ?? 255)
+      const ch = ['r', 'g', 'b'].includes(p.ch) ? p.ch : 'rgb'
+      applyLUTs(cv, { [ch]: lut })
       break
+    }
     case 'curves':
       applyLUTs(cv, { rgb: p.rgb ? curveLUT(p.rgb) : null, r: p.r ? curveLUT(p.r) : null, g: p.g ? curveLUT(p.g) : null, b: p.b ? curveLUT(p.b) : null })
       break
@@ -207,16 +223,17 @@ export function applyLUTs(cv, luts) {
 
 // Histogramme de luminance (256 cases) + stats du composite —
 // panneau Histogramme façon Photoshop (moyenne, écart-type, médiane, pixels).
-export function histogram(cv, step = 8) {
+export function histogram(cv, step = 8, ch = 'lum') {
   const ctx = cv.getContext('2d')
   const { width, height } = cv
   const sx = Math.max(1, Math.round(width / 400)) // échantillonnage si grand doc
   const d = ctx.getImageData(0, 0, width, height, { willReadFrequently: true })
   const h = new Float32Array(256)
   const px = d.data
+  const ci = { r: 0, g: 1, b: 2 }[ch]
   let sum = 0, sum2 = 0, n = 0
   for (let i = 0; i < px.length; i += 4 * sx) {
-    const v = Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2])
+    const v = ci == null ? Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]) : px[i + ci]
     h[v]++; sum += v; sum2 += v * v; n++
   }
   const max = Math.max(...h)
@@ -234,6 +251,25 @@ const composeLUT = (l1, l2) => { // applique l1 puis l2
   const o = new Uint8ClampedArray(256)
   for (let i = 0; i < 256; i++) o[i] = l2[l1[i]]
   return o
+}
+
+/** Auto-niveaux : points noir/blanc aux percentiles 0,5 % / 99,5 % du canal. */
+export function autoLevels(cv, ch = 'rgb') {
+  const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data
+  const hist = new Uint32Array(256)
+  let n = 0
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 4) continue
+    hist[ch === 'rgb' ? Math.round(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) : d[i + { r: 0, g: 1, b: 2 }[ch]]]++
+    n++
+  }
+  const lo = n * 0.005, hi = n * 0.995
+  let inBlack = 0, inWhite = 255, acc = 0
+  for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= lo) { inBlack = i; break } }
+  acc = 0
+  for (let i = 0; i < 256; i++) { acc += hist[i]; if (acc >= hi) { inWhite = i; break } }
+  if (inWhite <= inBlack) inWhite = inBlack + 1
+  return { inBlack, inWhite }
 }
 
 /** LUT « niveaux » : remap in-black/in-white, gamma, puis niveaux de sortie. */
@@ -507,7 +543,9 @@ export class Editor {
     return l
   }
 
-  /** (Re)dessine le calque de texte avec ses paramètres courants. */
+  /** (Re)dessine le calque de texte avec ses paramètres courants.
+   *  Prend en charge : échelle H/V, décalage de ligne de base, retraits,
+   *  espacements de paragraphe et coupure en boîte (boxW) — façon Photoshop. */
   drawTextLayer(l) {
     const t = l.text
     if (!t) return
@@ -518,14 +556,42 @@ export class Editor {
     try { x.letterSpacing = `${t.tracking || 0}px` } catch { /* navigateur sans support */ }
     x.fillStyle = t.color
     x.textBaseline = 'alphabetic'
-    const lines = String(t.value).split('\n')
+    x.textAlign = 'left'
+    const indL = t.indentL || 0, indR = t.indentR || 0
+    const wrapW = t.boxW ? Math.max(20, t.boxW - indL - indR) : Infinity // zone de coupure
+    const spB = t.spaceBefore || 0, spA = t.spaceAfter || 0
+    // coupure : découpe chaque paragraphe en lignes tenant dans wrapW
+    const lines = [] // {t, newPara}
+    String(t.value).split('\n').forEach((para) => {
+      if (!isFinite(wrapW)) { lines.push({ t: para, np: true }); return }
+      let cur = '', first = true
+      para.split(' ').forEach((w) => {
+        const test = cur ? `${cur} ${w}` : w
+        if (x.measureText(test).width > wrapW && cur) { lines.push({ t: cur, np: first }); cur = w; first = false }
+        else cur = test
+      })
+      lines.push({ t: cur, np: first })
+    })
+    const maxW = isFinite(wrapW)
+      ? t.boxW
+      : Math.max(...lines.map((ln) => x.measureText(ln.t).width + indL + indR), 1)
+    // échelle horizontale/verticale : le texte est dessiné dans un espace transformé
+    const scX = (t.scaleX ?? 100) / 100, scY = (t.scaleY ?? 100) / 100
+    x.scale(scX, scY)
+    const base = (t.baseline || 0) / scY // décalage de ligne de base (px)
     const lh = t.size * (t.leading || 1.2)
-    const maxW = Math.max(...lines.map((ln) => x.measureText(ln).width), 1)
+    const ax = t.align === 'center' ? maxW / 2 : t.align === 'right' ? maxW - indR : indL
+    let y = t.size - base
     x.textAlign = t.align || 'left'
-    const ax = t.align === 'center' ? maxW / 2 : t.align === 'right' ? maxW : 0
-    lines.forEach((ln, i) => x.fillText(ln, ax, t.size + i * lh))
+    lines.forEach((ln, i) => {
+      if (i && ln.np) y += spB          // espacement avant le paragraphe
+      x.fillText(ln.t, ax, y)
+      y += lh
+      if (ln.np === false && lines[i + 1]?.np) y += spA // espacement après
+    })
     x.restore()
-    t.box = { w: Math.ceil(maxW), h: Math.ceil(t.size * 0.3 + lh * (lines.length - 1) + t.size) }
+    const h = y - (t.size - base) + t.size * 1.3
+    t.box = { w: Math.ceil(maxW * scX), h: Math.ceil(h * scY) }
   }
 
   /** Met à jour les paramètres du texte et redessine. */
@@ -534,6 +600,110 @@ export class Editor {
     Object.assign(l.text, patch)
     if ('value' in patch) l.name = `T — ${String(l.text.value).split('\n')[0].slice(0, 24)}`
     this.drawTextLayer(l)
+  }
+
+  // ---- Calques de forme (vectoriels, éditables comme dans Photoshop) -----------
+
+  /** kind : rect | ellipse | triangle | line | poly (n côtés) | star (n branches) */
+  addShapeLayer(kind, rect, params = {}) {
+    const names = { rect: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', line: 'Ligne', poly: 'Polygone', star: 'Étoile' }
+    const l = this._mkLayer(names[kind] || 'Forme')
+    l.type = 'shape'
+    l.shape = {
+      kind, x: rect.x, y: rect.y, w: rect.w, h: rect.h,
+      fill: 'fill' in params ? params.fill : '#dc2626',   // null explicite = sans fond
+      stroke: 'stroke' in params ? params.stroke : null,
+      strokeW: params.strokeW ?? 4,
+      strokeAlign: params.strokeAlign || 'center', // inside | center | outside
+      dash: params.dash || 'solid',                // solid | dash | dot
+      points: params.points || 5,                  // poly / star
+      corner: params.corner || 0,                  // rayon des coins (rect)
+    }
+    this.drawShapeLayer(l)
+    this.layers.push(l)
+    this.activeId = l.id
+    return l
+  }
+
+  /** Trace le chemin de la forme (déjà contracté/dilaté selon l'alignement du contour). */
+  _shapePath(ctx, s, inset = 0) {
+    const x = s.x + inset, y = s.y + inset, w = Math.max(0.01, s.w - inset * 2), h = Math.max(0.01, s.h - inset * 2)
+    const k = s.kind
+    ctx.beginPath()
+    if (k === 'ellipse') ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2)
+    else if (k === 'triangle') { ctx.moveTo(x + w / 2, y); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.closePath() }
+    else if (k === 'line') { ctx.moveTo(x, y); ctx.lineTo(x + w, y + h) }
+    else if (k === 'poly' || k === 'star') {
+      const n = Math.max(3, s.points || 5), cx = x + w / 2, cy = y + h / 2
+      const verts = k === 'star' ? n * 2 : n
+      for (let i = 0; i < verts; i++) {
+        const a = -Math.PI / 2 + (i / verts) * Math.PI * 2
+        const k2 = k === 'star' && i % 2 ? 0.42 : 1
+        const px = cx + Math.cos(a) * (w / 2) * k2
+        const py = cy + Math.sin(a) * (h / 2) * k2
+        if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py)
+      }
+      ctx.closePath()
+    } else {
+      const r = Math.min(s.corner || 0, w / 2, h / 2)
+      if (r > 0 && ctx.roundRect) ctx.roundRect(x, y, w, h, r)
+      else ctx.rect(x, y, w, h)
+    }
+  }
+
+  /** (Re)dessine le calque de forme avec ses paramètres courants. */
+  drawShapeLayer(l) {
+    const s = l.shape
+    if (!s) return
+    const x = l.ctx
+    x.save()
+    x.clearRect(0, 0, this.w, this.h)
+    // alignement du contour : inside = chemin contracté de w/2, outside = dilaté
+    const inset = s.stroke && s.strokeAlign === 'inside' ? (s.strokeW || 0) / 2
+      : s.stroke && s.strokeAlign === 'outside' ? -(s.strokeW || 0) / 2 : 0
+    if (s.dash === 'dash') x.setLineDash([(s.strokeW || 4) * 3, (s.strokeW || 4) * 1.5])
+    else if (s.dash === 'dot') { x.setLineDash([0.5, (s.strokeW || 4) * 1.8]); x.lineCap = 'round' }
+    // fond : géométrie de base
+    if (s.fill && s.kind !== 'line') {
+      this._shapePath(x, s, 0)
+      x.fillStyle = s.fill; x.fill()
+    }
+    // contour : chemin contracté/dilaté selon l'alignement (inside/center/outside)
+    if (s.stroke) {
+      this._shapePath(x, s, inset)
+      x.strokeStyle = s.stroke; x.lineWidth = s.strokeW || 1; x.stroke()
+    }
+    x.restore()
+  }
+
+  updateShape(l, patch) {
+    if (!l?.shape) return
+    Object.assign(l.shape, patch)
+    this.drawShapeLayer(l)
+  }
+
+  // ---- Tracés (panneau Tracés) -------------------------------------------------
+
+  /** Enregistre la sélection courante comme tracé de travail (comme Photoshop). */
+  saveWorkPath() {
+    const p = this.selPoly?.length
+      ? { kind: 'poly', pts: this.selPoly.map((q) => [...q]) }
+      : this.selEllipse && this.sel
+        ? { kind: 'ellipse', rect: [...this.sel] }
+        : this.sel ? { kind: 'rect', rect: [...this.sel] } : null
+    if (!p) return null
+    this.paths = this.paths || []
+    const wk = { name: this.paths.length ? `Tracé ${this.paths.length + 1}` : 'Tracé de travail', ...p }
+    this.paths.push(wk)
+    return wk
+  }
+
+  /** Recharge un tracé en sélection. */
+  loadPath(p) {
+    if (!p) return
+    if (p.kind === 'poly') { this.selPoly = p.pts.map((q) => [...q]); this.sel = null; this.selEllipse = false }
+    else { this.sel = [...p.rect]; this.selPoly = null; this.selEllipse = p.kind === 'ellipse' }
+    this.selInverted = false
   }
 
   flatten() {
@@ -665,6 +835,23 @@ export class Editor {
       const nw = Math.max(1, w + 2 * n), nh = Math.max(1, h + 2 * n)
       this.sel = [x - n, y - n, nw, nh]
     }
+  }
+
+  /** Lisse un tracé de sélection polygonal (moyenne des voisins, n itérations). */
+  smoothSelection(iter = 1) {
+    const p = this.selPoly
+    if (!p || p.length < 4) return
+    let q = p
+    for (let it = 0; it < iter; it++) {
+      q = q.map(([x, y], i) => {
+        if (i === 0 || i === q.length - 1) return [x, y]
+        const [ax, ay] = q[i - 1], [bx, by] = q[i + 1]
+        return [(ax + 2 * x + bx) / 4, (ay + 2 * y + by) / 4]
+      })
+    }
+    this.selPoly = q
+    const bb = q.reduce((a, [x, y]) => [Math.min(a[0], x), Math.min(a[1], y), Math.max(a[2], x), Math.max(a[3], y)], [1e9, 1e9, -1e9, -1e9])
+    this.sel = [bb[0], bb[1], bb[2] - bb[0], bb[3] - bb[1]]
   }
 
   /** Trace le chemin de la sélection dans ctx (coords calque = doc - l.dx/l.dy). */
@@ -821,6 +1008,7 @@ export class Editor {
     const ctx = cv.getContext('2d')
     const { w: W, h: H } = this
     this._silCache = {}
+    let belowEff = null // pixels du calque directement inférieur (écrêtage)
 
     for (const l of this.layers) {
       if (!l.visible) continue
@@ -835,6 +1023,11 @@ export class Editor {
           tx.globalCompositeOperation = 'destination-in'
           tx.drawImage(l.mask, 0, 0)
         }
+        if (l.clip && belowEff) { // écrêter sur le calque inférieur
+          const tx = t.getContext('2d')
+          tx.globalCompositeOperation = 'destination-in'
+          tx.drawImage(belowEff, 0, 0)
+        }
         ctx.save()
         ctx.globalAlpha = l.opacity ?? 1
         ctx.globalCompositeOperation = l.blend || 'source-over'
@@ -846,14 +1039,26 @@ export class Editor {
       const fx = l.fx || {}
       const hasFx = !l.fxOff && Object.values(fx).some((f) => f?.on)
       const fill = l.fill ?? 1
-      // pixels effectifs = calque × masque de fusion
+      // pixels effectifs = calque × masque de fusion (× écrêtage sur calque inférieur)
       let eff = l.cv
-      if (l.mask) {
-        eff = mkCanvas(W, H)
-        const ex = eff.getContext('2d')
+      if (l.mask || (l.clip && belowEff)) {
+        const cl = mkCanvas(W, H)
+        const ex = cl.getContext('2d')
         ex.drawImage(l.cv, 0, 0)
         ex.globalCompositeOperation = 'destination-in'
-        ex.drawImage(l.mask, 0, 0)
+        if (l.mask) ex.drawImage(l.mask, 0, 0)
+        // belowEff est en coords doc : ramené en coords locales du calque
+        if (l.clip && belowEff) ex.drawImage(belowEff, -l.dx, -l.dy)
+        eff = cl
+      }
+      // le calque devient la base d'écrêtage des suivants — sauf s'il est lui-même
+      // écrêté (Photoshop : plusieurs calques peuvent s'écrêter sur la même base)
+      if (!l.clip) {
+        if (l.dx || l.dy) {
+          const b = mkCanvas(W, H)
+          b.getContext('2d').drawImage(eff, l.dx, l.dy)
+          belowEff = b
+        } else belowEff = eff
       }
       const off = (e) => {
         const a = ((e.angle ?? 120) * Math.PI) / 180
@@ -1428,7 +1633,9 @@ export class Editor {
         maskActive: l.mask ? !!l.maskActive : false,
         lockAlpha: !!l.lockAlpha, lockPx: !!l.lockPx, lockPos: !!l.lockPos,
         fxOff: !!l.fxOff, text: l.text || null,
+        shape: l.shape || null, clip: !!l.clip,
       })),
+      paths: this.paths || [],
     }
   }
 
@@ -1439,6 +1646,7 @@ export class Editor {
     this.activeId = d.activeId
     this.wb = d.wb || null
     this.curves = d.curves || { rgb: null, r: null, g: null, b: null }
+    this.paths = d.paths || []
     this._cf = null
     this.layers = await Promise.all(d.layers.map(async (l) => {
       const cv = mkCanvas(this.w, this.h)

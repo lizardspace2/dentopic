@@ -1,5 +1,5 @@
 // Modals du Studio : ouverture d'une photo du workspace, export, sauvegarde.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiDownload, FiFolder, FiSave } from 'react-icons/fi'
 import { Card, Modal, SearchInput, Select, Tag, Tip, isTestName } from '../../components/ui'
@@ -697,6 +697,109 @@ export function AdjustLayerModal({ open, onClose, editor, layer, onChange }) {
           {sl('Saturation', 'sat', -100, 100)}
         </>)}
         {adj?.kind === 'posterize' && sl('Niveaux', 'levels', 2, 32)}
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- « Sélection et masque » : espace d'affinement du bord (façon Photoshop) ----
+
+export function SelectMaskModal({ open, onClose, editor, onApply, onChange }) {
+  const saved = useRef(null)         // état de sélection pour Annuler
+  const [fe, setFe] = useState(0)    // contour progressif (px)
+  const [shift, setShift] = useState(0) // déplacer le bord (px)
+  const [smo, setSmo] = useState(0)  // lisser (itérations)
+  const [view, setView] = useState('overlay') // overlay | masque | none
+  const applied = useRef({ shift: 0, smo: 0, snap: false })
+  const cvRef = useRef(null)
+  const W = 460
+  const H = editor?.w ? Math.min(300, Math.round(W * editor.h / editor.w)) : 200
+
+  useEffect(() => {
+    if (!open || !editor) return
+    saved.current = editor.sel || editor.selPoly
+      ? { sel: editor.sel && [...editor.sel], selPoly: editor.selPoly && editor.selPoly.map((p) => [...p]), selEllipse: editor.selEllipse, selInverted: editor.selInverted }
+      : null
+    setFe(0); setShift(0); setSmo(0); setView('overlay')
+    applied.current = { shift: 0, smo: 0, snap: false }
+  }, [open]) // eslint-disable-line
+
+  const ensureSnap = () => {
+    if (!applied.current.snap) { editor.snapshot('Sélection et masque'); applied.current.snap = true }
+  }
+
+  const draw = () => {
+    const cv = cvRef.current
+    if (!cv || !editor?.w) return
+    const ctx = cv.getContext('2d')
+    const k = Math.min(W / editor.w, H / editor.h)
+    cv.width = W; cv.height = Math.round(editor.h * k)
+    ctx.drawImage(editor.compositeFiltered(), 0, 0, editor.w * k, editor.h * k)
+    // superposition rouge hors sélection (comme le mode Superposition de PS)
+    if (view !== 'none') {
+      ctx.save()
+      ctx.scale(k, k)
+      ctx.beginPath(); ctx.rect(0, 0, editor.w, editor.h)
+      editor._selPath(ctx, 0, 0, true)
+      ctx.filter = fe > 0 ? `blur(${fe * k}px)` : 'none'
+      ctx.fillStyle = view === 'overlay' ? 'rgba(224,60,60,0.5)' : 'rgba(0,0,0,0.72)'
+      ctx.fill('evenodd')
+      ctx.restore()
+      ctx.filter = 'none'
+    }
+  }
+  useEffect(draw, [open, fe, view, editor?.w]) // eslint-disable-line
+
+  const sl = (label, val, set, min, max, onUpd) => (
+    <VStack align="stretch" gap="0.5">
+      <HStack justify="space-between">
+        <Text fontSize="2xs" color={S.muted}>{label}</Text>
+        <Text fontSize="2xs" color={S.fg}>{val} px</Text>
+      </HStack>
+      <Input type="range" min={min} max={max} value={val} h="16px"
+        onChange={(e) => { const v = +e.target.value; set(v); onUpd?.(v) }} />
+    </VStack>
+  )
+
+  const close = (ok) => {
+    if (ok) onApply?.(fe)
+    else if (saved.current) { // Annuler : restaure la sélection d'origine
+      editor.sel = saved.current.sel; editor.selPoly = saved.current.selPoly
+      editor.selEllipse = saved.current.selEllipse; editor.selInverted = saved.current.selInverted
+      onChange?.()
+    }
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={() => close(false)} title="Sélection et masque"
+      subtitle="Affinez le bord de la sélection — superposition façon Photoshop" width="520px">
+      <VStack align="stretch" gap="3">
+        <Box as="canvas" ref={cvRef} borderRadius="md" border="1px solid" borderColor={S.border}
+          w="100%" bg={S.canvas} />
+        <HStack gap="2">
+          {[['overlay', 'Superposition'], ['mask', 'Masque'], ['none', 'Sans aperçu']].map(([k, l]) => (
+            <Box as="button" key={k} px="2" py="0.5" fontSize="2xs" borderRadius="sm" cursor="pointer"
+              bg={view === k ? '#4f8fe8' : 'var(--s-a100)'} color={view === k ? '#ffffff' : S.fg}
+              onClick={() => setView(k)}>{l}</Box>
+          ))}
+        </HStack>
+        {sl('Contour progressif (plume)', fe, (v) => { setFe(v); draw() }, 0, 100)}
+        {sl('Déplacer le bord', shift, (v) => {
+          ensureSnap()
+          editor.resizeSelection(v - applied.current.shift)
+          applied.current.shift = v; setShift(v); onChange?.()
+        }, -100, 100)}
+        {sl('Lisser le contour', smo, (v) => {
+          if (v > applied.current.smo) { ensureSnap(); editor.smoothSelection(v - applied.current.smo); onChange?.() }
+          applied.current.smo = Math.max(applied.current.smo, v); setSmo(v)
+        }, 0, 20)}
+        <HStack justify="end" gap="2">
+          <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
+            bg="var(--s-a100)" color={S.fg} onClick={() => close(false)}>Annuler</Box>
+          <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
+            bg={C.primary} color="#ffffff" onClick={() => close(true)}>OK</Box>
+        </HStack>
       </VStack>
     </Modal>
   )

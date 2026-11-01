@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Box, Center, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiGrid, FiImage, FiLayers, FiLock,
-  FiMove, FiPlus, FiRefreshCw, FiTrash2, FiEdit2, FiType, FiZap,
+  FiMove, FiPlus, FiRefreshCw, FiTrash2, FiEdit2, FiType, FiZap, FiShare2,
   FiAlignLeft, FiAlignCenter, FiAlignRight,
 } from 'react-icons/fi'
 import { LuContrast, LuHistory, LuRedo2, LuUndo2 } from 'react-icons/lu'
@@ -13,7 +13,7 @@ import { TbMask } from 'react-icons/tb'
 import { Tip } from '../../components/ui'
 import { C, S, svar, getMode } from '../../theme'
 import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
-import { ADJUST_KINDS, ADJUST_PARAMS, curveLUT, histogram } from './engine'
+import { ADJUST_KINDS, ADJUST_PARAMS, autoLevels, curveLUT, histogram } from './engine'
 
 const panelBg = S.card
 const panelBorder = S.border
@@ -143,7 +143,7 @@ export function ToolBar({ tool, setTool, fgColor, bgColor, onSwap, onPickColor }
 
 export function OptionsBar({
   tool, opts, setOpts, cropRect, onApplyCrop, onCancelCrop, onRotate,
-  hasSel, onFill, onDelete, onDeselect, canUndo, canRedo, onUndo, onRedo, onPickColor,
+  hasSel, onFill, onDelete, onDeselect, onSelMask, canUndo, canRedo, onUndo, onRedo, onPickColor,
 }) {
   const row = { fontSize: '2xs', color: muted }
   // slider + saisie numérique exacte (comme les champs de valeur de Photoshop)
@@ -241,6 +241,8 @@ export function OptionsBar({
               <option value="ellipse">Ellipse</option>
               <option value="triangle">Triangle</option>
               <option value="line">Ligne</option>
+              <option value="poly">Polygone</option>
+              <option value="star">Étoile</option>
             </Box>
           </Tip>
           <Tip label="Contour (couleur d'arrière-plan)">
@@ -288,18 +290,41 @@ export function OptionsBar({
               {TEXT_FONTS.map((f) => <option key={f} value={f}>{f}</option>)}
             </Box>
           </Tip>
+          <Tip label="Graisse / style de la fonte">
+            <Box as="select" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+              border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+              value={`${opts.textBold ? 'B' : ''}${opts.textItalic ? 'I' : ''}` || 'R'}
+              onChange={(e) => { const v = e.target.value; setOpts({ ...opts, textBold: v.includes('B'), textItalic: v.includes('I') }) }}>
+              <option value="R">Normal</option>
+              <option value="B">Gras</option>
+              <option value="I">Italique</option>
+              <option value="BI">Gras italique</option>
+            </Box>
+          </Tip>
           <Tip label="Corps du texte"><Text {...row}>Taille</Text></Tip>
           <Input type="number" w="52px" h="20px" fontSize="2xs" value={opts.textSize}
             onChange={(e) => setOpts({ ...opts, textSize: +e.target.value || 24 })} />
-          <Tip label="Gras">
-            <Box as="button" px="1.5" h="20px" fontSize="2xs" fontWeight="800" borderRadius="sm" cursor="pointer"
-              bg={opts.textBold ? C.primary : 'var(--s-a100)'} color={opts.textBold ? '#ffffff' : fg}
-              onClick={() => setOpts({ ...opts, textBold: !opts.textBold })}>B</Box>
+          <Tip label="Lissage (anti-crénelage) du texte">
+            <Box as="select" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+              border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+              value={opts.textSmooth || 'lisse'}
+              onChange={(e) => setOpts({ ...opts, textSmooth: e.target.value })}>
+              <option value="sans">Sans</option>
+              <option value="net">Net</option>
+              <option value="incisif">Incisif</option>
+              <option value="lisse">Lisse</option>
+              <option value="accentue">Accentué</option>
+            </Box>
           </Tip>
-          <Tip label="Italique">
-            <Box as="button" px="1.5" h="20px" fontSize="2xs" fontStyle="italic" borderRadius="sm" cursor="pointer"
-              bg={opts.textItalic ? C.primary : 'var(--s-a100)'} color={opts.textItalic ? '#ffffff' : fg}
-              onClick={() => setOpts({ ...opts, textItalic: !opts.textItalic })}>I</Box>
+          <Tip label="Alignement du paragraphe">
+            <Box as="select" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+              border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+              value={opts.textAlign || 'left'}
+              onChange={(e) => setOpts({ ...opts, textAlign: e.target.value })}>
+              <option value="left">Gauche</option>
+              <option value="center">Centré</option>
+              <option value="right">Droite</option>
+            </Box>
           </Tip>
           <Tip label="Interlettrage (px entre caractères)"><Text {...row}>Crénage</Text></Tip>
           <Input type="number" w="46px" h="20px" fontSize="2xs" value={opts.textTracking}
@@ -373,7 +398,7 @@ export function OptionsBar({
           <Text {...row}>Cliquer une couleur → sélection de la zone</Text>
         </>
       )}
-      {tool === 'rect' && !hasSel && (
+      {tool === 'rect' && (
         <>
           <Tip label="Forme du cadre de sélection">
             <Box as="select" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
@@ -383,7 +408,60 @@ export function OptionsBar({
               <option value="ellipse">Ellipse</option>
             </Box>
           </Tip>
-          <Text {...row}>Trace une zone de sélection</Text>
+          <Tip label="Contour progressif — adoucit le bord des remplissages/suppressions">
+            <HStack gap="1">
+              <Text {...row}>Plume</Text>
+              <Input type="number" w="46px" h="18px" fontSize="2xs" px="1" min="0" max="250"
+                value={opts.selFeather || 0}
+                onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setOpts({ ...opts, selFeather: Math.max(0, Math.min(250, v)) }) }} />
+              <Text {...row}>px</Text>
+            </HStack>
+          </Tip>
+          <Tip label="Lisse le bord de la sélection (déconseillé pour les angles francs)">
+            <HStack gap="1" cursor="pointer" onClick={() => setOpts({ ...opts, selAA: !opts.selAA })}>
+              <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+                borderColor={opts.selAA ? '#4f8fe8' : 'gray.500'} bg={opts.selAA ? '#4f8fe8' : 'transparent'}
+                color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+                {opts.selAA ? '✓' : ''}
+              </Box>
+              <Text {...row}>Anti-crénelage</Text>
+            </HStack>
+          </Tip>
+          <Tip label="Style : libre, proportions fixe ou taille fixe (comme Photoshop)">
+            <HStack gap="1">
+              <Text {...row}>Style</Text>
+              <Box as="select" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+                border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+                value={opts.selStyle || 'normal'}
+                onChange={(e) => setOpts({ ...opts, selStyle: e.target.value })}>
+                <option value="normal">Normal</option>
+                <option value="ratio">Proportions fixe</option>
+                <option value="fixed">Taille fixe</option>
+              </Box>
+            </HStack>
+          </Tip>
+          {opts.selStyle === 'ratio' && (
+            <HStack gap="0.5">
+              <Text {...row}>L</Text>
+              <Input type="number" w="42px" h="18px" fontSize="2xs" px="1" min="1" value={opts.selRatioW || 1}
+                onChange={(e) => { const v = +e.target.value; if (v > 0) setOpts({ ...opts, selRatioW: v }) }} />
+              <Text {...row}>H</Text>
+              <Input type="number" w="42px" h="18px" fontSize="2xs" px="1" min="1" value={opts.selRatioH || 1}
+                onChange={(e) => { const v = +e.target.value; if (v > 0) setOpts({ ...opts, selRatioH: v }) }} />
+            </HStack>
+          )}
+          {opts.selStyle === 'fixed' && (
+            <HStack gap="0.5">
+              <Text {...row}>L</Text>
+              <Input type="number" w="48px" h="18px" fontSize="2xs" px="1" min="1" value={opts.selFixW || 200}
+                onChange={(e) => { const v = +e.target.value; if (v > 0) setOpts({ ...opts, selFixW: v }) }} />
+              <Text {...row}>H</Text>
+              <Input type="number" w="48px" h="18px" fontSize="2xs" px="1" min="1" value={opts.selFixH || 200}
+                onChange={(e) => { const v = +e.target.value; if (v > 0) setOpts({ ...opts, selFixH: v }) }} />
+            </HStack>
+          )}
+          {hasSel && <Tip label="Affiner le bord : contour progressif, lissage, déplacement — Ctrl+Alt+R">
+            {btn('Sélection et masque…', onSelMask)}</Tip>}
         </>
       )}
       {['hand', 'zoom', 'picker', 'lasso', 'plasso', 'gradient'].includes(tool) && !hasSel && (
@@ -447,8 +525,9 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
     kind === 'all' ? true
       : kind === 'text' ? l.type === 'text'
         : kind === 'adjust' ? l.type === 'adjust'
-          : kind === 'fx' ? fxKeys(l).some((k) => l.fx[k]?.on)
-            : (l.type || 'pixel') === 'pixel'
+          : kind === 'shape' ? l.type === 'shape'
+            : kind === 'fx' ? fxKeys(l).some((k) => l.fx[k]?.on)
+              : (l.type || 'pixel') === 'pixel'
   const layers = [...editor.layers].reverse().filter(match)
   const act = editor.active
 
@@ -486,6 +565,7 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
         <Text fontSize="2xs" color={muted} flexShrink={0}>Genre :</Text>
         {kindBtn('all', FiLayers, 'Tous les calques')}
         {kindBtn('pixel', FiImage, 'Calques de pixels')}
+        {kindBtn('shape', FiShare2, 'Calques de forme vectoriels')}
         {kindBtn('text', FiType, 'Calques de texte')}
         {kindBtn('adjust', LuContrast, 'Calques de réglage')}
         {kindBtn('fx', FiZap, 'Calques avec des styles (effets)')}
@@ -548,7 +628,12 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
                 <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
                   onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
               </Tip>
-              <Tip label={isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.type === 'text' ? 'Calque de texte — éditable dans Propriétés' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
+              {l.clip && (
+                <Tip label="Écrêté sur le calque inférieur">
+                  <Text fontSize="xs" color="#4f8fe8" flexShrink="0" fontWeight="700">↳</Text>
+                </Tip>
+              )}
+              <Tip label={isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.type === 'text' ? 'Calque de texte — éditable dans Propriétés' : l.type === 'shape' ? 'Calque de forme vectoriel — éditable dans Propriétés' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
                 {isAdjust ? (
                   <Center w="42px" h="30px" flexShrink={0} borderRadius="sm" bg={S.tile}
                     border="1px solid" borderColor="#7c3aed" color="#c4b5fd" fontSize="15px">
@@ -1150,6 +1235,7 @@ export function DentalPanel({ editor, version, onChange, dental }) {
 export function HistogramPanel({ editor, version }) {
   const cvRef = useRef(null)
   const [stats, setStats] = useState(null)
+  const [ch, setCh] = useState('rgb') // RVB superposé ou canal isolé, comme Photoshop
   const W = 216, H = 120
   useEffect(() => {
     const cv = cvRef.current
@@ -1157,23 +1243,43 @@ export function HistogramPanel({ editor, version }) {
     const ctx = cv.getContext('2d')
     ctx.fillStyle = svar('--s-deep', '#0d1117'); ctx.fillRect(0, 0, W, H)
     try {
-      const st = histogram(editor.compositeFiltered())
-      setStats(st)
-      // trois canaux superposés : R / V / B + luminance en blanc
-      const draw = (h, color) => {
+      const comp = editor.compositeFiltered()
+      const draw = (h, color, a = 0.8) => {
         const mx = Math.max(...h) || 1
         ctx.fillStyle = color
+        ctx.globalAlpha = a
         for (let i = 0; i < 256; i += 2) {
           const hh = (h[i] / mx) * H * 0.9
           ctx.fillRect((i / 255) * W, H - hh, Math.max(1, W / 128), hh)
         }
+        ctx.globalAlpha = 1
       }
-      draw(st.h, svar('--s-a400', 'rgba(255,255,255,0.75)'))
+      if (ch === 'rgb') {
+        // RVB : les trois canaux superposés + stats de luminance (comme Photoshop)
+        const stR = histogram(comp, 8, 'r'), stG = histogram(comp, 8, 'g'), stB = histogram(comp, 8, 'b')
+        const stL = histogram(comp, 8, 'lum')
+        draw(stR.h, '#e05d5d', 0.55); draw(stG.h, '#5dc46a', 0.55); draw(stB.h, '#5d8de0', 0.55)
+        setStats(stL)
+      } else {
+        const st = histogram(comp, 8, ch)
+        draw(st.h, { r: '#e05d5d', g: '#5dc46a', b: '#5d8de0' }[ch] || svar('--s-a400', 'rgba(255,255,255,0.75)'))
+        setStats(st)
+      }
     } catch { /* doc pas prêt */ }
-  }, [version, getMode()]) // eslint-disable-line
+  }, [version, ch, getMode()]) // eslint-disable-line
   return (
     <VStack align="stretch" gap="2" px="3" py="3" flex="1" overflowY="auto">
-      <Tip label="Distribution des luminances du composite édité" display="block">
+      <Box as="select" w="100%" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+        border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+        title="Canal affiché dans l'histogramme"
+        value={ch} onChange={(e) => setCh(e.target.value)}>
+        <option value="rgb">RVB</option>
+        <option value="lum">Luminosité</option>
+        <option value="r">Rouge</option>
+        <option value="g">Vert</option>
+        <option value="b">Bleu</option>
+      </Box>
+      <Tip label="Distribution tonale du composite édité (canaux superposés en RVB)" display="block">
         <Box as="canvas" ref={cvRef} width={W} height={H} borderRadius="sm"
           border="1px solid" borderColor={panelBorder} />
       </Tip>
@@ -1352,6 +1458,11 @@ function TextLayerProps({ editor, layer, onChange }) {
             onPointerDown={snap}
             onChange={(e) => up({ color: e.target.value })} /></VStack>
       </HStack>
+      <HStack gap="1.5" align="end">
+        {tNum('Échelle H %', 'scaleX', t.scaleX ?? 100, 10, 400, 5)}
+        {tNum('Échelle V %', 'scaleY', t.scaleY ?? 100, 10, 400, 5)}
+        {tNum('Décalage', 'baseline', t.baseline || 0, -200, 200, 1)}
+      </HStack>
       <Box h="1px" bg="var(--s-a50)" />
       <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">Paragraphe</Text>
       <HStack gap="1">
@@ -1359,6 +1470,21 @@ function TextLayerProps({ editor, layer, onChange }) {
         {alignBtn('center', 'Centrer')}
         {alignBtn('right', 'Aligner à droite')}
       </HStack>
+      <HStack gap="1.5" align="end">
+        {tNum('Retrait G', 'indentL', t.indentL || 0, 0, 1000, 1)}
+        {tNum('Retrait D', 'indentR', t.indentR || 0, 0, 1000, 1)}
+      </HStack>
+      <HStack gap="1.5" align="end">
+        {tNum('Espace avant', 'spaceBefore', t.spaceBefore || 0, 0, 400, 1)}
+        {tNum('Espace après', 'spaceAfter', t.spaceAfter || 0, 0, 400, 1)}
+      </HStack>
+      <VStack align="stretch" gap="0">
+        <Text fontSize="2xs" color={muted}>Largeur de boîte — 0 = pas de coupure</Text>
+        <Input type="number" h="20px" fontSize="2xs" px="1" bg={S.input} color={fg}
+          border="1px solid" borderColor={panelBorder} min="0" max="8000" value={t.boxW || 0}
+          onFocus={snap}
+          onChange={(e) => { const v = +e.target.value; if (!isNaN(v) && v >= 0) up({ boxW: v || 0 }) }} />
+      </VStack>
       <Box h="1px" bg="var(--s-a50)" />
       <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">Contenu</Text>
       <Box as="textarea" rows="3" fontSize="xs" bg={S.input} color={fg} borderRadius="sm"
@@ -1373,6 +1499,116 @@ function TextLayerProps({ editor, layer, onChange }) {
 }
 
 /** Calque de pixels : position, taille du document, opacité/remplissage, hint fx. */
+// ---- Calque de forme : position/taille + Apparence (Fond / Contour) -----------
+
+function ShapeLayerProps({ editor, layer, onChange }) {
+  const s = layer.shape || {}
+  const up = (patch) => { editor.updateShape(layer, patch); onChange() }
+  const snap = () => editor.snapshot('Forme')
+  const shNum = (label, key, val, min, max, step = 1) => (
+    <VStack align="stretch" gap="0" flex="1"><Text fontSize="2xs" color={muted}>{label}</Text>
+      <Input type="number" h="20px" fontSize="2xs" px="1" bg={S.input} color={fg} step={step}
+        border="1px solid" borderColor={panelBorder} min={min} max={max} value={val}
+        onFocus={snap}
+        onChange={(e) => { const v = +e.target.value; if (!isNaN(v) && v >= min) up({ [key]: Math.min(max, v) }) }} /></VStack>
+  )
+  const sw = (label, key, val, noneLabel) => (
+    <HStack gap="1.5" flex="1">
+      <Text fontSize="2xs" color={muted} w="44px">{label}</Text>
+      <Box w="20px" h="20px" borderRadius="sm" border="1px solid" borderColor={panelBorder}
+        bg={val || 'transparent'} position="relative">
+        <Input type="color" w="100%" h="100%" opacity="0" cursor="pointer" value={val || '#000000'}
+          onFocus={snap}
+          onChange={(e) => up({ [key]: e.target.value })} />
+        {!val && <Text position="absolute" inset="0" fontSize="xs" color={muted} textAlign="center" lineHeight="18px" pointerEvents="none">∅</Text>}
+      </Box>
+      {val != null && noneLabel && (
+        <Text fontSize="2xs" color={muted} cursor="pointer" textDecoration="underline"
+          onClick={() => { snap(); up({ [key]: null }) }}>aucun</Text>
+      )}
+      {val == null && (
+        <Text fontSize="2xs" color={muted} cursor="pointer" textDecoration="underline"
+          onClick={() => { snap(); up({ [key]: '#ffffff' }) }}>définir</Text>
+      )}
+    </HStack>
+  )
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3" overflowY="auto" flex="1">
+      <Text fontSize="2xs" color={muted}>Calque de forme</Text>
+      <LayerBox editor={editor} layer={layer} onChange={onChange}
+        w={s.w || 0} h={s.h || 0} />
+      <Box h="1px" bg="var(--s-a50)" />
+      <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">Apparence</Text>
+      <HStack gap="3" align="center">
+        {sw('Fond', 'fill', s.fill, true)}
+        {sw('Contour', 'stroke', s.stroke, true)}
+      </HStack>
+      <HStack gap="1.5" align="end">
+        {shNum('Épaisseur', 'strokeW', s.strokeW || 0, 0, 200)}
+        <VStack align="stretch" gap="0" flex="1">
+          <Text fontSize="2xs" color={muted}>Alignement</Text>
+          <Box as="select" w="100%" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+            border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+            value={s.strokeAlign || 'center'}
+            onChange={(e) => { snap(); up({ strokeAlign: e.target.value }) }}>
+            <option value="inside">Intérieur</option>
+            <option value="center">Centré</option>
+            <option value="outside">Extérieur</option>
+          </Box>
+        </VStack>
+        <VStack align="stretch" gap="0" flex="1">
+          <Text fontSize="2xs" color={muted}>Style</Text>
+          <Box as="select" w="100%" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+            border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+            value={s.dash || 'solid'}
+            onChange={(e) => { snap(); up({ dash: e.target.value }) }}>
+            <option value="solid">Plein</option>
+            <option value="dash">Tirets</option>
+            <option value="dot">Pointillés</option>
+          </Box>
+        </VStack>
+      </HStack>
+      {(s.kind === 'poly' || s.kind === 'star') && shNum('Sommets', 'points', s.points || 5, 3, 24)}
+      {s.kind === 'rect' && shNum('Rayon des coins', 'corner', s.corner || 0, 0, 400)}
+      <Text fontSize="2xs" color={muted}>
+        Forme vectorielle — redimensionnable sans perte, contour et fond rééditables.
+      </Text>
+    </VStack>
+  )
+}
+
+/** Mini-histogramme façon « Niveaux » de Photoshop, avec marqueurs d'entrée. */
+function LevelsHistCanvas({ editor, ch, inBlack, inWhite, gamma }) {
+  const cvRef = useRef(null)
+  const W = 224, H = 90
+  useEffect(() => {
+    const cv = cvRef.current
+    if (!cv || !editor.w) return
+    const ctx = cv.getContext('2d')
+    ctx.fillStyle = svar('--s-deep', '#0d1117'); ctx.fillRect(0, 0, W, H)
+    try {
+      const st = histogram(editor.compositeFiltered(), 8, ch === 'rgb' ? 'lum' : ch)
+      const mx = st.max || 1
+      ctx.fillStyle = svar('--s-a400', 'rgba(255,255,255,0.75)')
+      for (let i = 0; i < 256; i += 2) {
+        const hh = (st.h[i] / mx) * H * 0.9
+        ctx.fillRect((i / 255) * W, H - hh, Math.max(1, W / 128), hh)
+      }
+      // zones grisées hors plage d'entrée + poignées
+      ctx.fillStyle = 'rgba(0,0,0,0.45)'
+      ctx.fillRect(0, 0, (inBlack / 255) * W, H)
+      ctx.fillRect((inWhite / 255) * W, 0, W, H)
+      ctx.fillStyle = '#4f8fe8'
+      const gx = W / 2 + (Math.log(gamma / 100) / Math.log(4)) * (W / 4) // repère gamma approx.
+      ctx.fillRect(Math.max(0, Math.min(W - 2, gx)), H - 6, 2, 6)
+    } catch { /* doc pas prêt */ }
+  }, [editor.w, editor.layers?.length, ch, inBlack, inWhite, gamma, getMode()]) // eslint-disable-line
+  return (
+    <Box as="canvas" ref={cvRef} width={W} height={H} borderRadius="sm" w="100%"
+      border="1px solid" borderColor={panelBorder} />
+  )
+}
+
 function PixelLayerProps({ editor, layer, onChange, onFx }) {
   if (!layer) {
     return (
@@ -1399,6 +1635,7 @@ function PixelLayerProps({ editor, layer, onChange, onFx }) {
 
 export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
   if (layer?.type === 'text') return <TextLayerProps editor={editor} layer={layer} onChange={onChange} />
+  if (layer?.type === 'shape') return <ShapeLayerProps editor={editor} layer={layer} onChange={onChange} />
   if (layer?.type !== 'adjust') return <PixelLayerProps editor={editor} layer={layer} onChange={onChange} onFx={onFx} />
   const adj = layer.adj
   const p = adj?.params || {}
@@ -1448,16 +1685,85 @@ export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
         {sl('Contraste', 'contrast', -100, 100)}
       </>)}
       {adj?.kind === 'hsl' && (<>
-        {sl('Teinte', 'hue', -180, 180)}
-        {sl('Saturation', 'sat', -100, 100)}
+        {p.colorize
+          ? sl('Teinte', 'hue', 0, 360)
+          : (<VStack align="stretch" gap="0.5">
+              <HStack justify="space-between">
+                <Text fontSize="2xs" color={muted}>Teinte</Text>
+                <Input type="number" w="56px" h="18px" fontSize="2xs" px="1" bg={S.input} color={fg}
+                  border="1px solid" borderColor={panelBorder} min="-180" max="180" value={p.hue ?? 0}
+                  onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setP('hue', Math.min(180, Math.max(-180, v))) }} />
+              </HStack>
+              {/* curseur arc-en-ciel comme Photoshop */}
+              <Box position="relative" h="16px" borderRadius="sm" overflow="hidden"
+                bg="linear-gradient(to right,#f00 0%,#ff0 17%,#0f0 33%,#0ff 50%,#00f 67%,#f0f 83%,#f00 100%)">
+                <Input type="range" min="-180" max="180" step="1" value={p.hue ?? 0}
+                  position="absolute" inset="0" w="100%" h="100%" opacity="0" cursor="pointer"
+                  onChange={(e) => setP('hue', +e.target.value)} />
+                <Box position="absolute" top="0" bottom="0" w="4px" bg="#ffffff" borderRadius="sm"
+                  boxShadow="0 0 0 1px rgba(0,0,0,.5)" pointerEvents="none"
+                  left={`${((p.hue ?? 0) + 180) / 360 * 100}%`} transform="translateX(-50%)" />
+              </Box>
+            </VStack>)}
+        {p.colorize ? sl('Saturation', 'sat', 0, 100) : sl('Saturation', 'sat', -100, 100)}
         {sl('Luminosité', 'light', -100, 100)}
+        <HStack gap="1.5" cursor="pointer" onClick={() => setP('colorize', !p.colorize)}>
+          <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+            borderColor={p.colorize ? '#4f8fe8' : 'gray.500'} bg={p.colorize ? '#4f8fe8' : 'transparent'}
+            color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+            {p.colorize ? '✓' : ''}
+          </Box>
+          <Text fontSize="2xs" color={fg}>Colorier</Text>
+        </HStack>
       </>)}
       {adj?.kind === 'levels' && (<>
-        {sl('Noirs entrée', 'inBlack', 0, 254)}
-        {sl('Gamma', 'gamma', 10, 400)}
-        {sl('Blancs entrée', 'inWhite', 1, 255)}
-        {sl('Noirs sortie', 'outBlack', 0, 254)}
-        {sl('Blancs sortie', 'outWhite', 1, 255)}
+        <LevelsHistCanvas editor={editor} ch={p.ch || 'rgb'}
+          inBlack={p.inBlack ?? 0} inWhite={p.inWhite ?? 255} gamma={p.gamma ?? 100} />
+        <HStack gap="2">
+          <Box as="select" flex="1" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+            border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+            value={p.ch || 'rgb'} onChange={(e) => setP('ch', e.target.value)}>
+            <option value="rgb">RVB</option><option value="r">Rouge</option>
+            <option value="g">Vert</option><option value="b">Bleu</option>
+          </Box>
+          <Box as="button" px="2.5" h="20px" fontSize="2xs" borderRadius="sm" cursor="pointer"
+            bg="var(--s-a100)" color={fg} _hover={{ bg: 'var(--s-a200)' }}
+            onClick={() => {
+              const a = autoLevels(editor.compositeFiltered(), p.ch || 'rgb')
+              p.inBlack = a.inBlack; p.inWhite = a.inWhite; onChange()
+            }}>Auto</Box>
+        </HStack>
+        {/* trois champs d'entrée sous l'histogramme, comme Photoshop */}
+        <HStack gap="1.5" justify="space-between">
+          {[['inBlack', 0, 254, 1], ['gamma', 10, 999, 1], ['inWhite', 1, 255, 1]].map(([k, mn, mx]) => (
+            <Input key={k} type="number" w="60px" h="18px" fontSize="2xs" px="1" textAlign="center"
+              bg={S.input} color={fg} border="1px solid" borderColor={panelBorder}
+              min={mn} max={mx} value={k === 'gamma' ? Math.round(p.gamma ?? 100) : (p[k] ?? (k === 'inWhite' ? 255 : 0))}
+              onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setP(k, Math.min(mx, Math.max(mn, v))) }} />
+          ))}
+        </HStack>
+        {/* plage des curseurs d'entrée */}
+        <VStack align="stretch" gap="0.5">
+          <input type="range" min="0" max="254" value={p.inBlack ?? 0} style={{ height: 12 }}
+            onChange={(e) => setP('inBlack', Math.min(+e.target.value, (p.inWhite ?? 255) - 1))} />
+          <input type="range" min="10" max="400" value={p.gamma ?? 100} style={{ height: 12 }}
+            onChange={(e) => setP('gamma', +e.target.value)} />
+          <input type="range" min="1" max="255" value={p.inWhite ?? 255} style={{ height: 12 }}
+            onChange={(e) => setP('inWhite', Math.max(+e.target.value, (p.inBlack ?? 0) + 1))} />
+        </VStack>
+        <Text fontSize="2xs" color={muted}>Niveaux de sortie</Text>
+        <HStack gap="1.5" justify="space-between">
+          <Input type="number" w="60px" h="18px" fontSize="2xs" px="1" textAlign="center"
+            bg={S.input} color={fg} border="1px solid" borderColor={panelBorder}
+            min="0" max="254" value={p.outBlack ?? 0}
+            onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setP('outBlack', Math.min(254, Math.max(0, v))) }} />
+          <Box flex="1" h="10px" borderRadius="sm"
+            bg={`linear-gradient(to right, #000, #fff)`} border="1px solid" borderColor={panelBorder} />
+          <Input type="number" w="60px" h="18px" fontSize="2xs" px="1" textAlign="center"
+            bg={S.input} color={fg} border="1px solid" borderColor={panelBorder}
+            min="1" max="255" value={p.outWhite ?? 255}
+            onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) setP('outWhite', Math.min(255, Math.max(1, v))) }} />
+        </HStack>
       </>)}
       {adj?.kind === 'curves' && (
         <Text fontSize="2xs" color={muted}>Éditez la courbe dans l'onglet <b>Courbes</b>.</Text>
@@ -1488,6 +1794,14 @@ export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
           {layer.visible ? '✓' : ''}
         </Box>
         <Text fontSize="2xs" color={fg}>Réglage visible</Text>
+      </HStack>
+      <HStack gap="1.5" cursor="pointer" onClick={() => { layer.clip = !layer.clip; onChange() }}>
+        <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
+          borderColor={layer.clip ? '#4f8fe8' : 'gray.500'} bg={layer.clip ? '#4f8fe8' : 'transparent'}
+          color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
+          {layer.clip ? '✓' : ''}
+        </Box>
+        <Text fontSize="2xs" color={fg}>Écrêter sur le calque inférieur</Text>
       </HStack>
       <Box as="button" fontSize="2xs" py="1" borderRadius="sm" cursor="pointer"
         bg="var(--s-a100)" color={fg} _hover={{ bg: 'var(--s-a200)' }}
@@ -1553,6 +1867,43 @@ export function HistoryPanel({ editor, version, onJump }) {
       {!past.length && !fut.length && (
         <Text fontSize="2xs" color={muted} px="2" py="2">Aucune action encore — les étapes apparaîtront ici.</Text>
       )}
+    </VStack>
+  )
+}
+
+// ---- Panneau bas : Tracés (comme l'onglet Tracés de Photoshop) --------------------
+
+export function PathsPanel({ editor, version, onChange }) {
+  void version
+  const paths = editor.paths || []
+  return (
+    <VStack align="stretch" gap="0" flex="1" overflowY="auto" px="1" py="1">
+      {paths.map((p, i) => (
+        <Tip key={i} label={`${p.name} — ${p.kind === 'poly' ? 'tracé libre' : p.kind} · double-clic ou clic pour recharger en sélection`} display="block">
+          <HStack px="2" py="1" gap="2" fontSize="2xs" cursor="pointer" color={fg}
+            _hover={{ bg: 'var(--s-a100)' }} borderRadius="sm"
+            onClick={() => { editor.snapshot('Charger le tracé'); editor.loadPath(p); onChange() }}>
+            <Box as={FiShare2} fontSize="11px" flexShrink="0" color={muted} />
+            <Text flex="1" isTruncated>{p.name}</Text>
+            <Text fontSize="2xs" color={muted}>{p.kind}</Text>
+            <Text fontSize="2xs" color={muted} cursor="pointer" _hover={{ color: '#e05d5d' }}
+              onClick={(e) => { e.stopPropagation(); editor.snapshot('Supprimer le tracé'); editor.paths.splice(i, 1); onChange() }}>✕</Text>
+          </HStack>
+        </Tip>
+      ))}
+      {!paths.length && (
+        <Text fontSize="2xs" color={muted} px="2" py="2">
+          Aucun tracé — faites une sélection puis « Tracé depuis la sélection ».
+        </Text>
+      )}
+      <Box px="1" py="1" borderTop="1px solid" borderColor={panelBorder} mt="1">
+        <Box as="button" w="100%" fontSize="2xs" py="1" borderRadius="sm" cursor="pointer"
+          bg="var(--s-a100)" color={fg} _hover={{ bg: 'var(--s-a200)' }}
+          title={editor.sel || editor.selPoly?.length ? 'Crée un tracé depuis la sélection active' : 'Aucune sélection active'}
+          onClick={() => { if (editor.sel || editor.selPoly?.length) { editor.saveWorkPath(); onChange() } }}>
+          Tracé depuis la sélection
+        </Box>
+      </Box>
     </VStack>
   )
 }
@@ -1646,7 +1997,8 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
   const [botTab, setBotTab] = useState('layers')
   const isAdj = editor.active?.type === 'adjust'
   const isText = editor.active?.type === 'text'
-  const propsTab = (isAdj || isText) ? 'props' : topTab // Propriétés suit le calque actif
+  const isShape = editor.active?.type === 'shape'
+  const propsTab = (isAdj || isText || isShape) ? 'props' : topTab // Propriétés suit le calque actif
   return (
     <Flex w="252px" direction="column" bg={panelBg} borderLeft="1px solid" borderColor={panelBorder} flexShrink={0}>
       {/* Groupe haut : Propriétés (réglage du calque actif) / Réglages / Courbes / Dentaire */}
@@ -1688,11 +2040,13 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
         <TabRow value={botTab} onChange={setBotTab} tabs={[
           ['layers', 'Calques', 'Empilement, fusion, opacité, remplissage, effets fx, masques'],
           ['canaux', 'Canaux', 'Aperçu des canaux RVB / R / V / B du composite'],
+          ['paths', 'Tracés', 'Tracés enregistrés depuis les sélections — rechargement en sélection'],
           ['hist', 'Hist.', 'États de l\'historique — clic pour sauter'],
         ]} />
         <Flex flex="1" direction="column" overflow="hidden">
           {botTab === 'layers' && <LayersPanel editor={editor} version={version} onChange={onChange} onFx={onFx} onAdjust={onAdjust} />}
           {botTab === 'canaux' && <ChannelsPanel editor={editor} version={version} />}
+          {botTab === 'paths' && <PathsPanel editor={editor} version={version} onChange={onChange} />}
           {botTab === 'hist' && <HistoryPanel editor={editor} version={version} onJump={onJump} />}
         </Flex>
       </Flex>

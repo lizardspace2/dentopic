@@ -21,7 +21,7 @@ import { FILTER_DEFS } from './constants'
 import {
   MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas,
 } from './panels'
-import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal, FilterModal } from './modals'
+import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal, FilterModal, SelectMaskModal } from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 const cssVar = (n, fb) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb
@@ -52,9 +52,11 @@ export default function Studio() {
   const [opts, setOpts] = useState({
     fg: '#dc2626', bg: '#ffffff', brushSize: 12, brushOpacity: 1, brushHard: 0.9, eraserSize: 30, eraserHard: 0.85, eraserOpacity: 1,
     textSize: 32, textFont: 'Inter Tight', textBold: true, textItalic: false, textTracking: 0,
+    textAlign: 'left', textSmooth: 'lisse',
     tol: 32, transform: false, autoSelect: false, autoScope: 'layer', cloneSize: 48, cloneOpacity: 1,
     // photocraft : nouveaux outils
     pencilSize: 3, pencilOpacity: 1, selShape: 'rect', selFeather: 0,
+    selAA: true, selStyle: 'normal', selRatioW: 1, selRatioH: 1, selFixW: 200, selFixH: 200,
     toneMode: 'dodge', toneSize: 48, toneStrength: 0.3,
     healSize: 40, healRadius: 8, blurSize: 48, blurRadius: 6,
     sharpenSize: 48, sharpenAmount: 60, smudgeSize: 36, smudgeStrength: 0.85,
@@ -634,6 +636,13 @@ export default function Studio() {
         editor.selEllipse = opts.selShape === 'ellipse'
         editor.selInverted = false
         const [sx, sy] = snapPair(ix, iy)
+        if (opts.selStyle === 'fixed') {
+          // « Taille fixe » : un clic crée directement le cadre dimensionné (Photoshop)
+          editor.sel = [sx, sy, opts.selFixW || 200, opts.selFixH || 200]
+          stroke.current = { kind: 'selMove', x0: sx, y0: sy }
+          bump()
+          break
+        }
         editor.sel = [sx, sy, 0, 0]
         stroke.current = { kind: 'sel', x0: sx, y0: sy }
         break
@@ -849,8 +858,17 @@ export default function Studio() {
       setCropRect([Math.min(s.x0, sx), Math.min(s.y0, sy), Math.abs(sx - s.x0), Math.abs(sy - s.y0)])
     } else if (s.kind === 'sel') {
       const [sx, sy] = snapPair(ix, iy)
-      editor.sel = [Math.min(s.x0, sx), Math.min(s.y0, sy), Math.abs(sx - s.x0), Math.abs(sy - s.y0)]
+      let w = Math.abs(sx - s.x0), h = Math.abs(sy - s.y0)
+      // « Proportions fixe » : h déduit de w (comme Photoshop)
+      if (opts.selStyle === 'ratio' && (opts.selRatioH || 1) > 0) {
+        h = w * (opts.selRatioH || 1) / Math.max(1, opts.selRatioW || 1)
+      }
+      editor.sel = [Math.min(s.x0, sx), Math.min(s.y0, sy), w, h]
       bump()
+    } else if (s.kind === 'selMove') {
+      // repositionne le cadre à taille fixe en glissant
+      const [sx, sy] = snapPair(ix, iy)
+      if (editor.sel) { editor.sel = [sx, sy, editor.sel[2], editor.sel[3]]; bump() }
     }
   }
 
@@ -881,28 +899,19 @@ export default function Studio() {
       bump()
     }
     if (s?.kind === 'shapeDrag' && shapePrev) {
-      // trace la forme sur le calque actif (nouveau calque si verrouillé)
+      // crée un CALQUE DE FORME vectoriel (rééditable dans Propriétés) — comme Photoshop
       const [x1, y1, x2, y2] = shapePrev
       if (Math.hypot(x2 - x1, y2 - y1) > 3) {
-        const l = editor.active?.locked ? editor.addLayer() : editor.active || editor.addLayer()
         editor.snapshot('Forme')
-        const c = l.ctx
-        c.save()
-        const lx1 = x1 - l.dx, ly1 = y1 - l.dy, lx2 = x2 - l.dx, ly2 = y2 - l.dy
-        const w = lx2 - lx1, h = ly2 - ly1
-        c.beginPath()
-        if (opts.shapeKind === 'rect') c.rect(lx1, ly1, w, h)
-        else if (opts.shapeKind === 'ellipse') c.ellipse(lx1 + w / 2, ly1 + h / 2, Math.abs(w / 2), Math.abs(h / 2), 0, 0, Math.PI * 2)
-        else if (opts.shapeKind === 'triangle') { c.moveTo(lx1 + w / 2, ly1); c.lineTo(lx2, ly2); c.lineTo(lx1, ly2); c.closePath() }
-        else if (opts.shapeKind === 'line') { c.moveTo(lx1, ly1); c.lineTo(lx2, ly2) }
-        if (opts.shapeKind !== 'line') { c.fillStyle = opts.fg; c.fill() }
-        if (opts.shapeStrokeOn || opts.shapeKind === 'line') {
-          c.strokeStyle = opts.shapeKind === 'line' ? opts.fg : opts.bg
-          c.lineWidth = opts.shapeStroke
-          c.lineCap = 'round'
-          c.stroke()
-        }
-        c.restore()
+        const isLine = opts.shapeKind === 'line'
+        editor.addShapeLayer(opts.shapeKind, {
+          x: isLine ? x1 : Math.min(x1, x2), y: isLine ? y1 : Math.min(y1, y2),
+          w: isLine ? x2 - x1 : Math.abs(x2 - x1), h: isLine ? y2 - y1 : Math.abs(y2 - y1),
+        }, {
+          fill: isLine ? null : opts.fg,
+          stroke: (opts.shapeStrokeOn || isLine) ? (isLine ? opts.fg : opts.bg) : null,
+          strokeW: opts.shapeStroke,
+        })
         bump()
       }
       setShapePrev(null)
@@ -925,6 +934,7 @@ export default function Studio() {
     editor.addTextLayer(value, {
       font: opts.textFont, size: opts.textSize, bold: opts.textBold,
       italic: opts.textItalic, tracking: opts.textTracking, color: opts.fg,
+      align: opts.textAlign, smooth: opts.textSmooth,
     }, textInput.ix, textInput.iy)
     setTextInput(null)
     bump()
@@ -1125,6 +1135,9 @@ export default function Studio() {
         const v = +window.prompt('Contracter de (px) :', '8')
         if (v > 0) { editor.snapshot('Contracter'); editor.resizeSelection(-v); bump() }
       } },
+      '-',
+      { label: 'Sélection et masque…', shortcut: 'Ctrl+Alt+R', disabled: !docOpen || (!editor.sel && !editor.selPoly),
+        onClick: () => setModal('selmask') },
     ]},
     { label: 'Image', tip: 'Transformations du document (rotation, miroir, taille, aplatir)', items: [
       { label: 'Pivoter 90°', disabled: !docOpen, onClick: () => { editor.snapshot('Pivoter'); editor.rotate90(); bump() } },
@@ -1220,6 +1233,7 @@ export default function Studio() {
         else if (k === 's') { e.preventDefault(); setModal('export') }
         else if (k === 'a') { e.preventDefault(); editor.selectAll(); bump() }
         else if (k === 'd') { e.preventDefault(); editor.deselect(); bump() }
+        else if (k === 'r' && e.altKey && docOpen) { e.preventDefault(); if (editor.sel || editor.selPoly) setModal('selmask') }
         else if (k === 'r') { e.preventDefault(); setRulers((v) => !v) }
         else if (k === 'g') { e.preventDefault(); setGridOn((v) => !v) }
         else if (k === 'c') { copySelection() }
@@ -1271,6 +1285,7 @@ export default function Studio() {
             editor.snapshot('Effacer'); editor.deleteContent(opts.selFeather); bump()
           }}
           onDeselect={() => { editor.deselect(); bump() }}
+          onSelMask={() => setModal('selmask')}
           canUndo={editor.undoStack.length > 0} canRedo={editor.redoStack.length > 0}
           onUndo={async () => { await editor.undo(); bump() }}
           onRedo={async () => { await editor.redo(); bump() }}
@@ -1409,6 +1424,9 @@ export default function Studio() {
         docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
       <FilterModal open={!!filterKey} def={filterKey ? FILTER_DEFS[filterKey] : null}
         onPreview={previewFilter} onApply={applyFilter} onCancel={cancelFilter} />
+      <SelectMaskModal open={modal === 'selmask'} onClose={() => setModal(null)}
+        editor={editor} onChange={bump}
+        onApply={(fe) => { setOpts((o) => ({ ...o, selFeather: fe })); bump() }} />
     </Flex>
   )
 }
