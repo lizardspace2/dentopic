@@ -796,6 +796,46 @@ export function deleteProtocolStep(id) {
   return supabase.from('protocol_steps').delete().eq('id', id).then(({ error }) => !error)
 }
 
+// ---- Usage du stockage & plan --------------------------------------------------
+// workspaces.storage_limit_bytes + plan (slug) ; workspace_plans décrit les
+// limites (membres, réseaux sociaux…). Usage réel = somme patient_photos.bytes.
+
+export async function getStorageUsage(wsId) {
+  const { data, error } = await supabase
+    .from('patient_photos')
+    .select('id,bytes,mime,source,storage_path,original_filename,created_at,dossier_id,dossier:dossiers(name)')
+    .eq('workspace_id', wsId)
+    .is('deleted_at', null)
+  if (error) { console.warn('getStorageUsage:', error.message); return null }
+  const rows = data || []
+  const byMime = {}
+  rows.forEach((p) => {
+    const k = p.mime || 'inconnu'
+    byMime[k] = byMime[k] || { bytes: 0, count: 0 }
+    byMime[k].bytes += p.bytes || 0
+    byMime[k].count += 1
+  })
+  return {
+    totalBytes: rows.reduce((a, p) => a + (p.bytes || 0), 0),
+    count: rows.length,
+    byMime,
+    largest: rows.filter((p) => p.bytes).sort((a, b) => b.bytes - a.bytes).slice(0, 8),
+  }
+}
+
+export async function getPlanInfo(wsId) {
+  const [{ data: ws }, { data: plans }, { count: members }, { count: accounts }, { count: dossiers }] =
+    await Promise.all([
+      supabase.from('workspaces').select('plan,storage_limit_bytes,subscription_status,plan_period_end,plan_interval').eq('id', wsId).single(),
+      supabase.from('workspace_plans').select('*').eq('is_visible', true).order('max_members', { ascending: true }),
+      supabase.from('workspace_members').select('*', { count: 'exact', head: true }).eq('workspace_id', wsId),
+      supabase.from('social_accounts').select('*', { count: 'exact', head: true }).eq('workspace_id', wsId),
+      supabase.from('dossiers').select('*', { count: 'exact', head: true }).eq('workspace_id', wsId).is('deleted_at', null),
+    ])
+  const current = (plans || []).find((p) => p.slug === ws?.plan) || null
+  return { workspace: ws, plans: plans || [], current, usage: { members, accounts, dossiers } }
+}
+
 // ---- Membres du workspace -----------------------------------------------------
 // workspace_members : workspace_id, user_id (FK auth.users), role, created_at.
 // Pas de FK vers profiles → le nom est récupéré par requête séparée.
