@@ -679,6 +679,18 @@ export function disconnectSocialAccount(id) {
     .then(({ error }) => !error)
 }
 
+export function updateSocialAccount(id, fields) {
+  return supabase.from('social_accounts').update(fields).eq('id', id)
+    .then(({ error }) => !error)
+}
+
+/** Nombre de brouillons/publications rattachés à un compte social. */
+export function countSocialPostsByAccount(accountId) {
+  return supabase.from('social_posts').select('*', { count: 'exact', head: true })
+    .eq('account_id', accountId)
+    .then(({ count }) => count || 0)
+}
+
 export function listSocialPosts(wsId, { status } = {}) {
   let q = supabase
     .from('social_posts')

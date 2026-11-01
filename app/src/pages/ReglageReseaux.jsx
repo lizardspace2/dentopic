@@ -9,7 +9,7 @@ import {
 import { Link } from 'react-router-dom'
 import {
   FiArrowLeft, FiShare2, FiPlus, FiTrash2, FiCheck, FiClock,
-  FiCalendar, FiAlertCircle,
+  FiCalendar, FiAlertCircle, FiEye, FiEdit2, FiKey,
 } from 'react-icons/fi'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
@@ -20,6 +20,7 @@ import SocialIcon from '../components/SocialIcon'
 import { useApp } from '../context/AppContext'
 import {
   listSocialAccounts, connectSocialAccount, disconnectSocialAccount,
+  updateSocialAccount, countSocialPostsByAccount,
   listSocialPosts, getWorkspaceSettings, saveWorkspaceSetting,
 } from '../api'
 
@@ -50,6 +51,9 @@ export default function ReglageReseaux() {
   const [connect, setConnect] = useState(false)
   const [form, setForm] = useState({ provider: 'instagram', handle: '' })
   const [rmAcc, setRmAcc] = useState(null)
+  const [viewAcc, setViewAcc] = useState(null)   // compte → détail
+  const [viewPosts, setViewPosts] = useState(0)
+  const [editAcc, setEditAcc] = useState(null)   // compte → édition handle/provider
 
   const reload = async () => {
     if (!wsId) return
@@ -74,6 +78,19 @@ export default function ReglageReseaux() {
     setBusy(true)
     await disconnectSocialAccount(rmAcc.id)
     setBusy(false); setRmAcc(null); reload()
+  }
+  const openView = async (a) => {
+    setViewAcc(a); setViewPosts(0)
+    setViewPosts(await countSocialPostsByAccount(a.id))
+  }
+  const doEdit = async () => {
+    if (!editAcc?.handle?.trim()) return
+    setBusy(true)
+    await updateSocialAccount(editAcc.id, {
+      provider: editAcc.provider,
+      handle: editAcc.handle.trim().replace(/^@/, ''),
+    })
+    setBusy(false); setEditAcc(null); reload()
   }
 
   const addSlot = () => {
@@ -130,13 +147,29 @@ export default function ReglageReseaux() {
                     <FiClock style={{ display: 'inline' }} /> connecté {ago(a.created_at)}
                   </Text>
                 </Box>
-                <Tip label="Déconnecter ce compte">
-                  <Box as="button" aria-label={`Déconnecter ${a.handle}`} p="1" color="gray.400"
-                    cursor="pointer" _hover={{ color: 'red.500' }}
-                    onClick={() => setRmAcc(a)}>
-                    <FiTrash2 size={14} />
-                  </Box>
-                </Tip>
+                <HStack gap="1">
+                  <Tip label="Voir le détail du compte">
+                    <Box as="button" aria-label={`Voir ${a.handle}`} p="1" color="gray.400"
+                      cursor="pointer" _hover={{ color: C.primary }}
+                      onClick={() => openView(a)}>
+                      <FiEye size={14} />
+                    </Box>
+                  </Tip>
+                  <Tip label="Modifier le compte">
+                    <Box as="button" aria-label={`Modifier ${a.handle}`} p="1" color="gray.400"
+                      cursor="pointer" _hover={{ color: C.primary }}
+                      onClick={() => setEditAcc({ ...a })}>
+                      <FiEdit2 size={13} />
+                    </Box>
+                  </Tip>
+                  <Tip label="Déconnecter ce compte">
+                    <Box as="button" aria-label={`Déconnecter ${a.handle}`} p="1" color="gray.400"
+                      cursor="pointer" _hover={{ color: 'red.500' }}
+                      onClick={() => setRmAcc(a)}>
+                      <FiTrash2 size={14} />
+                    </Box>
+                  </Tip>
+                </HStack>
               </HStack>
             )
           })}
@@ -276,6 +309,89 @@ export default function ReglageReseaux() {
             </Text>
           </HStack>
         </VStack>
+      </Modal>
+
+      {/* ---- détail du compte ---- */}
+      <Modal open={!!viewAcc} onClose={() => setViewAcc(null)}
+        title="Détail du compte" width="420px">
+        {viewAcc && (
+          <VStack align="stretch" gap="3">
+            <HStack gap="3">
+              <Center w="44px" h="44px" borderRadius="lg" bg="gray.100" flexShrink={0}>
+                <SocialIcon provider={viewAcc.provider} size={22} />
+              </Center>
+              <Box>
+                <HStack gap="2">
+                  <Text fontSize="md" fontWeight="700" color={C.ink}>@{viewAcc.handle}</Text>
+                  <Tag color={viewAcc.meta?.pending_oauth ? 'amber' : 'green'}>
+                    {viewAcc.meta?.pending_oauth ? 'En attente OAuth' : 'Actif'}
+                  </Tag>
+                </HStack>
+                <Text fontSize="xs" color="gray.500">{providerOf(viewAcc.provider).label}</Text>
+              </Box>
+            </HStack>
+            <VStack align="stretch" gap="1.5" fontSize="xs" color="gray.600">
+              <HStack gap="2">
+                <Box as={FiClock} color="gray.400" />
+                <Text>Connecté {ago(viewAcc.created_at)}</Text>
+              </HStack>
+              <HStack gap="2">
+                <Box as={FiShare2} color="gray.400" />
+                <Text>{viewPosts} publication{viewPosts > 1 ? 's' : ''} rattachée{viewPosts > 1 ? 's' : ''}</Text>
+              </HStack>
+              <HStack gap="2">
+                <Box as={FiKey} color="gray.400" />
+                <Text fontFamily="mono" fontSize="2xs">
+                  {viewAcc.access_token ? `${viewAcc.access_token.slice(0, 14)}…` : 'aucun jeton'}
+                </Text>
+              </HStack>
+            </VStack>
+            {viewAcc.meta?.pending_oauth && (
+              <HStack bg={C.softBlue} borderRadius="md" px="3" py="2" gap="2">
+                <Box as={FiAlertCircle} color={C.primary} fontSize="sm" flexShrink={0} />
+                <Text fontSize="2xs" color="gray.600">
+                  Autorisation OAuth en attente — le compte peut déjà être
+                  utilisé comme destination de vos brouillons.
+                </Text>
+              </HStack>
+            )}
+          </VStack>
+        )}
+      </Modal>
+
+      {/* ---- modifier le compte ---- */}
+      <Modal open={!!editAcc} onClose={() => setEditAcc(null)}
+        title="Modifier le compte" subtitle="Réseau et identifiant"
+        footer={<>
+          <Box />
+          <PrimaryButton icon={FiCheck} onClick={doEdit}
+            disabled={busy || !editAcc?.handle?.trim()}>
+            {busy ? 'Enregistrement…' : 'Enregistrer'}
+          </PrimaryButton>
+        </>}>
+        {editAcc && (
+          <VStack align="stretch" gap="3">
+            <Field label="Réseau">
+              <HStack gap="2" flexWrap="wrap">
+                {PROVIDERS.map((p) => (
+                  <Box as="button" key={p.id} aria-label={`Choisir ${p.label}`}
+                    px="3" py="2" borderRadius="md" cursor="pointer"
+                    border="1.5px solid" fontSize="xs" display="flex" alignItems="center" gap="6px"
+                    fontWeight={editAcc.provider === p.id ? '600' : '400'}
+                    borderColor={editAcc.provider === p.id ? p.color : C.cardBorder}
+                    color={editAcc.provider === p.id ? p.color : 'gray.600'}
+                    onClick={() => setEditAcc({ ...editAcc, provider: p.id })}>
+                    <SocialIcon provider={p.id} size={13} /> {p.label}
+                  </Box>
+                ))}
+              </HStack>
+            </Field>
+            <Field label="Identifiant du compte">
+              <Input fontSize="sm" value={editAcc.handle || ''}
+                onChange={(e) => setEditAcc({ ...editAcc, handle: e.target.value })} />
+            </Field>
+          </VStack>
+        )}
       </Modal>
 
       {/* ---- déconnexion : confirmation obligatoire ---- */}
