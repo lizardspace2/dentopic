@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiDownload, FiFolder, FiSave } from 'react-icons/fi'
 import { Card, Modal, SearchInput, Select, Tag, Tip, isTestName } from '../../components/ui'
-import { C } from '../../theme'
+import { C, S } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
 import { BLEND_MODES, SHEET_SLOTS } from './constants'
@@ -334,8 +334,8 @@ function FxParams({ sel, fx, setFx, layer, setLayer }) {
       <VStack align="stretch" gap="3">
         <HStack gap="2">
           <Text {...lbl}>Mode de fusion</Text>
-          <Box as="select" flex="1" fontSize="xs" bg="#1c2433" color="gray.100" borderRadius="sm"
-            border="1px solid" borderColor="whiteAlpha.200" h="24px" px="1"
+          <Box as="select" flex="1" fontSize="xs" bg={S.input} color={S.fg} borderRadius="sm"
+            border="1px solid" borderColor="var(--s-a200)" h="24px" px="1"
             value={layer.blend || 'source-over'} onChange={(e) => setLayer({ ...layer, blend: e.target.value })}>
             {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
           </Box>
@@ -356,8 +356,8 @@ function FxParams({ sel, fx, setFx, layer, setLayer }) {
       {'blend' in f && (
         <HStack gap="2">
           <Text {...lbl}>Mode de fusion</Text>
-          <Box as="select" flex="1" fontSize="xs" bg="#1c2433" color="gray.100" borderRadius="sm"
-            border="1px solid" borderColor="whiteAlpha.200" h="24px" px="1"
+          <Box as="select" flex="1" fontSize="xs" bg={S.input} color={S.fg} borderRadius="sm"
+            border="1px solid" borderColor="var(--s-a200)" h="24px" px="1"
             value={f.blend || 'source-over'} onChange={(e) => set('blend', e.target.value)}>
             {BLEND_MODES.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
           </Box>
@@ -413,15 +413,15 @@ export function LayerStyleModal({ open, onClose, layer, onApply, initial }) {
       <HStack align="stretch" gap="0" h="360px">
         {/* Liste des styles (comme Photoshop) */}
         <VStack align="stretch" w="200px" flexShrink="0" gap="0" overflowY="auto"
-          borderRight="1px solid" borderColor="whiteAlpha.100" pr="1">
+          borderRight="1px solid" borderColor="var(--s-a100)" pr="1">
           <Text fontSize="2xs" fontWeight="700" color="gray.400" px="2" py="1">Styles</Text>
           {FX_SECTIONS.map(({ key, label, fixed }) => {
             const on = fixed || fx[key]?.on
             return (
               <Tip key={key} label={fixed ? 'Fusion, opacité, remplissage' : `${on ? 'Actif' : 'Inactif'} — cocher pour activer, cliquer pour régler`}>
                 <HStack px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer" data-fxrow={key}
-                  bg={sel === key ? 'whiteAlpha.100' : 'transparent'} borderRadius="sm"
-                  color={sel === key ? 'white' : 'gray.300'}
+                  bg={sel === key ? 'var(--s-a100)' : 'transparent'} borderRadius="sm"
+                  color={sel === key ? S.fg : S.muted}
                   onClick={() => setSel(key)}>
                   <Box w="14px" h="14px" borderRadius="sm" border="1px solid" flexShrink={0} data-fxcheck={key}
                     borderColor={on ? '#4f8fe8' : 'gray.600'} bg={on ? '#4f8fe8' : 'transparent'}
@@ -437,7 +437,7 @@ export function LayerStyleModal({ open, onClose, layer, onApply, initial }) {
         </VStack>
         {/* Paramètres de l'effet sélectionné */}
         <VStack align="stretch" flex="1" px="4" py="2" gap="3" overflowY="auto">
-          <Text fontSize="xs" fontWeight="700" color="gray.100">
+          <Text fontSize="xs" fontWeight="700" color={S.fg}>
             {FX_SECTIONS.find((s) => s.key === sel)?.label}
           </Text>
           <FxParams sel={sel} fx={fx} setFx={setFx} layer={lOpt} setLayer={setLOpt} />

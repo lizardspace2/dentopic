@@ -45,6 +45,25 @@ export const C = {
   galleryAccent: '#8f95f8',
 }
 
+// Palette Studio — suit le mode clair/sombre (vars --s-* dans index.css).
+export const S = {
+  bg: v('s-bg'), // fond de page / zone canvas
+  panel: v('s-panel'), // barres d'outils, rails
+  card: v('s-card'), // panneaux
+  deep: v('s-deep'), // menus, popovers
+  tile: v('s-tile'), // tuiles, vignettes
+  input: v('s-input'), // champs, selects
+  border: v('s-border'),
+  fg: v('s-fg'),
+  muted: v('s-muted'),
+  canvas: v('s-canvas'), // entourage du document
+  a50: v('s-a50'), // équivalents whiteAlpha (bordures/survols discrets)
+  a100: v('s-a100'),
+  a200: v('s-a200'),
+  a300: v('s-a300'),
+  a400: v('s-a400'),
+}
+
 // ---- Bascule clair / sombre -------------------------------------------------
 
 const KEY = 'dentopic.theme'
@@ -56,4 +75,9 @@ export function getMode() {
 export function applyMode(mode) {
   document.documentElement.dataset.theme = mode
   localStorage.setItem(KEY, mode)
+}
+
+// Lit une variable CSS au moment du dessin (canvas 2D ne résout pas var()).
+export function svar(name, fallback) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
 }

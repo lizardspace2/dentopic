@@ -21,6 +21,23 @@
   --c-amber-bg: #fffbeb;
   --c-amber-border: #fde8b0;
   --c-amber-text: #92400e;
+
+  /* Studio — thème clair (panneaux façon Photoshop light) */
+  --s-bg: #dcdcdc;
+  --s-panel: #f0f0f0;
+  --s-card: #ffffff;
+  --s-deep: #ffffff;
+  --s-tile: #e6e6e6;
+  --s-input: #ffffff;
+  --s-border: #c9c9c9;
+  --s-fg: #262626;
+  --s-muted: #6b6b6b;
+  --s-canvas: #bdbdbd;
+  --s-a50: rgba(0, 0, 0, 0.04);
+  --s-a100: rgba(0, 0, 0, 0.07);
+  --s-a200: rgba(0, 0, 0, 0.12);
+  --s-a300: rgba(0, 0, 0, 0.2);
+  --s-a400: rgba(0, 0, 0, 0.32);
 }
 
 /* ---- Palette sombre : les mêmes variables, valeurs adaptées -----------------
@@ -70,6 +87,23 @@ html[data-theme='dark'] {
   --chakra-colors-blackAlpha-500: rgba(0, 0, 0, 0.55);
   --chakra-colors-blackAlpha-600: rgba(0, 0, 0, 0.65);
   --chakra-colors-blackAlpha-700: rgba(0, 0, 0, 0.75);
+
+  /* Studio — thème sombre (valeurs actuelles) */
+  --s-bg: #0a0f18;
+  --s-panel: #0d1420;
+  --s-card: #141c2a;
+  --s-deep: #0b0e14;
+  --s-tile: #1d2739;
+  --s-input: #1c2433;
+  --s-border: #263244;
+  --s-fg: #f2f5f9;
+  --s-muted: #8b98ab;
+  --s-canvas: #0b0e14;
+  --s-a50: rgba(255, 255, 255, 0.04);
+  --s-a100: rgba(255, 255, 255, 0.07);
+  --s-a200: rgba(255, 255, 255, 0.12);
+  --s-a300: rgba(255, 255, 255, 0.2);
+  --s-a400: rgba(255, 255, 255, 0.32);
 }
 
 /* ---- Base ------------------------------------------------------------------- */

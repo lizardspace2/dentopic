@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Flex, HStack, Input, Text } from '@chakra-ui/react'
 import { useSearchParams } from 'react-router-dom'
-import { C } from '../../theme'
+import { C, S, getMode } from '../../theme'
 import { useApp } from '../../context/AppContext'
 import {
   createMontage, getPhoto, listDossiers, listProtocolSteps, saveEditedPhoto,
@@ -24,6 +24,7 @@ import {
 import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal, FilterModal } from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
+const cssVar = (n, fb) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb
 
 const RULER_W = 22 // largeur des règles (px écran)
 
@@ -314,8 +315,8 @@ export default function Studio() {
     const steps = [10, 25, 50, 100, 250, 500, 1000, 2500, 5000]
     const st = steps.find((s) => s * scale >= 55) || 5000
     const draw = (ctx, horiz) => {
-      ctx.fillStyle = '#1c2433'; ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
-      ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.fillStyle = 'rgba(255,255,255,.62)'
+      ctx.fillStyle = cssVar('--s-input', '#1c2433'); ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height)
+      ctx.strokeStyle = cssVar('--s-a300', 'rgba(255,255,255,.28)'); ctx.fillStyle = cssVar('--s-a400', 'rgba(255,255,255,.62)')
       ctx.font = '9px monospace'; ctx.lineWidth = 1; ctx.beginPath()
       const off = horiz ? ox : oy
       const lim = horiz ? t.width : l.height
@@ -341,7 +342,7 @@ export default function Studio() {
     }
     draw(t.getContext('2d'), true)
     draw(l.getContext('2d'), false)
-  }, [rulers, view, cursor, stageSize, docOpen, version, editor])
+  }, [rulers, view, cursor, stageSize, docOpen, version, editor, getMode()])
 
   // Taille du canevas = taille du conteneur
   useEffect(() => {
@@ -1253,7 +1254,7 @@ export default function Studio() {
   // ---- Rendu --------------------------------------------------------------------------------
 
   return (
-    <Flex h="100%" direction="column" bg={C.darkBg} color={C.darkFg} overflow="hidden">
+    <Flex h="100%" direction="column" bg={S.bg} color={S.fg} overflow="hidden">
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={openFile} />
       <MenuBar menus={menus} docName={docOpen ? editor.docName : ''} zoom={docOpen ? view.scale : null} />
       {docOpen && (
@@ -1283,9 +1284,9 @@ export default function Studio() {
         <Flex direction="column" flex="1" minW="0">
           {/* Onglet de document façon Photoshop : nom @ zoom (calque actif, mode) */}
           {docOpen && (
-            <HStack h="26px" px="2.5" gap="2" bg={C.darkCard} borderBottom="1px solid"
-              borderColor={C.darkBorder} flexShrink="0" fontSize="2xs" color={C.darkMuted}>
-              <Text color={C.darkFg} isTruncated fontWeight="600">{editor.docName}</Text>
+            <HStack h="26px" px="2.5" gap="2" bg={S.card} borderBottom="1px solid"
+              borderColor={S.border} flexShrink="0" fontSize="2xs" color={S.muted}>
+              <Text color={S.fg} isTruncated fontWeight="600">{editor.docName}</Text>
               <Text>@ {Math.round(view.scale * 100)} %</Text>
               <Text isTruncated>({editor.active?.name || '—'}, RVB/8)</Text>
               <Box flex="1" />
@@ -1294,7 +1295,7 @@ export default function Studio() {
             </HStack>
           )}
           <Box
-            ref={containerRef} flex="1" position="relative" bg="#14181f" overflow="hidden"
+            ref={containerRef} flex="1" position="relative" bg={S.canvas} overflow="hidden"
             cursor={tool === 'hand' ? 'grab' : tool === 'text' ? 'text' : 'crosshair'}
           >
           <canvas
@@ -1319,7 +1320,7 @@ export default function Studio() {
                 onPointerDown={ruleDown('h')} onPointerMove={ruleMove('h')} onPointerUp={ruleUp('h')}
               />
               <Box position="absolute" top="0" left="0" w={`${RULER_W}px`} h={`${RULER_W}px`}
-                bg="#1c2433" zIndex="7" borderRight="1px solid" borderBottom="1px solid" borderColor="#2a3345" />
+                bg={S.input} zIndex="7" borderRight="1px solid" borderBottom="1px solid" borderColor={S.border} />
             </>
           )}
           {!docOpen && (
@@ -1341,7 +1342,7 @@ export default function Studio() {
           {textInput && (
             <Input
               position="absolute" left={textInput.sx} top={textInput.sy - 14} w="240px" h="28px"
-              fontSize="sm" bg="#1c2433" color="#ffffff" border="1px solid" borderColor={C.primary}
+              fontSize="sm" bg={S.input} color={S.fg} border="1px solid" borderColor={C.primary}
               autoFocus placeholder="Texte…" zIndex="6"
               onKeyDown={(e) => { if (e.key === 'Enter') commitText(e.target.value); if (e.key === 'Escape') setTextInput(null) }}
               onBlur={(e) => {

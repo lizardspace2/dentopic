@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Box, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 import {
   FiSearch, FiHome, FiCamera, FiUsers, FiLayers, FiFolder, FiCalendar,
   FiMonitor, FiSettings, FiChevronsLeft, FiLogOut, FiFilter, FiBell,
@@ -32,9 +32,8 @@ function initials(name = '') {
 
 export default function AppShell() {
   const { profile, signOut } = useApp()
-  const loc = useLocation()
   const [mode, setMode] = useState(getMode())
-  const dark = loc.pathname === '/studio' // page Studio : toujours sombre
+  const dark = mode === 'dark' // le Studio suit aussi le basculement clair/sombre
   const toggleMode = () => {
     const next = mode === 'dark' ? 'light' : 'dark'
     setMode(next)
