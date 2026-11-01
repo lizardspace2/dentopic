@@ -40,7 +40,7 @@ export const SPECIALTIES = [
   { label: 'Chirurgie orale', color: '#e53e3e' },
 ]
 
-const specColor = (s) => SPECIALTIES.find((x) => x.label === s)?.color || '#718096'
+export const specColor = (s) => SPECIALTIES.find((x) => x.label === s)?.color || '#718096'
 
 function SpecChip({ label, active, onClick, size = '2xs' }) {
   return (

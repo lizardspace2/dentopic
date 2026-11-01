@@ -1,0 +1,31 @@
+const { chromium } = require('playwright')
+;(async () => {
+  const b = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch())
+  const pg = await (await b.newContext({ viewport: { width: 1400, height: 900 } })).newPage()
+  pg.on('pageerror', (e) => console.log('PE', e.message))
+  await pg.goto('http://localhost:5175/login')
+  await pg.fill('input[type="email"]', process.env.DP_USER); await pg.fill('input[type="password"]', process.env.DP_PASS)
+  await pg.click('button[type="submit"]'); await pg.waitForTimeout(3000)
+  await pg.goto('http://localhost:5175/dossier-patient'); await pg.waitForTimeout(2500)
+  // survol de la première vignette
+  const cards = pg.locator('img').first()
+  await cards.waitFor({ timeout: 8000 }).catch(() => {})
+  const vignettes = await pg.locator('.chakra-aspect-ratio, [class*=aspect], img').all()
+  console.log('elements trouvés:', vignettes.length)
+  // survole le centre de la première carte
+  const cardBox = await pg.locator('text=Capturer').first().boundingBox()
+  if (cardBox) {
+    await pg.mouse.move(cardBox.x + cardBox.width / 2, cardBox.y - 200)
+    await pg.waitForTimeout(1200)
+    const t = await pg.evaluate(() => document.body.innerText)
+    console.log('hover panel?', t.includes('Voir la fiche') && t.includes('Modifier'))
+    await pg.screenshot({ path: 'shots/hover-patient.png' })
+    // clic sur Modifier
+    await pg.click('text=Modifier').catch((e) => console.log('edit click:', e.message.slice(0, 100)))
+    await pg.waitForTimeout(800)
+    const t2 = await pg.evaluate(() => document.body.innerText)
+    console.log('edit modal?', t2.includes('Fiche patient'))
+    await pg.screenshot({ path: 'shots/hover-edit.png' })
+  } else console.log('aucune carte')
+  await b.close()
+})()

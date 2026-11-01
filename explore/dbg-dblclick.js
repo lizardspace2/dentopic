@@ -1,0 +1,32 @@
+const { chromium } = require('playwright')
+;(async () => {
+  const b = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch())
+  const pg = await (await b.newContext({ viewport: { width: 1400, height: 840 } })).newPage()
+  pg.on('pageerror', (e) => console.log('PE', e.message))
+  await pg.goto('http://localhost:5175/login')
+  await pg.fill('input[type="email"]', process.env.DP_USER); await pg.fill('input[type="password"]', process.env.DP_PASS)
+  await pg.click('button[type="submit"]'); await pg.waitForTimeout(3000)
+  await pg.goto('http://localhost:5175/studio'); await pg.waitForTimeout(1000)
+  await pg.click('text=Fichier'); await pg.waitForTimeout(250)
+  await pg.click('text=Montage avant / après'); await pg.waitForTimeout(1200)
+  const th = pg.locator('img'); await th.nth(0).waitFor({ timeout: 8000 })
+  await th.nth(0).click(); await th.nth(2).click()
+  await pg.click('text=Créer le montage'); await pg.waitForTimeout(2500)
+  const box = await pg.locator('canvas').first().boundingBox(); const cx = box.x + box.width / 2, cy = box.y + box.height / 2
+  // texte
+  await pg.keyboard.press('t'); await pg.mouse.click(cx - 150, cy - 60); await pg.waitForTimeout(300)
+  await pg.keyboard.type('REGEX'); await pg.keyboard.press('Enter'); await pg.waitForTimeout(400)
+  // switch to move tool, dblclick the text
+  await pg.keyboard.press('v'); await pg.waitForTimeout(200)
+  await pg.mouse.dblclick(cx - 145, cy - 66); await pg.waitForTimeout(400)
+  const v = await pg.evaluate(() => [...document.querySelectorAll('input')].find((i) => i.placeholder === 'Texte…')?.value)
+  console.log('DBLCLICK with move tool → field:', JSON.stringify(v))
+  await pg.keyboard.press('Escape'); await pg.waitForTimeout(300)
+  // plasso dblclick commit
+  await pg.keyboard.press('Shift+l'); await pg.waitForTimeout(200)
+  await pg.mouse.click(cx + 200, cy + 80); await pg.mouse.click(cx + 280, cy + 90); await pg.mouse.click(cx + 240, cy + 150)
+  await pg.mouse.dblclick(cx + 240, cy + 150); await pg.waitForTimeout(400)
+  const t = await pg.evaluate(() => document.body.innerText)
+  console.log('PLASSO dblclick commit → selection?', /Désélectionner|sélection/i.test(t))
+  await b.close()
+})()

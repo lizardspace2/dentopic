@@ -430,6 +430,85 @@ export function listCollections(wsId) {
     .then(({ data }) => data || [])
 }
 
+export async function createCollection(wsId, fields) {
+  const { data, error } = await supabase
+    .from('collections')
+    .insert({ workspace_id: wsId, ...fields })
+    .select()
+    .single()
+  if (error) { console.warn('createCollection:', error.message); return null }
+  return data
+}
+
+export function updateCollection(id, fields) {
+  return supabase.from('collections').update(fields).eq('id', id).select().single()
+    .then(({ data, error }) => {
+      if (error) console.warn('updateCollection:', error.message)
+      return data
+    })
+}
+
+/** Met la collection à la corbeille (soft delete). */
+export function trashCollection(id) {
+  return updateCollection(id, { deleted_at: new Date().toISOString() })
+}
+
+/** { collectionId: nb d'éléments } pour un lot de collections. */
+export function collectionItemCounts(collectionIds) {
+  if (!collectionIds?.length) return Promise.resolve({})
+  return supabase
+    .from('collection_items')
+    .select('collection_id')
+    .in('collection_id', collectionIds)
+    .then(({ data }) => {
+      const out = {}
+      ;(data || []).forEach((i) => { out[i.collection_id] = (out[i.collection_id] || 0) + 1 })
+      return out
+    })
+}
+
+/** Éléments d'une collection avec la photo / le montage joint. */
+export function listCollectionItems(collectionId) {
+  return supabase
+    .from('collection_items')
+    .select('*,photo:patient_photos!photo_id(*),montage:montages!montage_id(*)')
+    .eq('collection_id', collectionId)
+    .order('position', { ascending: true })
+    .order('added_at', { ascending: true })
+    .then(({ data }) => data || [])
+}
+
+/** Ajoute une photo ou un montage à une collection. */
+export function addCollectionItem(collectionId, fields, userId) {
+  return supabase
+    .from('collection_items')
+    .insert({ collection_id: collectionId, added_by: userId, ...fields })
+    .select()
+    .single()
+    .then(({ data, error }) => {
+      if (error) console.warn('addCollectionItem:', error.message)
+      return data
+    })
+}
+
+export function removeCollectionItem(itemId) {
+  return supabase.from('collection_items').delete().eq('id', itemId)
+}
+
+/** Active/désactive le partage public — génère un token à l'activation. */
+export function shareCollection(id, enabled, expiresDays = null) {
+  const fields = enabled
+    ? {
+        share_enabled: true,
+        share_token: crypto.randomUUID(),
+        share_expires_at: expiresDays
+          ? new Date(Date.now() + expiresDays * 864e5).toISOString()
+          : null,
+      }
+    : { share_enabled: false }
+  return updateCollection(id, fields)
+}
+
 // ---- IA -------------------------------------------------------------------------
 
 /** { photoId: prediction } pour un lot de photos */
