@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiExternalLink, FiFolder, FiFolderPlus,
-  FiHardDrive, FiMonitor, FiPlus, FiSmartphone, FiUpload, FiWifi,
+  FiHardDrive, FiMonitor, FiPlus, FiRefreshCw, FiSmartphone, FiUpload, FiVideo, FiWifi,
 } from 'react-icons/fi'
 import {
   Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, isTestName,
@@ -739,10 +739,169 @@ export function ImportModal({ open, onClose, target, onImport }) {
   )
 }
 
+// ---- 8b. « Depuis cet appareil » : capture live via getUserMedia ---------------------
+// Sur le smartphone du praticien → caméra avant/arrière ; sur le poste → webcam.
+// Chaque cliché part immédiatement vers la destination (dossier + session active).
+// Repli : <input capture> natif si getUserMedia est indisponible ou refusé.
+
+export function DeviceCaptureModal({ open, onClose, target, onCapture }) {
+  const videoRef = useRef(null)
+  const streamRef = useRef(null)
+  const fileInput = useRef(null)
+  const [err, setErr] = useState(null)
+  const [cams, setCams] = useState([])
+  const [camId, setCamId] = useState('')
+  const [facing, setFacing] = useState('environment') // 'environment' | 'user'
+  const [shots, setShots] = useState([])              // { url, name } — vignettes des clichés
+  const [busy, setBusy] = useState(false)
+
+  const stop = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+  }
+
+  const start = async ({ id, face } = {}) => {
+    stop(); setErr(null)
+    const cid = id !== undefined ? id : camId
+    const f = face || facing
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: cid ? { deviceId: { exact: cid } } : { facingMode: f },
+        audio: false,
+      })
+      streamRef.current = s
+      if (videoRef.current) {
+        videoRef.current.srcObject = s
+        await videoRef.current.play().catch(() => {})
+      }
+      const devs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput')
+      setCams(devs)
+      const cur = s.getVideoTracks()[0]?.getSettings()?.deviceId
+      if (cur) setCamId(cur)
+    } catch (e) {
+      setErr(e.name === 'NotAllowedError' || e.name === 'SecurityError'
+        ? 'Accès caméra refusé — autorisez-la dans le navigateur puis réessayez.'
+        : 'Caméra indisponible — importez un fichier ou utilisez le bouton de capture ci-dessous.')
+    }
+  }
+
+  // ouverture → démarre la caméra ; fermeture → coupe le flux (pas de fuite)
+  useEffect(() => {
+    if (!open) { setShots((s) => { s.forEach((x) => URL.revokeObjectURL(x.url)); return [] }); return }
+    if (navigator.mediaDevices?.getUserMedia) start()
+    else setErr('Caméra non prise en charge par ce navigateur.')
+    return stop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // un cliché : image vidéo → JPEG → import direct dans la destination
+  const shot = async () => {
+    const v = videoRef.current
+    if (!v?.videoWidth || busy) return
+    const cv = document.createElement('canvas')
+    cv.width = v.videoWidth; cv.height = v.videoHeight
+    const x = cv.getContext('2d')
+    // caméra frontale : dé-miroirage pour un cliché naturel
+    if (facing === 'user') { x.translate(cv.width, 0); x.scale(-1, 1) }
+    x.drawImage(v, 0, 0)
+    const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.92))
+    if (!blob) return
+    const name = `capture-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.jpg`
+    const file = new File([blob], name, { type: 'image/jpeg' })
+    setShots((s) => [...s, { url: URL.createObjectURL(blob), name }])
+    setBusy(true)
+    try { await onCapture([file]) } finally { setBusy(false) }
+  }
+
+  // repli : ouvre l'appareil photo natif (mobile) ou le sélecteur de fichiers
+  const onFiles = async (e) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (!files.length) return
+    setShots((s) => [...s, ...files.map((f) => ({ url: URL.createObjectURL(f), name: f.name }))])
+    setBusy(true)
+    try { await onCapture(files) } finally { setBusy(false) }
+  }
+
+  const live = !!streamRef.current && !err
+  return (
+    <Modal open={open} onClose={() => { stop(); onClose() }}
+      title="Depuis cet appareil"
+      subtitle="Caméra de ce téléphone ou webcam de cet ordinateur — chaque cliché part directement vers la destination"
+      width="560px">
+      <input ref={fileInput} type="file" accept="image/*" capture="environment" multiple hidden onChange={onFiles} />
+
+      {/* aperçu live */}
+      <Box position="relative" borderRadius="lg" overflow="hidden" bg="#111827" mb="3">
+        <Box
+          as="video" ref={videoRef} autoPlay playsInline muted w="100%"
+          style={{ aspectRatio: '4/3', objectFit: 'cover', transform: facing === 'user' ? 'scaleX(-1)' : 'none' }}
+        />
+        {!live && (
+          <Center position="absolute" inset="0" px="6">
+            <VStack gap="2">
+              <Box as={FiVideo} color="#64748b" fontSize="2xl" />
+              <Text fontSize="xs" color="#cbd5e1" textAlign="center">
+                {err || 'Initialisation de la caméra…'}
+              </Text>
+            </VStack>
+          </Center>
+        )}
+      </Box>
+
+      {/* réglages caméra */}
+      <HStack gap="2" mb="3" flexWrap="wrap">
+        {cams.length > 1 && (
+          <Select flex="1" minW="200px" value={camId}
+            onChange={(e) => { setCamId(e.target.value); start({ id: e.target.value }) }}>
+            {cams.map((c, i) => <option key={c.deviceId || i} value={c.deviceId}>{c.label || `Caméra ${i + 1}`}</option>)}
+          </Select>
+        )}
+        <Button variant="outline" size="sm"
+          onClick={() => { const f = facing === 'user' ? 'environment' : 'user'; setFacing(f); start({ face: f }) }}>
+          <FiRefreshCw style={{ marginRight: 6 }} /> {facing === 'user' ? 'Caméra avant' : 'Caméra arrière'}
+        </Button>
+        {err && navigator.mediaDevices?.getUserMedia && (
+          <Button variant="outline" size="sm" onClick={() => start()}>Réessayer</Button>
+        )}
+      </HStack>
+
+      {/* destination */}
+      <HStack bg={target ? C.greenBg : C.amberBg} border="1px solid"
+        borderColor={target ? C.greenBorder : C.amberBorder} borderRadius="md" px="3" py="2" gap="2" mb="3">
+        <Box as={FiFolder} color={target ? C.greenText : C.amberText} />
+        <Text fontSize="xs" color={target ? C.greenText : C.amberText}>
+          {target ? `Destination : ${target.name}` : 'Aucune destination — les photos iront dans « Non triées »'}
+        </Text>
+      </HStack>
+
+      {/* vignettes des clichés pris */}
+      {shots.length > 0 && (
+        <HStack gap="2" mb="3" overflowX="auto" py="1">
+          {shots.map((s, i) => (
+            <Box key={i} as="img" src={s.url} alt={s.name} h="52px" w="70px" objectFit="cover"
+              borderRadius="md" border="1px solid" borderColor={C.cardBorder} flexShrink="0" />
+          ))}
+          <Tag color="green"><FiCheck style={{ marginRight: 3 }} />{shots.length} envoyée(s)</Tag>
+        </HStack>
+      )}
+
+      <HStack justify="end" gap="2">
+        <Button variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
+          <FiUpload style={{ marginRight: 6 }} /> Fichier / appareil photo natif
+        </Button>
+        <PrimaryButton onClick={shot} disabled={!live || busy}>
+          <FiCamera style={{ marginRight: 6 }} /> {busy ? 'Envoi…' : 'Prendre la photo'}
+        </PrimaryButton>
+      </HStack>
+    </Modal>
+  )
+}
+
 // ---- 9. Nouvelle acquisition : destination + mode + démarrage ------------------------
 
 export function NewAcqModal({ open, onClose, target, source, devices, onPickDest, onPickSource, onStart }) {
-  const modes = SOURCE_DEFS.filter((s) => ['mobile', 'camera', 'import'].includes(s.key))
+  const modes = SOURCE_DEFS.filter((s) => ['mobile', 'device', 'camera', 'import'].includes(s.key))
   return (
     <Modal open={open} onClose={onClose}
       title="Nouvelle acquisition" subtitle="Choisissez le dossier de destination, puis la source des photos." width="560px">

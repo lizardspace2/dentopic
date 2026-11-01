@@ -1,5 +1,5 @@
 // Données statiques de la page Acquisition : textes du guide et catalogue des sources.
-import { FiCamera, FiFolder, FiMonitor, FiSmartphone, FiUpload, FiWifi, FiSettings, FiLayers, FiHardDrive } from 'react-icons/fi'
+import { FiCamera, FiFolder, FiMonitor, FiSmartphone, FiUpload, FiVideo, FiWifi, FiSettings, FiLayers, FiHardDrive } from 'react-icons/fi'
 import { MdOutlineSdCard } from 'react-icons/md'
 
 // Étapes du guide « Comprendre l'acquisition » (textes repris de l'original)
@@ -31,6 +31,10 @@ export const SOURCE_DEFS = [
   {
     key: 'mobile', icon: FiSmartphone, label: 'Application mobile',
     hint: "QR code — l'app envoie les photos en direct", modal: 'mobile',
+  },
+  {
+    key: 'device', icon: FiVideo, label: 'Depuis cet appareil',
+    hint: 'Caméra de ce téléphone ou webcam de cet ordinateur — cliché en direct', modal: 'device',
   },
   {
     key: 'camera', icon: FiCamera, label: 'Appareil photo',

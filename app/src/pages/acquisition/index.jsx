@@ -23,7 +23,7 @@ import {
 import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind, CONN_SELECT, LIAISON_DEFS } from './constants'
 import {
   GuideModal, SourceModal, DossierModal, MobileModal, CameraModal,
-  FtpModal, WatchModal, ImportModal, NewAcqModal,
+  FtpModal, WatchModal, ImportModal, NewAcqModal, DeviceCaptureModal,
 } from './modals'
 
 // Petit point de statut : vert = configuré, ambre = à configurer
@@ -533,6 +533,7 @@ export default function Acquisition() {
         onPick={(dev) => { setSource({ key: 'watch', deviceId: dev.id, label: dev.name }); close() }}
         onSave={saveWatch} />
       <ImportModal open={modal === 'import'} onClose={close} target={target} onImport={doImport} />
+      <DeviceCaptureModal open={modal === 'device'} onClose={close} target={target} onCapture={doImport} />
       <NewAcqModal open={modal === 'new'} onClose={close} target={target} source={source} devices={d.devices}
         onPickDest={() => setModal('dossier')} onPickSource={pickSource} onStart={startSession} />
     </Box>
