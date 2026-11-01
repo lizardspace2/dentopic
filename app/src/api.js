@@ -716,6 +716,86 @@ export function deleteSocialPost(id) {
   return supabase.from('social_posts').delete().eq('id', id).then(({ error }) => !error)
 }
 
+// ---- Protocoles de prise de vues ----------------------------------------------
+// protocols (workspace_id, name, description, is_default) + protocol_steps
+// (protocol_id, position, name, expected_photo_class, required, instructions).
+// expected_photo_class est contraint CHECK : portrait|smile|intraoral|
+// occlusal|radiograph|document.
+
+export function listProtocols(wsId) {
+  return supabase
+    .from('protocols')
+    .select('*,steps:protocol_steps(*)')
+    .eq('workspace_id', wsId)
+    .order('created_at', { ascending: true })
+    .then(({ data, error }) => {
+      if (error) { console.warn('listProtocols:', error.message); return [] }
+      return (data || []).map((p) => ({
+        ...p,
+        steps: (p.steps || []).sort((a, b) => a.position - b.position),
+      }))
+    })
+}
+
+export function createProtocol(wsId, { name, description }) {
+  return supabase
+    .from('protocols')
+    .insert({ workspace_id: wsId, name, description })
+    .select().single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('createProtocol:', error.message); return null }
+      return data
+    })
+}
+
+export function updateProtocol(id, fields) {
+  return supabase
+    .from('protocols').update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .then(({ error }) => !error)
+}
+
+/** Un seul protocole par défaut : retire le flag des autres avant de le poser. */
+export async function setDefaultProtocol(wsId, id) {
+  await supabase.from('protocols').update({ is_default: false }).eq('workspace_id', wsId)
+  const { error } = await supabase.from('protocols').update({ is_default: true }).eq('id', id)
+  if (error) { console.warn('setDefaultProtocol:', error.message); return false }
+  return true
+}
+
+export function deleteProtocol(id) {
+  return supabase.from('protocols').delete().eq('id', id).then(({ error }) => !error)
+}
+
+export function addProtocolStep(protocolId, { name, expected_photo_class, required, instructions }) {
+  return supabase
+    .from('protocol_steps')
+    .select('position').eq('protocol_id', protocolId)
+    .order('position', { ascending: false }).limit(1)
+    .then(({ data }) => {
+      const position = (data?.[0]?.position || 0) + 1
+      return supabase
+        .from('protocol_steps')
+        .insert({ protocol_id: protocolId, position, name, expected_photo_class, required, instructions })
+        .select().single()
+    })
+    .then(({ data, error }) => {
+      if (error) { console.warn('addProtocolStep:', error.message); return null }
+      return data
+    })
+}
+
+export function updateProtocolStep(id, fields) {
+  return supabase
+    .from('protocol_steps').update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .then(({ error }) => !error)
+}
+
+export function deleteProtocolStep(id) {
+  return supabase.from('protocol_steps').delete().eq('id', id).then(({ error }) => !error)
+}
+
 // ---- Membres du workspace -----------------------------------------------------
 // workspace_members : workspace_id, user_id (FK auth.users), role, created_at.
 // Pas de FK vers profiles → le nom est récupéré par requête séparée.
