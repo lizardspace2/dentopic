@@ -8,7 +8,7 @@ import { C } from '../theme'
 
 // ---- Badges ----------------------------------------------------------------
 
-export function Tag({ color = 'purple', children }) {
+export function Tag({ color = 'purple', children, ...rest }) {
   const map = {
     purple: ['#ede9fe', '#7c3aed'],
     teal: ['#d1fae5', '#059669'],
@@ -31,6 +31,7 @@ export function Tag({ color = 'purple', children }) {
       color={fg}
       lineHeight="1"
       whiteSpace="nowrap"
+      {...rest}
     >
       {children}
     </Text>

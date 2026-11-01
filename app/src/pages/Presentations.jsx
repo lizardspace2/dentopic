@@ -48,6 +48,7 @@ export default function Presentations() {
   const [form, setForm] = useState(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [onlyEmpty, setOnlyEmpty] = useState(false)
 
   const reload = async () => {
     if (!wsId) return
@@ -60,16 +61,20 @@ export default function Presentations() {
 
   const slideTotal = Object.values(slideCounts).reduce((a, b) => a + b, 0)
   const noSlides = pres.filter((p) => !slideCounts[p.id] && p.status !== 'archived').length
+  const draftCount = pres.filter((p) => p.status === 'draft').length
   const testCount = pres.filter((p) => isTestName(p.name)).length
 
   const week = Date.now() - 7 * 86400000
   const list = pres
-    .filter((p) => tab === 'Toutes' ? p.status !== 'archived'
+    .filter((p) => onlyEmpty ? (!slideCounts[p.id] && p.status !== 'archived')
+      : tab === 'Toutes' ? p.status !== 'archived'
       : tab === 'Brouillons' ? p.status === 'draft'
       : tab === 'Récentes' ? new Date(p.updated_at) > week && p.status !== 'archived'
       : p.status === 'archived')
     .filter((p) => !q || p.name.toLowerCase().includes(q.toLowerCase()))
-    .sort((a, b) => sort === 'name'
+    .sort((a, b) => sort === 'slides'
+      ? (slideCounts[b.id] || 0) - (slideCounts[a.id] || 0)
+      : sort === 'name'
       ? a.name.localeCompare(b.name, 'fr')
       : new Date(b.updated_at) - new Date(a.updated_at))
 
@@ -155,16 +160,48 @@ export default function Presentations() {
       </PageHeader>
 
       {noSlides > 0 && (
-        <HStack bg={C.amberBg} border="1px solid" borderColor={C.amberBorder} borderRadius="md" px="3" py="2" my="4" gap="2">
+        <HStack bg={C.amberBg} border="1px solid" borderColor={C.amberBorder} borderRadius="md" px="3" py="2" my="4" gap="2"
+          cursor="pointer" onClick={() => setOnlyEmpty(!onlyEmpty)}
+          title={onlyEmpty ? 'Cliquer pour tout afficher' : 'Cliquer pour n\'afficher que ces présentations'}>
           <Box as={FiAlertCircle} color="#d97706" fontSize="sm" />
-          <Text fontSize="sm" color={C.amberText}>{noSlides} présentation(s) sans diapositive</Text>
+          <Text fontSize="sm" color={C.amberText} flex="1">
+            {noSlides} présentation(s) sans diapositive — ajoutez du contenu ou mettez-les à la corbeille
+          </Text>
+          <Text fontSize="xs" color={C.amberText} fontWeight="600">
+            {onlyEmpty ? 'Tout afficher' : 'Les afficher'}
+          </Text>
         </HStack>
       )}
 
       <HStack gap="2" mb="4" mt="4">
-        <Tag color="gray"><FiMonitor style={{ marginRight: 4 }} />{list.length} présentation(s)</Tag>
-        <Tag color="gray"><FiLayers style={{ marginRight: 4 }} />{slideTotal} diapositive(s)</Tag>
-        {noSlides > 0 && <Tag color="amber"><FiFileText style={{ marginRight: 4 }} />{noSlides} brouillon</Tag>}
+        <Tip label="Présentations affichées — cliquer pour tout réafficher (onglet « Toutes », sans filtre)">
+          <Tag color={onlyEmpty || tab !== 'Toutes' || q ? 'gray' : 'blue'} cursor="pointer"
+            onClick={() => { setTab('Toutes'); setQ(''); setOnlyEmpty(false) }}>
+            <FiMonitor style={{ marginRight: 4 }} />{list.length} présentation(s)
+          </Tag>
+        </Tip>
+        <Tip label="Total de diapositives — cliquer pour trier par nombre de diapositives">
+          <Tag color={sort === 'slides' ? 'blue' : 'gray'} cursor="pointer"
+            onClick={() => setSort(sort === 'slides' ? 'recent' : 'slides')}>
+            <FiLayers style={{ marginRight: 4 }} />{slideTotal} diapositive(s)
+          </Tag>
+        </Tip>
+        {draftCount > 0 && (
+          <Tip label="Présentations en brouillon — cliquer pour les afficher">
+            <Tag color={tab === 'Brouillons' ? 'amber' : 'gray'} cursor="pointer"
+              onClick={() => { setTab('Brouillons'); setOnlyEmpty(false) }}>
+              <FiFileText style={{ marginRight: 4 }} />{draftCount} brouillon(s)
+            </Tag>
+          </Tip>
+        )}
+        {noSlides > 0 && (
+          <Tip label="Présentations vides (aucune diapositive) — cliquer pour les afficher / tout afficher">
+            <Tag color={onlyEmpty ? 'amber' : 'gray'} cursor="pointer"
+              onClick={() => setOnlyEmpty(!onlyEmpty)}>
+              <FiAlertCircle style={{ marginRight: 4 }} />{noSlides} sans diapo
+            </Tag>
+          </Tip>
+        )}
         {testCount > 0 && (
           <Tip label="Présentations de test/démo — mettre à la corbeille">
             <Text fontSize="xs" color={C.amberText} cursor="pointer" onClick={() => setModal({ kind: 'clean' })}>
@@ -191,6 +228,7 @@ export default function Presentations() {
         </HStack>
         <Select h="30px" fontSize="xs" value={sort} onChange={(e) => setSort(e.target.value)}>
           <option value="recent">Plus récent</option>
+          <option value="slides">Plus de diapos</option>
           <option value="name">Nom A→Z</option>
         </Select>
       </HStack>
