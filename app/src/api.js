@@ -776,3 +776,37 @@ export function removeWorkspaceMember(wsId, userId) {
     .eq('workspace_id', wsId).eq('user_id', userId)
     .then(({ error }) => !error)
 }
+
+// ---- Brand Système --------------------------------------------------------------
+// Identité visuelle persistée dans workspaces.settings.brand (jsonb).
+// Le logo est un fichier du bucket privé `photos` (préfixe brand/).
+
+export function getWorkspaceSettings(wsId) {
+  return supabase
+    .from('workspaces').select('settings').eq('id', wsId).single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('getWorkspaceSettings:', error.message); return {} }
+      return data?.settings || {}
+    })
+}
+
+export async function saveWorkspaceBrand(wsId, brand) {
+  const settings = await getWorkspaceSettings(wsId)
+  const { error } = await supabase
+    .from('workspaces')
+    .update({ settings: { ...settings, brand } })
+    .eq('id', wsId)
+  if (error) { console.warn('saveWorkspaceBrand:', error.message); return false }
+  return true
+}
+
+/** Upload un asset de marque (logo…) dans le bucket photos — retourne storage_path */
+export async function uploadBrandAsset(wsId, file, kind = 'logo') {
+  const ext = (file.name?.split('.').pop() || 'png').toLowerCase()
+  const path = `${wsId}/brand/${kind}-${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from('photos').upload(path, file, {
+    contentType: file.type || 'image/png',
+  })
+  if (error) { console.warn('uploadBrandAsset:', error.message); return null }
+  return path
+}
