@@ -646,19 +646,27 @@ export function ColorPickerModal({ open, onClose, color, onApply, title = 'Séle
 // Le parent (index.jsx) mémorise l'état avant ouverture : chaque changement de
 // paramètre restaure cet état puis ré-applique → aperçu temps réel réversible.
 
-export function FilterModal({ open, onClose, def, onPreview, onApply, onCancel }) {
+export function FilterModal({ open, onClose, def, onPreview, onPreviewOff, onApply, onCancel }) {
   const [params, setParams] = useState({})
+  const [previewOn, setPreviewOn] = useState(true)
   useEffect(() => {
     if (open && def) {
       const p = {}
       for (const d of def.params || []) p[d.key] = d.def
       setParams(p)
+      setPreviewOn(true)
     }
   }, [open, def])
   const set = (k, v) => {
     const p = { ...params, [k]: v }
     setParams(p)
-    onPreview?.(p)
+    if (previewOn) onPreview?.(p)
+  }
+  const togglePreview = () => {
+    const on = !previewOn
+    setPreviewOn(on)
+    if (on) onPreview?.(params)
+    else onPreviewOff?.()
   }
   if (!def) return null
   return (
@@ -673,6 +681,15 @@ export function FilterModal({ open, onClose, def, onPreview, onApply, onCancel }
         </>
       }>
       <VStack align="stretch" gap="3">
+        <HStack gap="2" cursor="pointer" onClick={togglePreview} userSelect="none" data-preview-toggle>
+          <Box w="14px" h="14px" borderRadius="sm" border="1px solid"
+            borderColor={previewOn ? '#4f8fe8' : 'gray.500'}
+            bg={previewOn ? '#4f8fe8' : 'transparent'} color="#ffffff"
+            fontSize="2xs" lineHeight="14px" textAlign="center">
+            {previewOn ? '✓' : ''}
+          </Box>
+          <Text fontSize="xs" color="gray.600">Aperçu</Text>
+        </HStack>
         {(def.params || []).length === 0 && (
           <Text fontSize="xs" color="gray.500">Filtre sans paramètre — il s'applique directement.</Text>
         )}

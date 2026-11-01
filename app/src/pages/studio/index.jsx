@@ -1773,7 +1773,11 @@ export default function Studio() {
       <ExportModal open={modal === 'export'} onClose={() => setModal(null)}
         editor={editor} docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
       <FilterModal open={!!filterKey} def={filterKey ? FILTER_DEFS[filterKey] : null}
-        onPreview={previewFilter} onApply={applyFilter} onCancel={cancelFilter} />
+        onPreview={previewFilter} onApply={applyFilter} onCancel={cancelFilter}
+        onPreviewOff={async () => {
+          clearTimeout(previewT.current)
+          if (filterBase.current) { await editor._restore(filterBase.current); bump() }
+        }} />
       <SelectMaskModal open={modal === 'selmask'} onClose={() => setModal(null)}
         editor={editor} onChange={bump}
         onApply={(fe) => { setOpts((o) => ({ ...o, selFeather: fe })); bump() }} />
