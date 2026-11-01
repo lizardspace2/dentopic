@@ -706,6 +706,52 @@ export class Editor {
     this.selInverted = false
   }
 
+  /** Boîte englobante du contenu non transparent du calque (coords locales cv). */
+  contentBBox(l, step = 4) {
+    if (!l?.cv) return null
+    const d = l.ctx.getImageData(0, 0, this.w, this.h).data
+    let x0 = this.w, y0 = this.h, x1 = -1, y1 = -1
+    for (let y = 0; y < this.h; y += step) {
+      for (let x = 0; x < this.w; x += step) {
+        if (d[(y * this.w + x) * 4 + 3] > 8) {
+          if (x < x0) x0 = x
+          if (x > x1) x1 = x
+          if (y < y0) y0 = y
+          if (y > y1) y1 = y
+        }
+      }
+    }
+    return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + step, h: y1 - y0 + step }
+  }
+
+  /** Transformation manuelle (Ctrl+T) : applique la matrice doc→doc au calque.
+   *  [a,b,c,d,e,f] en coordonnées document ; rasterise cv + masque + convertit
+   *  les calques texte/forme en pixels (comme la pixellisation Photoshop). */
+  applyTransform(l, m, interp = 'bicubic') {
+    if (!l?.cv) return
+    const smooth = interp !== 'nearest'
+    const q = interp === 'bicubic' || interp === 'smoother' ? 'high' : interp === 'bilinear' ? 'medium' : 'low'
+    // matrice doc→doc traduite en coords locales : M_loc = T(-d) · M · T(d)
+    const [a, b, c, d, e, f] = m
+    const eL = a * l.dx + c * l.dy + e - l.dx
+    const fL = b * l.dx + d * l.dy + f - l.dy
+    for (const [cv, ctx] of [[l.cv, l.ctx], ...(l.mask ? [[l.mask, l.maskCtx]] : [])]) {
+      const src = mkCanvas(this.w, this.h)
+      src.getContext('2d').drawImage(cv, 0, 0)
+      ctx.save()
+      ctx.clearRect(0, 0, this.w, this.h)
+      ctx.setTransform(a, b, c, d, eL, fL)
+      ctx.imageSmoothingEnabled = smooth
+      ctx.imageSmoothingQuality = q
+      ctx.drawImage(src, 0, 0)
+      ctx.restore()
+    }
+    // la forme/le texte sont maintenant des pixels : dégrade en calque de pixels
+    if (l.type === 'shape') { l.type = 'pixel'; l.shape = null }
+    if (l.type === 'text') { l.type = 'pixel'; l.text = null }
+    this.markDirty()
+  }
+
   flatten() {
     const flat = this._mkLayer('Arrière-plan')
     flat.locked = true

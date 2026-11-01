@@ -93,6 +93,7 @@ export default function Studio() {
   const [snapOn, setSnapOn] = useState(false)
   const [filterKey, setFilterKey] = useState(null)   // clé FILTER_DEFS ouverte
   const [shapePrev, setShapePrev] = useState(null)    // aperçu de forme en cours
+  const [ft, setFt] = useState(null)                  // transformation manuelle (Ctrl+T)
   const plassoRef = useRef(null)                      // sommets du lasso polygonal
   const filterBase = useRef(null)                     // dump avant ouverture du filtre (aperçu live)
   const ovlRef = useRef(null)
@@ -109,6 +110,58 @@ export default function Studio() {
   const evPt = (e) => {
     const r = containerRef.current.getBoundingClientRect()
     return [e.clientX - r.left, e.clientY - r.top]
+  }
+
+  // ---- Transformation manuelle (Ctrl+T) ---------------------------------------------
+  // Matrice doc→doc : p' = C + R(angle)·S(sx,sy)·(p − C0)
+  const ftMatrix = (f) => {
+    const co = Math.cos(f.angle), si = Math.sin(f.angle)
+    const a = f.sx * co, b = f.sx * si, c = -f.sy * si, d = f.sy * co
+    return [a, b, c, d, f.cx - (a * f.cx0 + c * f.cy0), f.cy - (b * f.cx0 + d * f.cy0)]
+  }
+  // coins (cs) + milieux d'arêtes (ms) du cadre transformé, en coords doc
+  const ftPts = (f) => {
+    const [a, b, c, d, e2, f2] = ftMatrix(f)
+    const x0 = f.l.dx + f.bx, y0 = f.l.dy + f.by, x1 = x0 + f.w, y1 = y0 + f.h
+    const cs = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([px, py]) => [a * px + c * py + e2, b * px + d * py + f2])
+    const mid = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]
+    return { cs, ms: [mid(cs[0], cs[1]), mid(cs[1], cs[2]), mid(cs[2], cs[3]), mid(cs[3], cs[0])] }
+  }
+  const startFt = () => {
+    if (ft) return
+    const l = editor.active
+    if (!l || l.locked || !l.visible || !l.cv || l.type === 'adjust') return
+    const bb = editor.contentBBox(l)
+    if (!bb) return
+    const src = document.createElement('canvas')
+    src.width = editor.w; src.height = editor.h
+    src.getContext('2d').drawImage(l.cv, 0, 0)
+    l.visible = false // le calque est prévisualisé par l'overlay pendant la transformation
+    editor.markDirty()
+    setFt({
+      l, src, bx: bb.x, by: bb.y, w: bb.w, h: bb.h,
+      cx0: l.dx + bb.x + bb.w / 2, cy0: l.dy + bb.y + bb.h / 2,
+      cx: l.dx + bb.x + bb.w / 2, cy: l.dy + bb.y + bb.h / 2,
+      sx: 1, sy: 1, angle: 0, link: true, interp: 'bicubic',
+    })
+    bump()
+  }
+  const applyFt = () => {
+    const f = ft; if (!f) return
+    f.l.visible = true // restaurer AVANT le snapshot : l'annulation doit rendre un calque visible
+    // identité → pas d'entrée d'historique (comme Photoshop)
+    const identity = f.sx === 1 && f.sy === 1 && f.angle === 0 && f.cx === f.cx0 && f.cy === f.cy0
+    if (!identity) {
+      editor.snapshot('Free Transform')
+      editor.applyTransform(f.l, ftMatrix(f), f.interp)
+    } else editor.markDirty()
+    setFt(null); bump()
+  }
+  const cancelFt = () => {
+    if (!ft) return
+    ft.l.visible = true
+    editor.markDirty()
+    setFt(null); bump()
   }
 
   // ---- Ouvrir / importer ---------------------------------------------------------
@@ -304,7 +357,32 @@ export default function Studio() {
       else { ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2) }
       ctx.stroke(); ctx.setLineDash([])
     }
-  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor, shapePrev, opts.shapeKind])
+    // ---- Transformation manuelle : calque prévisualisé transformé + cadre ----
+    if (ft) {
+      const [a, b, c, d, e2, f2] = ftMatrix(ft)
+      ctx.save()
+      ctx.translate(ox, oy); ctx.scale(scale, scale)
+      ctx.transform(a, b, c, d, e2, f2)
+      ctx.imageSmoothingEnabled = ft.interp !== 'nearest'
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(ft.src, ft.l.dx, ft.l.dy)
+      ctx.restore()
+      const { cs, ms } = ftPts(ft)
+      const toS = (p) => [p[0] * scale + ox, p[1] * scale + oy]
+      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5; ctx.beginPath()
+      cs.forEach((p, i) => { const [x, y] = toS(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) })
+      ctx.closePath(); ctx.stroke()
+      // 8 poignées carrées + repère de centre
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1
+      for (const p of [...cs, ...ms]) {
+        const [x, y] = toS(p)
+        ctx.fillRect(x - 4, y - 4, 8, 8); ctx.strokeRect(x - 4, y - 4, 8, 8)
+      }
+      ctx.fillStyle = '#4f8fe8'; ctx.beginPath()
+      const [ccx, ccy] = toS([ft.cx, ft.cy])
+      ctx.arc(ccx, ccy, 3.5, 0, Math.PI * 2); ctx.fill()
+    }
+  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor, shapePrev, opts.shapeKind, ft])
 
   // Règles : graduations en px document + repère de curseur
   useEffect(() => {
@@ -472,6 +550,52 @@ export default function Studio() {
       stroke.current = { kind: 'ruler', x0: ix, y0: iy }
       setStraighten((s) => ({ ...s, line: [ix, iy, ix, iy] }))
       return
+    }
+
+    // ---- Transformation manuelle active : les poignées pilotent l'interaction ----
+    if (ft) {
+      const { cs, ms } = ftPts(ft)
+      const R = 12 / view.scale
+      // point dans un polygone (ray casting)
+      const inBox = ((x, y, poly) => {
+        let inside = false
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const [xi, yi] = poly[i], [xj, yj] = poly[j]
+          if (((yi > y) !== (yj > y)) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+        }
+        return inside
+      })(ix, iy, cs)
+      // distance point→segment (zone de rotation hors du cadre)
+      const dSeg = (x, y, p, q) => {
+        const vx = q[0] - p[0], vy = q[1] - p[1], L2 = vx * vx + vy * vy || 1
+        const t = Math.max(0, Math.min(1, ((x - p[0]) * vx + (y - p[1]) * vy) / L2))
+        return Math.hypot(x - (p[0] + t * vx), y - (p[1] + t * vy))
+      }
+      const handle = [...cs.map((p, i) => ({ p, kind: 'ftScale', i })), ...ms.map((p, i) => ({ p, kind: 'ftEdge', i }))]
+        .find((h) => Math.hypot(ix - h.p[0], iy - h.p[1]) < R)
+      if (handle) {
+        // point fixe : coin/milieu opposé, à la fois position transformée ET locale d'origine
+        const co = Math.cos(-ft.angle), si = Math.sin(-ft.angle)
+        const loc = { x0: ft.l.dx + ft.bx, y0: ft.l.dy + ft.by, x1: ft.l.dx + ft.bx + ft.w, y1: ft.l.dy + ft.by + ft.h }
+        const locals = [[loc.x0, loc.y0], [loc.x1, loc.y0], [loc.x1, loc.y1], [loc.x0, loc.y1]]
+        const midL = (p, q) => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2]
+        const alOrig = handle.kind === 'ftScale'
+          ? locals[(handle.i + 2) % 4]
+          : midL(locals[(handle.i + 2) % 4], locals[(handle.i + 3) % 4])
+        const anchor = handle.kind === 'ftScale' ? cs[(handle.i + 2) % 4] : ms[(handle.i + 2) % 4]
+        const hPt = handle.p
+        const rel = [(hPt[0] - anchor[0]) * co - (hPt[1] - anchor[1]) * si,
+                     (hPt[0] - anchor[0]) * si + (hPt[1] - anchor[1]) * co]
+        stroke.current = {
+          kind: handle.kind, axis: handle.kind === 'ftEdge' ? (handle.i % 2 === 0 ? 'y' : 'x') : null,
+          anchor, alOrig, rel, sx0: ft.sx, sy0: ft.sy,
+        }
+      } else if (inBox) {
+        stroke.current = { kind: 'ftMove', ox: ix, oy: iy, cx0: ft.cx, cy0: ft.cy }
+      } else if (cs.some((p, i) => dSeg(ix, iy, p, cs[(i + 1) % 4]) < 30 / view.scale)) {
+        stroke.current = { kind: 'ftRotate', a0: ft.angle, grab: Math.atan2(iy - ft.cy, ix - ft.cx) }
+      }
+      return // en mode transformation, aucun autre outil ne répond
     }
 
     switch (tool) {
@@ -818,6 +942,45 @@ export default function Studio() {
     }
     const s = stroke.current
     if (!s) return
+    // ---- Transformation manuelle : mise à jour de l'état ft pendant le drag ----
+    if (s.kind === 'ftMove') {
+      setFt((f) => f && ({ ...f, cx: s.cx0 + ix - s.ox, cy: s.cy0 + iy - s.oy }))
+      return
+    }
+    if (s.kind === 'ftRotate') {
+      setFt((f) => {
+        if (!f) return f
+        let a = s.a0 + Math.atan2(iy - f.cy, ix - f.cx) - s.grab
+        if (e.shiftKey) a = Math.round(a / (Math.PI / 12)) * (Math.PI / 12) // pas de 15°
+        return { ...f, angle: a }
+      })
+      return
+    }
+    if (s.kind === 'ftScale' || s.kind === 'ftEdge') {
+      setFt((f) => {
+        if (!f) return f
+        const co = Math.cos(-f.angle), si = Math.sin(-f.angle)
+        const v = [(ix - s.anchor[0]) * co - (iy - s.anchor[1]) * si,
+                   (ix - s.anchor[0]) * si + (iy - s.anchor[1]) * co]
+        let nsx = s.sx0, nsy = s.sy0
+        if (s.kind === 'ftScale' && (f.link || e.shiftKey)) {
+          const k = Math.hypot(v[0], v[1]) / (Math.hypot(s.rel[0], s.rel[1]) || 1e-6)
+          nsx = s.sx0 * k; nsy = s.sy0 * k
+        } else {
+          if (s.kind !== 'ftEdge' || s.axis === 'x') nsx = Math.abs(s.rel[0]) > 0.5 ? s.sx0 * v[0] / s.rel[0] : s.sx0
+          if (s.kind !== 'ftEdge' || s.axis === 'y') nsy = Math.abs(s.rel[1]) > 0.5 ? s.sy0 * v[1] / s.rel[1] : s.sy0
+        }
+        const clampS = (x) => clamp(Math.abs(x) > 0.01 ? x : 0.01 * Math.sign(x || 1), -64, 64)
+        nsx = clampS(nsx); nsy = clampS(nsy)
+        // conserve le point fixe : C = anchor − R·S·(AL_orig − C0)
+        const co2 = Math.cos(f.angle), si2 = Math.sin(f.angle)
+        const ux = s.alOrig[0] - f.cx0, uy = s.alOrig[1] - f.cy0
+        const ncx = s.anchor[0] - (nsx * co2 * ux - nsy * si2 * uy)
+        const ncy = s.anchor[1] - (nsx * si2 * ux + nsy * co2 * uy)
+        return { ...f, sx: nsx, sy: nsy, cx: ncx, cy: ncy }
+      })
+      return
+    }
     if (s.kind === 'stroke') paint(ix, iy, s.l)
     else if (s.kind === 'shapeDrag') setShapePrev([s.x0, s.y0, ix, iy])
     else if (s.kind === 'lasso') {
@@ -1124,6 +1287,9 @@ export default function Studio() {
         if (editor.active?.locked) editor.addLayer()
         editor.snapshot('Effacer'); editor.deleteContent(opts.selFeather); bump()
       } },
+      '-',
+      { label: 'Transformation manuelle', shortcut: 'Ctrl+T', disabled: !docOpen || !editor.active || editor.active?.locked,
+        onClick: startFt },
     ]},
     { label: 'Sélection', tip: 'Zones de travail : créer, modifier, inverser', items: [
       { label: 'Tout sélectionner', shortcut: 'Ctrl+A', disabled: !docOpen, onClick: () => { editor.selectAll(); bump() } },
@@ -1235,6 +1401,12 @@ export default function Studio() {
       // mais les range/color/checkbox n'ont pas besoin du clavier → raccourcis actifs
       if (e.target.matches('input:not([type]),input[type=text],input[type=search],input[type=number],textarea,select,[contenteditable]')) return
       const k = e.key.toLowerCase()
+      // transformation manuelle active : Entrée valide, Échap annule (avant tout)
+      if (ft && !e.ctrlKey && !e.metaKey) {
+        if (k === 'enter') { e.preventDefault(); applyFt() }
+        else if (k === 'escape') { e.preventDefault(); cancelFt() }
+        return
+      }
       if (e.ctrlKey || e.metaKey) {
         if (k === 'z' && e.shiftKey) { await editor.redo(); bump() }
         else if (k === 'z') { await editor.undo(); bump() }
@@ -1251,6 +1423,7 @@ export default function Studio() {
         else if (k === 'j' && docOpen) { e.preventDefault(); editor.snapshot('Via copier'); editor.layerViaCopy(); bump() }
         else if (k === 'i' && e.shiftKey && docOpen) { e.preventDefault(); editor.invertSelection(); bump() }
         else if (k === 'i' && docOpen) { e.preventDefault(); editor.snapshot('Négatif'); runFilter('invert', {}); bump() }
+        else if (k === 't' && docOpen) { e.preventDefault(); startFt() }
         else if (k === 'e' && e.shiftKey && e.altKey && docOpen) { e.preventDefault(); editor.snapshot('Fusion'); editor.mergeVisible(); bump() }
         else if (k === ';' || k === ':') { e.preventDefault(); setGuidesOn((v) => !v) }
         return
@@ -1272,7 +1445,7 @@ export default function Studio() {
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [editor, bump, docOpen]) // docOpen : les raccourcis gardés ne doivent pas rester figés
+  }, [editor, bump, docOpen, ft]) // ft : Entrée/Échap doivent voir l'état courant
 
   // ---- Rendu --------------------------------------------------------------------------------
 
@@ -1298,7 +1471,9 @@ export default function Studio() {
           canUndo={editor.undoStack.length > 0} canRedo={editor.redoStack.length > 0}
           onUndo={async () => { await editor.undo(); bump() }}
           onRedo={async () => { await editor.redo(); bump() }}
-          onPickColor={setPickColor} />
+          onPickColor={setPickColor}
+          freeTransform={ft} onFtChange={(p) => setFt((f) => f && ({ ...f, ...p }))}
+          onFtApply={applyFt} onFtCancel={cancelFt} />
       )}
       <Flex flex="1" minH="0">
         <ToolBar tool={tool} setTool={setTool}

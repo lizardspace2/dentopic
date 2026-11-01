@@ -144,6 +144,7 @@ export function ToolBar({ tool, setTool, fgColor, bgColor, onSwap, onPickColor }
 export function OptionsBar({
   tool, opts, setOpts, cropRect, onApplyCrop, onCancelCrop, onRotate,
   hasSel, onFill, onDelete, onDeselect, onSelMask, canUndo, canRedo, onUndo, onRedo, onPickColor,
+  freeTransform, onFtChange, onFtApply, onFtCancel,
 }) {
   const row = { fontSize: '2xs', color: muted }
   // slider + saisie numérique exacte (comme les champs de valeur de Photoshop)
@@ -167,8 +168,55 @@ export function OptionsBar({
   return (
     <HStack h="34px" px="3" gap="4" bg={panelBg} borderBottom="1px solid" borderColor={panelBorder} flexShrink={0}>
       <Text fontSize="xs" color={fg} fontWeight="600">
-        {TOOLS.find((t) => t.key === tool)?.label}
+        {freeTransform ? 'Transformation' : TOOLS.find((t) => t.key === tool)?.label}
       </Text>
+      {freeTransform && (() => {
+        const f = freeTransform
+        const num = (label, val, cb, step = 1, suffix = 'px') => (
+          <HStack key={label} gap="1">
+            <Text {...row}>{label}</Text>
+            <Input type="number" w="62px" h="20px" fontSize="2xs" px="1" step={step} data-ft={label}
+              value={Math.round(val * 10) / 10}
+              onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) cb(v) }} />
+            <Text {...row}>{suffix}</Text>
+          </HStack>
+        )
+        return (
+          <>
+            {num('X', f.cx, (v) => onFtChange({ cx: v }))}
+            {num('Y', f.cy, (v) => onFtChange({ cy: v }))}
+            {num('L', f.sx * 100, (v) => onFtChange({ sx: v / 100, sy: f.link ? v / 100 : f.sy }), 1, '%')}
+            <Tip label="Conserver les proportions — L et H liés">
+              <Box as="button" w="18px" h="18px" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                bg={f.link ? C.primary : 'var(--s-a100)'} color={f.link ? '#ffffff' : fg}
+                onClick={() => onFtChange({ link: !f.link })}>⛓</Box>
+            </Tip>
+            {num('H', f.sy * 100, (v) => onFtChange({ sy: v / 100, sx: f.link ? v / 100 : f.sx }), 1, '%')}
+            {num('∠', f.angle * 180 / Math.PI, (v) => onFtChange({ angle: v * Math.PI / 180 }), 1, '°')}
+            <Tip label="Méthode de rééchantillonnage des pixels">
+              <HStack gap="1">
+                <Text {...row}>Interpolation :</Text>
+                <Box as="select" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+                  border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+                  value={f.interp} onChange={(e) => onFtChange({ interp: e.target.value })}>
+                  <option value="nearest">Au plus proche</option>
+                  <option value="bilinear">Bilinéaire</option>
+                  <option value="bicubic">Bicubique</option>
+                  <option value="smoother">Bicubique plus lisse</option>
+                </Box>
+              </HStack>
+            </Tip>
+            <Tip label="Valider la transformation — Entrée">
+              <Box as="button" w="20px" h="20px" fontSize="xs" borderRadius="sm" cursor="pointer"
+                bg="#2f855a" color="#ffffff" onClick={onFtApply}>✓</Box>
+            </Tip>
+            <Tip label="Annuler la transformation — Échap">
+              <Box as="button" w="20px" h="20px" fontSize="xs" borderRadius="sm" cursor="pointer"
+                bg="#c53030" color="#ffffff" onClick={onFtCancel}>✕</Box>
+            </Tip>
+          </>
+        )
+      })()}
       {tool === 'brush' && (
         <>
           <Tip label="Diamètre du pinceau (px) — saisie libre"><Text {...row}>Taille {opts.brushSize}px</Text></Tip>{slider('brushSize', 1, 400)}
