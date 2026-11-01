@@ -144,6 +144,92 @@ export function listPresentations(wsId) {
     .then(({ data }) => data || [])
 }
 
+export function createPresentation(wsId, fields) {
+  return supabase
+    .from('presentations')
+    .insert({ workspace_id: wsId, status: 'draft', ...fields })
+    .select().single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('createPresentation:', error.message); return null }
+      return data
+    })
+}
+
+export function updatePresentation(id, fields) {
+  return supabase
+    .from('presentations')
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq('id', id).select().single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('updatePresentation:', error.message); return null }
+      return data
+    })
+}
+
+/** Corbeille (soft delete) */
+export function trashPresentation(id) {
+  return updatePresentation(id, { deleted_at: new Date().toISOString() })
+}
+
+/** Duplique la présentation + toutes ses diapositives */
+export async function duplicatePresentation(pres) {
+  const copy = await createPresentation(pres.workspace_id, {
+    name: `${pres.name} (copie)`, patient_id: pres.patient_id, status: 'draft',
+  })
+  if (!copy) return null
+  const slides = await listPresentationSlides(pres.id)
+  for (const s of slides) {
+    await supabase.from('presentation_slides').insert({
+      presentation_id: copy.id, position: s.position, type: s.type,
+      title: s.title, media_url: s.media_url, before_url: s.before_url,
+      after_url: s.after_url, text_content: s.text_content,
+      photo_id: s.photo_id, montage_id: s.montage_id,
+      video_project_id: s.video_project_id, timeline_photo_ids: s.timeline_photo_ids,
+      notes: s.notes,
+    })
+  }
+  return copy
+}
+
+export function listPresentationSlides(presentationId) {
+  return supabase
+    .from('presentation_slides')
+    .select('*,photo:patient_photos(storage_path),montage:montages(name,export_url)')
+    .eq('presentation_id', presentationId)
+    .order('position', { ascending: true })
+    .then(({ data }) => data || [])
+}
+
+export function addPresentationSlide(presentationId, fields) {
+  return supabase
+    .from('presentation_slides')
+    .insert({ presentation_id: presentationId, ...fields })
+    .select().single()
+    .then(({ data, error }) => {
+      if (error) { console.warn('addPresentationSlide:', error.message); return null }
+      return data
+    })
+}
+
+export function removePresentationSlide(id) {
+  return supabase.from('presentation_slides').delete().eq('id', id)
+    .then(({ error }) => !error)
+}
+
+/** Active/désactive le partage par lien (share_token, expiration optionnelle). */
+export function sharePresentation(id, enabled, expiresDays = null) {
+  const fields = enabled
+    ? {
+        share_enabled: true,
+        share_token: crypto.randomUUID(),
+        share_expires_at: expiresDays
+          ? new Date(Date.now() + expiresDays * 86400000).toISOString()
+          : null,
+      }
+    : { share_enabled: false, share_token: null, share_expires_at: null }
+  return updatePresentation(id, fields)
+}
+
 /** { presentationId: slideCount } */
 export function slideCountByPresentation() {
   return supabase

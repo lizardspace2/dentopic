@@ -1,0 +1,33 @@
+const { chromium } = require('playwright')
+;(async () => {
+  const b = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch())
+  const pg = await (await b.newContext({ viewport: { width: 1400, height: 900 } })).newPage()
+  const errs = []
+  pg.on('pageerror', (e) => errs.push(e.message))
+  pg.on('response', (r) => { if (r.status() >= 400) console.log('HTTP', r.status(), r.url().slice(-80)) })
+  await pg.goto('http://localhost:5175/login')
+  await pg.fill('input[type="email"]', process.env.DP_USER); await pg.fill('input[type="password"]', process.env.DP_PASS)
+  await pg.click('button[type="submit"]'); await pg.waitForTimeout(3000)
+  await pg.goto('http://localhost:5175/presentations'); await pg.waitForTimeout(2500)
+  const t = () => pg.evaluate(() => document.body.innerText)
+  await pg.fill('input[placeholder*="Rechercher"]', 'Pres E2E nouvelle'); await pg.waitForTimeout(700)
+  console.log('carte trouvée?', (await t()).includes('Pres E2E nouvelle'))
+  await pg.locator('[aria-label="Plus d\'actions"]').first().click(); await pg.waitForTimeout(400)
+  await pg.evaluate(() => { [...document.querySelectorAll('*')].find(e => e.textContent?.trim() === 'Mettre à la corbeille' && e.children.length === 0)?.parentElement?.click() })
+  await pg.waitForTimeout(500)
+  console.log('confirm?', (await t()).includes('sera déplacée'))
+  const clicked = await pg.evaluate(() => {
+    const ms = [...document.querySelectorAll('div')].filter(d => getComputedStyle(d).position === 'fixed' && d.querySelector('button'))
+    const m = ms[ms.length - 1]
+    const btns = [...m.querySelectorAll('button')].map(b => b.textContent.trim())
+    const btn = [...m.querySelectorAll('button')].find(b => b.textContent.trim() === 'Mettre à la corbeille')
+    btn?.click()
+    return { found: !!btn, btns }
+  })
+  console.log('click:', JSON.stringify(clicked))
+  await pg.waitForTimeout(2000)
+  console.log('encore là?', (await t()).includes('Pres E2E nouvelle'))
+  console.log('modal encore ouvert?', (await t()).includes('sera déplacée'))
+  console.log('errors:', errs)
+  await b.close()
+})()
