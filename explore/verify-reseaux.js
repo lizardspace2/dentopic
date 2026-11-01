@@ -1,0 +1,58 @@
+const { chromium } = require('playwright')
+;(async () => {
+  const b = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch())
+  const pg = await (await b.newContext({ viewport: { width: 1400, height: 1000 } })).newPage()
+  const errs = []
+  pg.on('pageerror', (e) => errs.push(e.message))
+  await pg.goto('http://localhost:5175/', { waitUntil: 'domcontentloaded' })
+  await pg.waitForTimeout(2500)
+  if (await pg.locator('input[type="email"]').count()) {
+    await pg.fill('input[type="email"]', process.env.DP_USER)
+    await pg.fill('input[type="password"]', process.env.DP_PASS)
+    await pg.click('button[type="submit"]'); await pg.waitForTimeout(4000)
+  }
+  await pg.goto('http://localhost:5175/reglage/reseaux', { waitUntil: 'domcontentloaded' })
+  await pg.waitForTimeout(2500)
+  const t = () => pg.evaluate(() => document.body.innerText)
+  const v = (n, x) => console.log(n.padEnd(26), x ? '✓' : '✗')
+  let x = await t()
+  v('page chargee', x.includes('Réseaux sociaux') && x.includes('Comptes connectés'))
+  // connecter un compte
+  await pg.click('button:has-text("Connecter un réseau")'); await pg.waitForTimeout(500)
+  v('modal connect', (await t()).includes('Connecter un réseau social'))
+  await pg.click('[aria-label="Choisir TikTok"]')
+  await pg.fill('input[placeholder="@votre.cabinet"]', 'cabinet.e2e')
+  await pg.locator('button:has-text("Connecter")').last().click(); await pg.waitForTimeout(1500)
+  x = await t()
+  v('compte ajoute', x.includes('@cabinet.e2e') && x.includes('TikTok') && x.includes('En attente OAuth'))
+  // créneau
+  await pg.selectOption('select[aria-label="Jour du créneau"]', '2') // Mercredi
+  await pg.fill('input[aria-label="Heure du créneau"]', '18:30')
+  await pg.click('[aria-label="Ajouter le créneau"]'); await pg.waitForTimeout(400)
+  x = await t()
+  v('creneau ajoute', x.includes('Mercredi 18:30'))
+  await pg.click('button:has-text("Enregistrer")'); await pg.waitForTimeout(1200)
+  x = await t()
+  v('creneaux enregistres', x.includes('Créneaux enregistrés'))
+  // persistance après reload
+  await pg.reload(); await pg.waitForTimeout(2500)
+  x = await t()
+  v('persistance creneau', x.includes('Mercredi 18:30'))
+  v('persistance compte', x.includes('@cabinet.e2e'))
+  v('section programmation', x.includes('Publications programmées'))
+  // retirer créneau + sauvegarder
+  await pg.click('[aria-label="Retirer Mercredi 18:30"]'); await pg.waitForTimeout(300)
+  await pg.click('button:has-text("Enregistrer")'); await pg.waitForTimeout(1000)
+  x = await t()
+  v('creneau retire', !x.includes('Mercredi 18:30'))
+  // déconnexion → confirm
+  await pg.click('[aria-label="Déconnecter cabinet.e2e"]'); await pg.waitForTimeout(600)
+  x = await t()
+  v('popup deconnexion', x.includes('Voulez-vous vraiment déconnecter'))
+  await pg.click('button:has-text("Oui, déconnecter")'); await pg.waitForTimeout(1500)
+  x = await t()
+  v('compte retire', !x.includes('@cabinet.e2e'))
+  await pg.screenshot({ path: 'shots/reseaux-final.png', fullPage: true })
+  console.log('errors:', JSON.stringify(errs))
+  await b.close()
+})()

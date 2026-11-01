@@ -920,6 +920,17 @@ export async function saveWorkspaceBrand(wsId, brand) {
   return true
 }
 
+/** Écrit une clé dans workspaces.settings (merge non destructif). */
+export async function saveWorkspaceSetting(wsId, key, value) {
+  const settings = await getWorkspaceSettings(wsId)
+  const { error } = await supabase
+    .from('workspaces')
+    .update({ settings: { ...settings, [key]: value } })
+    .eq('id', wsId)
+  if (error) { console.warn('saveWorkspaceSetting:', error.message); return false }
+  return true
+}
+
 /** Upload un asset de marque (logo…) dans le bucket photos — retourne storage_path */
 export async function uploadBrandAsset(wsId, file, kind = 'logo') {
   const ext = (file.name?.split('.').pop() || 'png').toLowerCase()
