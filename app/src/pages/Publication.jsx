@@ -9,7 +9,7 @@ import {
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, EmptyPane, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
-  Tip, Tag, ago,
+  Tip, Tag, ago, ConfirmModal,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -244,7 +244,13 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
       </VStack>
     )
   }
-  const del = async (id) => { setBusy(true); await deleteSocialPost(id); setBusy(false); onReload() }
+  const [rmPost, setRmPost] = useState(null)
+  const del = async () => {
+    if (!rmPost) return
+    setBusy(true)
+    await deleteSocialPost(rmPost)
+    setBusy(false); setRmPost(null); onReload()
+  }
   return (
     <VStack align="stretch" gap="2" maxH="380px" overflowY="auto">
       {drafts.map((p) => {
@@ -282,7 +288,7 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
               <Tip label="Supprimer ce brouillon">
                 <Box as="button" aria-label="Supprimer le brouillon" color="gray.400" p="1"
                   cursor={busy ? 'wait' : 'pointer'} _hover={{ color: 'red.500' }}
-                  onClick={(e) => { e.stopPropagation(); del(p.id) }}>
+                  onClick={(e) => { e.stopPropagation(); setRmPost(p.id) }}>
                   <FiTrash2 />
                 </Box>
               </Tip>
@@ -290,6 +296,11 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
           </Card>
         )
       })}
+      <ConfirmModal open={!!rmPost} onClose={() => setRmPost(null)}
+        onConfirm={del} busy={busy}
+        title="Supprimer le brouillon ?"
+        confirmLabel="Oui, supprimer"
+        message="Voulez-vous vraiment supprimer ce brouillon ? Le média reste dans le workspace." />
     </VStack>
   )
 }
@@ -307,7 +318,13 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
     await connectSocialAccount(wsId, { provider, handle: handle.trim().replace(/^@/, '') })
     setBusy(false); setHandle(''); onDone()
   }
-  const disconnect = async (id) => { setBusy(true); await disconnectSocialAccount(id); setBusy(false); onDone() }
+  const [rmAcc, setRmAcc] = useState(null)
+  const disconnect = async () => {
+    if (!rmAcc) return
+    setBusy(true)
+    await disconnectSocialAccount(rmAcc)
+    setBusy(false); setRmAcc(null); onDone()
+  }
 
   return (
     <Modal open={open} onClose={onClose} title="Connecter un réseau social"
@@ -336,7 +353,7 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
                 </Tag>
                 <Tip label="Déconnecter ce compte">
                   <Box as="button" aria-label="Déconnecter le compte" color="gray.400" p="1" cursor="pointer"
-                    _hover={{ color: 'red.500' }} onClick={() => disconnect(a.id)}>
+                    _hover={{ color: 'red.500' }} onClick={() => setRmAcc(a.id)}>
                     <FiTrash2 />
                   </Box>
                 </Tip>
@@ -369,6 +386,11 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
           le compte est enregistré « en attente » et déjà utilisable pour attacher vos brouillons.
         </Text>
       </HStack>
+      <ConfirmModal open={!!rmAcc} onClose={() => setRmAcc(null)}
+        onConfirm={disconnect} busy={busy}
+        title="Déconnecter le compte ?"
+        confirmLabel="Oui, déconnecter"
+        message="Voulez-vous vraiment déconnecter ce compte social ? Les brouillons qui lui sont rattachés seront conservés sans réseau de destination." />
     </Modal>
   )
 }

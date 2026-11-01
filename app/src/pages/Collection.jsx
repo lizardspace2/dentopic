@@ -11,6 +11,7 @@ import {
 import {
   Card, Tag, EmptyPane, SectionLabel, PageHeader, HelpButton,
   PrimaryButton, SearchInput, IconTile, isTestName, Modal, Select, Field, Tip, ago,
+  ConfirmModal,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -118,10 +119,14 @@ export default function Collection() {
       .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
   }
 
-  const removeItem = async (item) => {
+  const removeItem = async () => {
+    const item = modal?.item
+    if (!item) return
+    setBusy(true)
     await removeCollectionItem(item.id)
     setItems((l) => l.filter((x) => x.id !== item.id))
     setCounts((m) => ({ ...m, [sel.id]: Math.max(0, (m[sel.id] || 1) - 1) }))
+    setBusy(false); setModal(null)
   }
 
   const setCover = async (item) => {
@@ -313,7 +318,7 @@ export default function Collection() {
                         </Tip>
                         <Tip label="Retirer de la collection">
                           <Center w="20px" h="20px" borderRadius="sm" bg="white" cursor="pointer"
-                            boxShadow="sm" fontSize="2xs" color="red.500" onClick={() => removeItem(it)}>
+                            boxShadow="sm" fontSize="2xs" color="red.500" onClick={() => setModal({ kind: 'rmItem', item: it })}>
                             <FiX />
                           </Center>
                         </Tip>
@@ -438,38 +443,34 @@ export default function Collection() {
         )}
       </Modal>
 
-      {/* ---- corbeille ---- */}
-      <Modal open={modal?.kind === 'trash'} onClose={() => setModal(null)} width="420px"
-        title="Mettre à la corbeille"
-        footer={
-          <>
-            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Annuler</Button>
-            <Button size="sm" bg="red.500" color="#ffffff" borderRadius="md" disabled={busy}
-              onClick={() => trash(modal.col)}>
-              {busy ? 'Suppression…' : 'Mettre à la corbeille'}
-            </Button>
-          </>
-        }>
-        <Text fontSize="sm" color={C.body}>
-          « {modal?.col?.name} » et ses {(counts[modal?.col?.id] || 0)} élément(s) seront déplacés
-          à la corbeille — restauration possible.
-        </Text>
-      </Modal>
+      {/* ---- corbeille : confirmation obligatoire ---- */}
+      <ConfirmModal open={modal?.kind === 'trash'} onClose={() => setModal(null)}
+        onConfirm={() => trash(modal.col)} busy={busy}
+        title="Mettre la collection à la corbeille ?"
+        confirmLabel="Oui, mettre à la corbeille"
+        message={`Voulez-vous vraiment mettre « ${modal?.col?.name || ''} » et ses ${counts[modal?.col?.id] || 0} élément(s) à la corbeille ? Restauration possible.`} />
+
+      {/* ---- retrait d'un élément : confirmation obligatoire ---- */}
+      <ConfirmModal open={modal?.kind === 'rmItem'} onClose={() => setModal(null)}
+        onConfirm={removeItem} busy={busy}
+        title="Retirer l'élément ?"
+        confirmLabel="Oui, retirer"
+        message="Voulez-vous vraiment retirer cet élément de la collection ? La photo ou le montage reste dans le workspace." />
 
       {/* ---- nettoyage des collections de test ---- */}
       <Modal open={modal?.kind === 'clean'} onClose={() => setModal(null)} width="420px"
         title="Nettoyer les collections de test"
         footer={
           <>
-            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Annuler</Button>
-            <Button size="sm" bg={C.amber || '#d97706'} color="#ffffff" borderRadius="md" disabled={busy}
+            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Non</Button>
+            <Button size="sm" bg="red.500" color="#ffffff" borderRadius="md" disabled={busy}
               onClick={cleanTests}>
-              {busy ? 'Nettoyage…' : `Nettoyer (${testCount})`}
+              {busy ? 'Suppression…' : `Oui, mettre à la corbeille (${testCount})`}
             </Button>
           </>
         }>
         <Text fontSize="sm" color={C.body} mb="2">
-          {testCount} collection(s) démo/test seront mises à la corbeille :
+          Voulez-vous vraiment mettre {testCount} collection(s) démo/test à la corbeille ?
         </Text>
         <VStack align="stretch" gap="1" maxH="180px" overflowY="auto">
           {cols.filter((c) => isTestName(c.name)).map((c) => (

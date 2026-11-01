@@ -12,7 +12,7 @@ import {
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, SearchInput,
-  Select, ago, isTestName, Modal, Field, Tip, IconTile,
+  Select, ago, isTestName, Modal, Field, Tip, IconTile, ConfirmModal,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -379,33 +379,26 @@ export default function Presentations() {
         )}
       </Modal>
 
-      {/* ---- corbeille ---- */}
-      <Modal open={modal?.kind === 'trash'} onClose={() => setModal(null)} title="Mettre à la corbeille"
-        footer={<>
-          <span />
-          <HStack gap="2">
-            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Annuler</Button>
-            <PrimaryButton bg="red.500" _hover={{ bg: 'red.600' }} onClick={() => trash(modal.pres)} disabled={busy}>
-              {busy ? 'Suppression…' : 'Mettre à la corbeille'}
-            </PrimaryButton>
-          </HStack>
-        </>}>
-        <Text fontSize="sm" color={C.body}>
-          « {modal?.pres?.name} » sera déplacée à la corbeille avec ses {slideCounts[modal?.pres?.id] || 0} diapositive(s).
-          Vous pourrez la restaurer depuis la corbeille.
-        </Text>
-      </Modal>
+      {/* ---- corbeille : confirmation obligatoire ---- */}
+      <ConfirmModal open={modal?.kind === 'trash'} onClose={() => setModal(null)}
+        onConfirm={() => trash(modal.pres)} busy={busy}
+        title="Mettre la présentation à la corbeille ?"
+        confirmLabel="Oui, mettre à la corbeille"
+        message={`Voulez-vous vraiment mettre « ${modal?.pres?.name || ''} » à la corbeille avec ses ${slideCounts[modal?.pres?.id] || 0} diapositive(s) ? Restauration possible depuis la corbeille.`} />
 
       {/* ---- nettoyage tests ---- */}
       <Modal open={modal?.kind === 'clean'} onClose={() => setModal(null)} title="Nettoyer les présentations de test"
         footer={<>
           <span />
-          <PrimaryButton bg="red.500" _hover={{ bg: 'red.600' }} onClick={cleanTests} disabled={busy}>
-            {busy ? 'Nettoyage…' : `Mettre ${testCount} à la corbeille`}
-          </PrimaryButton>
+          <HStack gap="2">
+            <Button variant="outline" size="sm" onClick={() => setModal(null)}>Non</Button>
+            <PrimaryButton bg="red.500" _hover={{ bg: 'red.600' }} onClick={cleanTests} disabled={busy}>
+              {busy ? 'Suppression…' : `Oui, mettre à la corbeille (${testCount})`}
+            </PrimaryButton>
+          </HStack>
         </>}>
         <Text fontSize="sm" color={C.body}>
-          {testCount} présentation(s) dont le nom ressemble à un test/démo seront mises à la corbeille.
+          Voulez-vous vraiment mettre {testCount} présentation(s) de test/démo à la corbeille ?
         </Text>
       </Modal>
     </Box>
@@ -422,11 +415,13 @@ function DetailModal({ modal, onClose, onAdd }) {
     if (modal?.kind === 'detail' && p) listPresentationSlides(p.id).then(setSlides)
   }, [modal]) // eslint-disable-line
   if (!p) return null
-  const removeSlide = async (id) => {
+  const [rmSlide, setRmSlide] = useState(null)
+  const removeSlide = async () => {
+    if (!rmSlide) return
     setBusy(true)
-    await removePresentationSlide(id)
-    setSlides((l) => l.filter((s) => s.id !== id))
-    setBusy(false)
+    await removePresentationSlide(rmSlide)
+    setSlides((l) => l.filter((s) => s.id !== rmSlide))
+    setBusy(false); setRmSlide(null)
   }
   return (
     <Modal open={modal?.kind === 'detail'} onClose={onClose}
@@ -471,7 +466,7 @@ function DetailModal({ modal, onClose, onAdd }) {
               <Tip label="Retirer cette diapositive">
                 <Box as="button" aria-label="Retirer la diapositive" color="gray.400" p="1"
                   cursor={busy ? 'wait' : 'pointer'} _hover={{ color: 'red.500' }}
-                  onClick={() => removeSlide(s.id)}>
+                  onClick={() => setRmSlide(s.id)}>
                   <FiX />
                 </Box>
               </Tip>
@@ -479,6 +474,11 @@ function DetailModal({ modal, onClose, onAdd }) {
           ))}
         </VStack>
       )}
+      <ConfirmModal open={!!rmSlide} onClose={() => setRmSlide(null)}
+        onConfirm={removeSlide} busy={busy}
+        title="Retirer la diapositive ?"
+        confirmLabel="Oui, retirer"
+        message="Voulez-vous vraiment retirer cette diapositive de la présentation ? Le média reste dans le workspace." />
     </Modal>
   )
 }

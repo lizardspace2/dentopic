@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   FiArrowLeft, FiMapPin, FiMonitor, FiPlus, FiTrash2, FiWifi, FiEdit2,
 } from 'react-icons/fi'
-import { Card, Tag, IconTile, PrimaryButton, Tip, Field } from '../components/ui'
+import { Card, Tag, IconTile, PrimaryButton, Tip, Field, ConfirmModal } from '../components/ui'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
 import {
@@ -36,8 +36,13 @@ export default function ReglageAppareils() {
     if (r) { setRoomForm(null); reload() }
   }
 
-  const removeRoom = async (r) => {
-    if (await deleteRoom(r.id)) reload()
+  const [rmRoom, setRmRoom] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const removeRoom = async () => {
+    if (!rmRoom) return
+    setBusy(true)
+    if (await deleteRoom(rmRoom.id)) { setRmRoom(null); reload() }
+    setBusy(false)
   }
 
   // Formulaire DeviceModal -> payload capture_devices (+ metadata fonctionnelle)
@@ -100,7 +105,7 @@ export default function ReglageAppareils() {
                 </Text>
                 <Tip label="Supprimer la salle (les appareils sont déliés)">
                   <Box as="button" p="1" color="gray.400" cursor="pointer" _hover={{ color: 'red.500' }}
-                    aria-label={`Supprimer ${r.name}`} onClick={() => removeRoom(r)}>
+                    aria-label={`Supprimer ${r.name}`} onClick={() => setRmRoom(r)}>
                     <FiTrash2 size={14} />
                   </Box>
                 </Tip>
@@ -190,6 +195,12 @@ export default function ReglageAppareils() {
         rooms={rooms}
         device={devModal && devModal !== 'new' ? devModal : null}
         onSave={saveDevice} />
+
+      <ConfirmModal open={!!rmRoom} onClose={() => setRmRoom(null)}
+        onConfirm={removeRoom} busy={busy}
+        title="Supprimer la salle ?"
+        confirmLabel="Oui, supprimer"
+        message={`Voulez-vous vraiment supprimer la salle « ${rmRoom?.name || ''} » ? Les appareils qui y sont rattachés seront simplement déliés.`} />
     </Box>
   )
 }

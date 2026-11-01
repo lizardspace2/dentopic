@@ -2,8 +2,8 @@
 // Palette : ../theme.js (objet C)
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Button, Flex, HStack, Input, Text } from '@chakra-ui/react'
-import { FiHelpCircle, FiSearch, FiX } from 'react-icons/fi'
+import { Box, Button, Center, Flex, HStack, Input, Text } from '@chakra-ui/react'
+import { FiAlertTriangle, FiHelpCircle, FiSearch, FiX } from 'react-icons/fi'
 import { C } from '../theme'
 
 // ---- Badges ----------------------------------------------------------------
@@ -215,6 +215,37 @@ export function Modal({ open, onClose, title, subtitle, children, width = '480px
         )}
       </Box>
     </Box>
+  )
+}
+
+// ---- Confirmation de suppression (« Voulez-vous vraiment supprimer ? ») --------
+// Toujours utiliser avant toute action destructive (corbeille, retrait, déconnexion).
+
+export function ConfirmModal({
+  open, onClose, onConfirm, busy,
+  title = 'Confirmer la suppression',
+  message = 'Voulez-vous vraiment supprimer cet élément ?',
+  confirmLabel = 'Oui, supprimer',
+  cancelLabel = 'Non',
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title} width="420px"
+      footer={<>
+        <span />
+        <HStack gap="2">
+          <Button variant="outline" size="sm" onClick={onClose}>{cancelLabel}</Button>
+          <PrimaryButton bg="red.500" _hover={{ bg: 'red.600' }} onClick={onConfirm} disabled={busy}>
+            {busy ? 'Suppression…' : confirmLabel}
+          </PrimaryButton>
+        </HStack>
+      </>}>
+      <HStack gap="3" align="start">
+        <Center w="36px" h="36px" borderRadius="full" bg="red.50" color="red.500" fontSize="md" flexShrink={0}>
+          <FiAlertTriangle />
+        </Center>
+        <Text fontSize="sm" color={C.body}>{message}</Text>
+      </HStack>
+    </Modal>
   )
 }
 

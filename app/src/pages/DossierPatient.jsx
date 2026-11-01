@@ -13,7 +13,7 @@ import {
 } from 'react-icons/fi'
 import {
   Card, Tag, ProgressBar, PageHeader, HelpButton, PrimaryButton,
-  SearchInput, Select, Modal, ago, isTestName, Tip,
+  SearchInput, Select, Modal, ago, isTestName, Tip, ConfirmModal,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -154,10 +154,11 @@ function DossierGrid() {
     setName(''); setModal(null); reload()
   }
 
-  const trash = async (ds) => {
-    setMenuFor(null)
-    await trashDossier(ds.id)
-    reload()
+  const trash = async () => {
+    if (!modal?.ds) return
+    setBusy(true)
+    await trashDossier(modal.ds.id)
+    setBusy(false); setModal(null); reload()
   }
 
   // « Modifier la fiche » : charge la fiche patient liée puis ouvre le modal d'édition
@@ -409,7 +410,7 @@ function DossierGrid() {
                       <MenuItem icon={FiEdit2} label="Renommer…"
                         onClick={() => { setMenuFor(null); setName(ds.name); setModal({ kind: 'rename', id: ds.id }) }} />
                       <MenuItem icon={FiTrash2} label="Mettre à la corbeille" danger
-                        onClick={() => trash(ds)} />
+                        onClick={() => { setMenuFor(null); setModal({ kind: 'trash', ds }) }} />
                     </VStack>
                   )}
                 </Box>
@@ -423,6 +424,13 @@ function DossierGrid() {
           Aucun dossier{q ? ` ne correspond à « ${q} »` : ''}.
         </Text>
       )}
+
+      {/* corbeille dossier — confirmation obligatoire */}
+      <ConfirmModal open={modal?.kind === 'trash'} onClose={() => setModal(null)}
+        onConfirm={trash} busy={busy}
+        title="Mettre le dossier à la corbeille ?"
+        confirmLabel="Oui, mettre à la corbeille"
+        message={`Voulez-vous vraiment mettre « ${modal?.ds?.name || ''} » à la corbeille ? Ses photos et montages seront déplacés avec lui — restauration possible depuis la corbeille.`} />
 
       {/* renommage — modal simple */}
       <Modal open={modal?.kind === 'rename'} onClose={() => setModal(null)} width="400px"
@@ -660,6 +668,8 @@ function DossierDetail({ id }) {
   const [subs, setSubs] = useState([])
   const [missing, setMissing] = useState(false)
   const [sheet, setSheet] = useState(false) // modal planche contact
+  const [confirmTrash, setConfirmTrash] = useState(false)
+  const [busy, setBusy] = useState(false)
   const fileInput = useRef(null)
 
   const reload = async () => {
@@ -689,7 +699,9 @@ function DossierDetail({ id }) {
   }
 
   const trash = async () => {
+    setBusy(true)
     await trashDossier(id)
+    setConfirmTrash(false)
     nav('/dossier-patient')
   }
 
@@ -731,7 +743,7 @@ function DossierDetail({ id }) {
           <FiGrid /> Planche contact
         </Button>
         <Button size="sm" variant="outline" onClick={rename}><FiEdit2 /> Renommer</Button>
-        <Button size="sm" variant="outline" color="red.500" onClick={trash}><FiTrash2 /></Button>
+        <Button size="sm" variant="outline" color="red.500" onClick={() => setConfirmTrash(true)}><FiTrash2 /></Button>
       </HStack>
 
       {(patient || dossier?.patient_dossier_number) && (
@@ -831,6 +843,12 @@ function DossierDetail({ id }) {
 
       <PlancheModal open={sheet} onClose={() => setSheet(false)}
         wsId={wsId} dossier={dossier} photos={photos} onDone={reload} />
+
+      <ConfirmModal open={confirmTrash} onClose={() => setConfirmTrash(false)}
+        onConfirm={trash} busy={busy}
+        title="Mettre le dossier à la corbeille ?"
+        confirmLabel="Oui, mettre à la corbeille"
+        message={`Voulez-vous vraiment mettre « ${dossier?.name || ''} » à la corbeille ? Ses ${photos.length} photo(s) et ${montages.length} montage(s) seront déplacés avec lui — restauration possible depuis la corbeille.`} />
     </Box>
   )
 }
