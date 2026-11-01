@@ -411,11 +411,11 @@ function DetailModal({ modal, onClose, onAdd }) {
   const p = modal?.pres
   const [slides, setSlides] = useState([])
   const [busy, setBusy] = useState(false)
+  const [rmSlide, setRmSlide] = useState(null)
   useEffect(() => {
     if (modal?.kind === 'detail' && p) listPresentationSlides(p.id).then(setSlides)
   }, [modal]) // eslint-disable-line
   if (!p) return null
-  const [rmSlide, setRmSlide] = useState(null)
   const removeSlide = async () => {
     if (!rmSlide) return
     setBusy(true)

@@ -1,0 +1,31 @@
+const { chromium } = require('playwright')
+;(async () => {
+  const b = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch())
+  const pg = await (await b.newContext()).newPage()
+  const errs = []
+  pg.on('pageerror', (e) => errs.push(e.message))
+  pg.on('console', (m) => { if (m.type() === 'error') errs.push(m.text().slice(0, 150)) })
+  await pg.goto('http://localhost:5175/', { waitUntil: 'domcontentloaded' })
+  await pg.waitForTimeout(2500)
+  if (await pg.locator('input[type="email"]').count()) {
+    await pg.fill('input[type="email"]', process.env.DP_USER)
+    await pg.fill('input[type="password"]', process.env.DP_PASS)
+    await pg.click('button[type="submit"]'); await pg.waitForTimeout(4000)
+  }
+  await pg.goto('http://localhost:5175/presentations', { waitUntil: 'domcontentloaded' })
+  await pg.waitForTimeout(2500)
+  // cliquer l'icône œil de la première carte (= clic présentation)
+  await pg.locator('[aria-label="Voir les diapositives"]').first().click()
+  await pg.waitForTimeout(2000)
+  const x = await pg.evaluate(() => document.body.innerText)
+  console.log('modal detail?', x.includes('diapositive'))
+  console.log('pas écran blanc?', x.length > 100)
+  // 2e ouverture pour vérifier la stabilité
+  await pg.mouse.click(200, 300); await pg.waitForTimeout(600)
+  await pg.locator('[aria-label="Voir les diapositives"]').nth(1).click().catch(() => {})
+  await pg.waitForTimeout(1500)
+  const x2 = await pg.evaluate(() => document.body.innerText)
+  console.log('2e ouverture ok?', x2.length > 100)
+  console.log('errors:', JSON.stringify(errs.slice(0, 5)))
+  await b.close()
+})()
