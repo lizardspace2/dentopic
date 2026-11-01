@@ -399,6 +399,8 @@ export class Editor {
     const i = this.active ? this.layers.indexOf(this.active) + 1 : this.layers.length
     this.layers.splice(Math.max(0, i), 0, l)
     this.activeId = l.id
+    // sélection active → le réglage arrive masqué dessus (comme Photoshop)
+    if (this.sel || this.selPoly) this.addMask(l, true)
     return l
   }
 

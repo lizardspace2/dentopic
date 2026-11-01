@@ -910,6 +910,22 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
 
   return (
     <VStack align="stretch" gap="2.5" px="3" py="3" flex="1" overflowY="auto">
+      {/* Calques de réglage — créés masqués sur la sélection active s'il y en a une */}
+      <Section title="Nouveau calque de réglage"
+        right={editor.sel || editor.selPoly ? <Text fontSize="2xs" color={C.primary}>masqué sur la sélection</Text> : null}>
+        <SimpleGrid columns={2} gap="1.5">
+          {ADJUST_KINDS.map((k) => (
+            <Tip key={k.key} label={`Nouveau calque de réglage « ${k.label} » — non destructif`}>
+              <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                bg="var(--s-a100)" color={fg} _hover={{ bg: 'var(--s-a200)' }} textAlign="left"
+                onClick={() => { editor.snapshot('Calque de réglage'); editor.addAdjustLayer(k.key); onChange() }}>
+                {k.label}
+              </Box>
+            </Tip>
+          ))}
+        </SimpleGrid>
+      </Section>
+
       {/* Comparaison avant/après sur le canevas */}
       <Section title="Comparaison">
         <Tip label="Original à gauche du séparateur jaune, retouche à droite — Q" display="block">
