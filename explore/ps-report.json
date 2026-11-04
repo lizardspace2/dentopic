@@ -1,0 +1,52 @@
+{
+  "menus": [
+    "Fichier",
+    "Édition",
+    "Image",
+    "Calque",
+    "Sélection",
+    "Filtre",
+    "Affichage",
+    "Fenêtre",
+    "Plus"
+  ],
+  "report": {
+    "Fichier": [
+      "MENU> Nouveau...Alt+Ctrl + N | Ouvrir...Ctrl + O | Ouvrir & importer... | Ouvrir Plus | Partager | EnregistrerCtrl + S | Enregistrer en tant que PSD | Enregistrer Plus | Exporter en tant que | Imprimer...Ctrl + P | Exporter les calques... | Export Color Lookup... | Informations du fichier... | Automatiser | Script...",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Édition": [
+      "MENU> Annuler / Restaurer | Étape suivanteShift+Ctrl + Z | Étape précédenteCtrl + Z | Atténuer...Shift+Ctrl + F | CouperCtrl + X | CopierCtrl + C | Copier avec fusionShift+Ctrl + C | CollerCtrl + V | EffacerDelete | Remplir...Shift + F5 | Contour... | Échelle basée sur le contenu | Déformation de la marionnette | Perspective Warp | Transformation libreAlt+Ctrl + T | Transformer | Alignement automatique | Fusion automatique | Assign Profile | Convert to Profile | Définir nouveau | Gestionnaire des préréglages... | Préférences...Ctrl + K | Stockage local...",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Image": [
+      "MENU> Mode | Réglages | Tonalité automatique | Contraste automatique | Couleur automatique | Diminuer le nombre de couleurs... | Vectoriser Bitmap... | Wavelet Decompose | Taille de la zone de travail...Alt+Ctrl + C | Taille de l'image...Alt+Ctrl + I | Transformer | Recadrage | Rognage...Ctrl + . | Tout faire apparaître | Dupliquer | Appliquer une image... | Variables...",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Calque": [
+      "MENU> Nouveau | Dupliquer le calque | Dupliquer vers… | Supprimer | Text | Style de calque | Nouveau calque de remplissage | Nouveau calque de réglage | Masque de pixels | Masque vectoriel | Masque d'écrêtageAlt+Ctrl + G | Objet dynamique | Pixelliser | Pixelliser le style de calque | Grouper les calquesCtrl + G | Réorganiser | Combine Shapes | Animation | Fusionner vers le basCtrl + E | Aplatir l’image | Supprimer les franges",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Sélection": [
+      "MENU> ToutCtrl + A | DésélectionnerCtrl + D | InverserShift+Ctrl + I | Remove BG | Plage de couleurs... | Coupe magique... | Sujet | Améliorer le contour... | Modifier | Étendre | Généraliser | Transformer la sélection | Mode MasqueQ | Charger Sélection | Enregistrer Sélection",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Filtre": [
+      "MENU> Dernier filtreAlt+Ctrl + F | Galerie de filtres... | Correction de l'objectif... | Camera Raw...Shift+Ctrl + A | Fluidité... | Vanishing Point... | 3D | Flou | Galerie des flous | Déformation | Bruit | Pixellisation | Rendu | Netteté | Esthétiques | Filtres divers | Fourier",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Affichage": [
+      "MENU> AgrandirCtrl + + | RéduireCtrl + - | Ajuster à la zoneCtrl + 0 | Pixel à pixelCtrl + 1 | Aperçu du motif | Mode | ExtrasCtrl + H | Afficher | RèglesCtrl + R | Magnétisme | Magnétiser à... | Verrouiller les repères | Effacer les repères | Ajouter des repères... | Repères à partir d'un calque | Effacer les tranches",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Fenêtre": [
+      "MENU> Plus | Plugins | Scripts | Réglages | Pinceau | Canaux | Caractère | Character Styles | Couleur | Glyphes | Histogramme | Historique | Informations | Calques | Timeline | Compositions de calques | Navigation | Notes | Paragraphe | Tracés | Propriétés | Style | Nuancier | Outils prédéfinis | Vector Info",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ],
+    "Plus": [
+      "MENU> Langue | Thème | Installer Photopea | Raccourcis clavier | Utiliser WebGL | PeaMark | Credits | About Photopea",
+      "MENU> Accueil | Cet appareil | PeaDrive | Dropbox | OneDrive | Google Drive | Pick any File | PeaGames | Photopea | Vectorpea | Jampea"
+    ]
+  },
+  "tools": []
+}

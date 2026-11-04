@@ -1,72 +1,61 @@
-const { chromium } = require('playwright')
+// Vérifie le rendu de la page Publication (hors auth — wsId null → état vide,
+// mais calendrier/filtre/événements/navigation doivent fonctionner).
+const { chromium } = require('playwright-core')
+const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+const out = {}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
 ;(async () => {
-  const b = await chromium.launch({ channel: 'chrome' }).catch(() => chromium.launch())
-  const pg = await (await b.newContext({ viewport: { width: 1400, height: 900 } })).newPage()
+  const b = await chromium.launch({ executablePath: CHROME })
+  const p = await b.newPage({ viewport: { width: 1500, height: 950 } })
   const errs = []
-  pg.on('pageerror', (e) => errs.push(e.message))
-  await pg.goto('http://localhost:5175/login')
-  await pg.fill('input[type="email"]', process.env.DP_USER); await pg.fill('input[type="password"]', process.env.DP_PASS)
-  await pg.click('button[type="submit"]'); await pg.waitForTimeout(3000)
-  await pg.goto('http://localhost:5175/publication'); await pg.waitForTimeout(2500)
-  const t = () => pg.evaluate(() => document.body.innerText)
-  const inModal = (fn) => pg.evaluate(`(() => {
-    const m = [...document.querySelectorAll('div')].filter(d => getComputedStyle(d).position === 'fixed').pop()
-    if (!m) return false
-    return (${fn})(m)
-  })()`)
+  p.on('pageerror', (e) => errs.push(String(e)))
+  await p.goto('http://localhost:5431/test-pub.html')
+  await sleep(1000)
 
-  // --- Connecter un réseau ---
-  await pg.click('button:has-text("Connecter un réseau")'); await pg.waitForTimeout(700)
-  console.log('modal connect?', (await t()).includes('Connecter un réseau social'))
-  await inModal(`m => [...m.querySelectorAll('[as=button],button')].find(x => x.textContent.trim()==='Instagram')?.click() || true`)
-  await pg.fill('input[placeholder*="cabinet"]', 'cabinet.test').catch(async () => {
-    await pg.locator('div').locator('input').last().fill('cabinet.test')
-  })
-  await inModal(`m => [...m.querySelectorAll('button')].find(b => b.textContent.trim()==='Connecter')?.click()`)
-  await pg.waitForTimeout(2000)
-  console.log('compte ajouté?', (await t()).includes('cabinet.test'))
-  console.log('badge pending?', (await t()).includes('En attente OAuth'))
-  await pg.screenshot({ path: 'shots/pub-connect.png' })
-  // fermer modal
-  await pg.evaluate(() => [...document.querySelectorAll('div')].filter(d => getComputedStyle(d).position === 'fixed').pop()?.click())
-  await pg.waitForTimeout(800)
-  console.log('étape 1 cochée?', /Connectez un réseau/.test(await t()))
+  // 1) semaine réelle : le titre affiche « Semaine du … » avec le mois courant
+  out.title = await p.locator('text=/Semaine du/').textContent().catch(() => null)
 
-  // --- Préparer un brouillon ---
-  await pg.click('button:has-text("Préparer un brouillon")'); await pg.waitForTimeout(2500)
-  console.log('modal draft?', (await t()).includes('Préparer un brouillon'))
-  console.log('pick photo?', await inModal(`m => { const i = m.querySelector('img'); i?.closest('div').click(); return !!i }`))
-  await pg.waitForTimeout(300)
-  await inModal(`m => { const ta = m.querySelector('textarea'); const s = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set; s.call(ta,'Légende de test E2E #dentaire'); ta.dispatchEvent(new Event('input',{bubbles:true})); return true }`)
-  await pg.waitForTimeout(200)
-  await inModal(`m => [...m.querySelectorAll('button')].find(b => b.textContent.trim()==='Créer le brouillon')?.click()`)
-  await pg.waitForTimeout(2500)
-  console.log('brouillon créé?', (await t()).includes('(1)') || (await t()).includes('Légende de test'))
+  // 2) 7 en-têtes de jour + colonne FILE
+  out.dayHeaders = await p.locator('text=/^(LUN|MAR|MER|JEU|VEN|SAM|DIM) \\d+$/').count()
+  out.fileCol = await p.locator('text=FILE').count()
 
-  // onglet Brouillons
-  await pg.click('text=Brouillons'); await pg.waitForTimeout(800)
-  const tb = await t()
-  console.log('draft listé?', tb.includes('Légende de test E2E'))
-  await pg.screenshot({ path: 'shots/pub-drafts.png' })
+  // 3) navigation : clic → → le titre change ; Aujourd'hui revient
+  const t0 = await p.locator('text=/Semaine du/').textContent()
+  await p.click('[aria-label="Période suivante"]')
+  await sleep(200)
+  const t1 = await p.locator('text=/Semaine du/').textContent()
+  out.navChangesTitle = t0 !== t1
+  await p.click('text=Aujourd\'hui')
+  await sleep(200)
+  const t2 = await p.locator('text=/Semaine du/').textContent()
+  out.todayBack = t0 === t2
 
-  // modifier le brouillon → programmer
-  await pg.locator('text=Légende de test E2E').first().click(); await pg.waitForTimeout(800)
-  console.log('modal édition?', (await t()).includes('Modifier le brouillon'))
-  const dt = new Date(Date.now() + 86400000).toISOString().slice(0, 16)
-  await inModal(`m => { const i = m.querySelector('input[type=datetime-local]'); const s = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; s.call(i,'${dt}'); i.dispatchEvent(new Event('input',{bubbles:true})); return true }`)
-  await inModal(`m => [...m.querySelectorAll('button')].find(b => b.textContent.trim()==='Enregistrer')?.click()`)
-  await pg.waitForTimeout(2000)
-  console.log('programmé?', (await t()).includes('Programmé'))
+  // 4) filtre par type
+  await p.selectOption('select[aria-label="Filtrer par type de contenu"]', 'story')
+  out.filterSet = true
 
-  // supprimer le brouillon
-  await pg.locator('[aria-label="Supprimer le brouillon"]').first().click(); await pg.waitForTimeout(1500)
-  console.log('supprimé?', !(await t()).includes('Légende de test E2E'))
+  // 5) événements réels calculés
+  out.events = await p.locator('text=/Journée mondiale|Journée internationale/').count()
 
-  // déconnecter le compte
-  await pg.click('button:has-text("Connecter un réseau")'); await pg.waitForTimeout(700)
-  await inModal(`m => m.querySelector('[aria-label="Déconnecter le compte"]')?.click()`)
-  await pg.waitForTimeout(1500)
-  console.log('compte déconnecté?', !(await t()).includes('cabinet.test'))
-  console.log('errors:', errs.filter((e) => !e.includes('favicon')))
+  // 6) vue mois
+  await p.click('text=Calendrier')
+  await sleep(300)
+  out.monthTitle = await p.locator('text=/\\d{4}/').first().textContent().catch(() => null)
+  await p.screenshot({ path: 'pub-month.png' })
+  await p.click('text=Semaine')
+  await sleep(300)
+  await p.screenshot({ path: 'pub-week.png' })
+
+  // 7) clic « + » sur un jour → modal brouillon avec date pré-remplie
+  await p.click('[aria-label^="Créer le"] >> nth=3')
+  await sleep(400)
+  out.draftModal = await p.locator('text=Préparer un brouillon').count()
+  out.prefilled = await p.locator('input[type="datetime-local"]').inputValue().catch(() => '')
+
+  console.log(JSON.stringify(out, null, 1))
+  console.log('errors:', errs)
+  const pass = out.title?.startsWith('Semaine du') && out.dayHeaders === 7 && out.fileCol && out.navChangesTitle && out.todayBack && out.events >= 3 && out.monthTitle && out.draftModal >= 1 && /^\d{4}-\d{2}-\d{2}T09:00$/.test(out.prefilled)
+  console.log(pass && !errs.length ? 'ALL PASS' : 'FAIL')
   await b.close()
 })()
