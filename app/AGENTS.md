@@ -110,3 +110,20 @@ export default function MaPage() {
 - `npm run build` doit passer sans erreur.
 - Tester en local : `npm run dev` puis login avec le compte Supabase du projet.
 - `explore/verify-copy.js` (workspace parent) rejoue un parcours Playwright complet.
+
+## Déploiement Edge Functions (réseaux sociaux)
+
+`supabase/functions/` contient l'infra publication sociale (OAuth Meta /
+agrégateur, moteur `social-publish-due`) — voir `supabase/functions/README.md`
+pour la liste des secrets. Pour déployer depuis le repo :
+
+```bash
+SUPABASE_ACCESS_TOKEN=$(grep ^SUPABASE_ACCESS_TOKEN app/.env | cut -d= -f2) \
+  supabase functions deploy <nom> --project-ref rgpoojpvhbxlabzdxfff
+```
+
+- Le token CLI vit dans `app/.env` (`SUPABASE_ACCESS_TOKEN`, gitignoré) —
+  révoquable sur supabase.com/dashboard/account/tokens.
+- `social-oauth-callback` se déploie avec `--no-verify-jwt` (redirection Meta
+  sans session) ; les autres gardent la vérif JWT.
+- `.env` contient aussi les clés publiques Vite (`VITE_SUPABASE_URL/ANON_KEY`).

@@ -4,11 +4,12 @@ import {
   FiSquare, FiSun, FiType, FiZoomIn, FiZap,
 } from 'react-icons/fi'
 import {
-  LuBandage, LuHand, LuMousePointer2, LuPaintBucket, LuPencil, LuPenTool, LuShapes,
-  LuSparkles, LuStamp, LuWaves,
+  LuBandage, LuHand, LuMousePointer2, LuPaintBucket, LuPencil, LuPenTool, LuRuler,
+  LuShapes, LuSparkles, LuStamp, LuWaves,
 } from 'react-icons/lu'
 import { MdBlurOn, MdGradient } from 'react-icons/md'
 import { TbColorPicker, TbLassoPolygon, TbPolygon } from 'react-icons/tb'
+import { deltaE, hexToRgb } from './engine'
 
 // Barre d'outils verticale (ordre = affichage)
 export const TOOLS = [
@@ -23,7 +24,7 @@ export const TOOLS = [
   { key: 'pencil', icon: LuPencil, label: 'Crayon', hint: 'Trait à bord franc — Maj+B' },
   { key: 'clone', icon: LuStamp, label: 'Tampon', hint: 'Alt+clic = source, puis duplique — S' },
   { key: 'heal', icon: LuBandage, label: 'Correcteur', hint: 'Estompe les défauts locaux — J' },
-  { key: 'tone', icon: FiSun, label: 'Éclaircir / Assombrir', hint: 'Dodge & burn locaux — O' },
+  { key: 'tone', icon: FiSun, label: 'Éclaircir / Assombrir / Éponge', hint: 'Dodge & burn, saturation locale — O' },
   { key: 'blurTool', icon: MdBlurOn, label: 'Flou', hint: 'Floute localement — U' },
   { key: 'sharpenTool', icon: LuSparkles, label: 'Accentuation', hint: 'Renforce la netteté locale — Maj+U' },
   { key: 'smudge', icon: LuWaves, label: 'Doigt', hint: 'Étale la matière — Maj+S' },
@@ -35,6 +36,7 @@ export const TOOLS = [
   { key: 'pen', icon: LuPenTool, label: 'Plume', hint: 'Tracé Bézier : clic = ancre, glisser = courbe, Entrée = terminer — P' },
   { key: 'text', icon: FiType, label: 'Texte', hint: 'Clique puis saisis — T' },
   { key: 'picker', icon: TbColorPicker, label: 'Pipette', hint: 'Prélève une couleur — I' },
+  { key: 'ruler', icon: LuRuler, label: 'Règle / Mesure', hint: 'Glisse une ligne : longueur en px, calibrable en mm (dentaire)' },
   { key: 'rotate', icon: FiRotateCw, label: 'Rotation', hint: 'Pivote le document de 90°' },
   { key: 'hand', icon: LuHand, label: 'Main', hint: 'Déplace la vue — H' },
   { key: 'zoom', icon: FiZoomIn, label: 'Zoom', hint: 'Cliquer = +, Alt+clic = − — Z' },
@@ -82,6 +84,12 @@ export const FILTER_DEFS = {
   invert: { label: 'Négatif', params: [] },
   desaturate: { label: 'Désaturer', params: [] },
   equalize: { label: 'Égaliser', params: [] },
+  noise: { label: 'Ajouter du bruit', params: [
+    { key: 'amount', label: 'Quantité', min: 1, max: 100, step: 1, def: 12, unit: '%' },
+  ] },
+  highpass: { label: 'Passe-haut', params: [
+    { key: 'radius', label: 'Rayon', min: 0.5, max: 100, step: 0.5, def: 10, unit: 'px' },
+  ] },
 }
 
 // Réglages groupés façon Lightroom/Photoshop (panneau « Réglages »)
@@ -139,6 +147,11 @@ export const PRESETS = [
   { name: 'Doux', adjust: { brightness: 108, contrast: 92, saturate: 90, blur: 0.4 } },
   { name: 'Froid', adjust: { temp: -35, tint: 8, saturate: 95 } },
   { name: 'Écarteur', adjust: { exposure: 0.25, contrast: 118, sharp: 40 } },
+  // --- Presets dentaires ---
+  { name: 'Émail net', adjust: { sharp: 55, contrast: 108, saturate: 105 } },
+  { name: 'Blanchiment léger', adjust: { brightness: 112, exposure: 0.15, saturate: 92 } },
+  { name: 'Gencive', adjust: { saturate: 118, hue: -8, contrast: 105 } },
+  { name: 'Analyse de teinte', adjust: { exposure: 0.1, saturate: 80, contrast: 96 } },
 ]
 
 export const SWATCHES = [
@@ -185,9 +198,33 @@ export const VITA_SHADES = [
   { code: 'D4', color: '#cbc2a4' },
 ]
 
+// Teinte VITA la plus proche d'une couleur échantillonnée (distance ΔE en Lab).
+// Retourne { code, color, de } — de < 5 ≈ indiscernable à l'œil.
+export function nearestVita(r, g, b) {
+  let best = null
+  for (const s of VITA_SHADES) {
+    const de = deltaE([r, g, b], hexToRgb(s.color))
+    if (!best || de < best.de) best = { code: s.code, color: s.color, de }
+  }
+  return best
+}
+
 // Les 8 vues du référentiel — planche 3×3 (cellule centrale = titre)
 export const SHEET_SLOTS = [
   'Portrait de face', 'Portrait sourire', 'Portrait de profil',
   'Intra-orale de face', 'Intra-orale droite', 'Intra-orale gauche',
   'Occlusale maxillaire', 'Occlusale mandibulaire',
+]
+
+// Numérotation FDI : 4 quadrants × 8 dents (adulte 11–48)
+export const FDI_TEETH = [1, 2, 3, 4].flatMap((q) =>
+  [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ code: `${q}${n}`, quadrant: q, n })))
+
+// Formats de nouveau document (dialogue Fichier → Nouveau)
+export const NEW_DOC_PRESETS = [
+  { name: 'Photo intra-orale', w: 2400, h: 1600 },
+  { name: 'Portrait', w: 1600, h: 2000 },
+  { name: 'Carré réseaux', w: 1080, h: 1080 },
+  { name: 'Story', w: 1080, h: 1920 },
+  { name: 'Planche 4:3', w: 2048, h: 1536 },
 ]

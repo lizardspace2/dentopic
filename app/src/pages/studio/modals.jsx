@@ -1,13 +1,13 @@
 // Modals du Studio : ouverture d'une photo du workspace, export, sauvegarde.
 import { useEffect, useRef, useState } from 'react'
 import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
-import { FiDownload, FiFolder, FiSave } from 'react-icons/fi'
-import { Card, Modal, SearchInput, Select, Tag, Tip, isTestName } from '../../components/ui'
+import { FiDownload, FiFileText, FiFolder, FiSave } from 'react-icons/fi'
+import { Card, Field, Modal, SearchInput, Select, Tag, Tip, isTestName } from '../../components/ui'
 import { C, S } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
-import { BLEND_MODES, SHEET_SLOTS } from './constants'
-import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_FX, hexToRgb, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
+import { BLEND_MODES, FILTER_DEFS, NEW_DOC_PRESETS, SHEET_SLOTS } from './constants'
+import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_FX, colorMask, hexToRgb, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
 
 // ---- Ouvrir : photo du workspace (ou import local géré par la page) -------------
 
@@ -47,7 +47,7 @@ export function OpenPhotoModal({ open, onClose, wsId, onPick }) {
 const fmtBytes = (n) => n == null ? '…' : n >= 1048576 ? `${(n / 1048576).toFixed(2)} M`
   : n >= 1024 ? `${Math.round(n / 1024)} K` : `${n} o`
 
-export function ExportModal({ open, onClose, editor, docName, dossiers, onExport, onSave }) {
+export function ExportModal({ open, onClose, editor, docName, dossiers, onExport, onSave, onExportPdf }) {
   const [format, setFormat] = useState('jpeg')
   const [quality, setQuality] = useState(92)
   const [scale, setScale] = useState(100)
@@ -164,6 +164,11 @@ export function ExportModal({ open, onClose, editor, docName, dossiers, onExport
       <HStack justify="end" gap="2" mt="4">
         <Box as="button" px="4" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
           bg="var(--s-a100)" color={S.fg} onClick={onClose}>Annuler</Box>
+        <Box as="button" px="4" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
+          bg="var(--s-a100)" color={S.fg} _hover={{ bg: 'var(--s-a50)' }}
+          onClick={onExportPdf}>
+          <HStack gap="1.5" as="span"><FiFileText /> PDF (A4)</HStack>
+        </Box>
         <Box as="button" px="5" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
           bg="#1a1a1a" color="#ffffff" _hover={{ bg: '#333333' }}
           onClick={() => { onExport({ format, quality, scale }); }}>
@@ -221,11 +226,17 @@ export function MontageModal({ open, onClose, wsId, onCreate }) {
     <Modal open={open} onClose={onClose} title="Montage avant / après"
       subtitle="Cliquez deux photos : la première devient AVANT, la seconde APRÈS" width="680px"
       footer={
-        <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
-          disabled={!avant || !apres} loading={busy}
-          onClick={async () => { setBusy(true); await onCreate(avant, apres, { layout, labels }); setBusy(false) }}>
-          Créer le montage
-        </Button>
+        <>
+          <Button size="sm" variant="outline" disabled={!avant || !apres} loading={busy}
+            onClick={async () => { setBusy(true); await onCreate(avant, apres, { layout, labels }, true); setBusy(false) }}>
+            Créer puis enregistrer…
+          </Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            disabled={!avant || !apres} loading={busy}
+            onClick={async () => { setBusy(true); await onCreate(avant, apres, { layout, labels }); setBusy(false) }}>
+            Créer le montage
+          </Button>
+        </>
       }>
       <VStack align="stretch" gap="4">
         <HStack gap="4" align="start">
@@ -302,6 +313,10 @@ export function SheetModal({ open, onClose, wsId, onCompose }) {
       footer={
         <>
           <Text fontSize="xs" color="gray.500">{filled}/8 vues</Text>
+          <Button size="sm" variant="outline" disabled={!filled} loading={busy}
+            onClick={async () => { setBusy(true); await onCompose(slots, true); setBusy(false) }}>
+            Composer puis enregistrer…
+          </Button>
           <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
             disabled={!filled} loading={busy}
             onClick={async () => { setBusy(true); await onCompose(slots); setBusy(false) }}>
@@ -897,6 +912,708 @@ export function SelectMaskModal({ open, onClose, editor, onApply, onChange }) {
             bg={C.primary} color="#ffffff" onClick={() => close(true)}>OK</Box>
         </HStack>
       </VStack>
+    </Modal>
+  )
+}
+
+// ---- Fichier → Nouveau document vierge --------------------------------------------
+
+export function NewDocModal({ open, onClose, onCreate }) {
+  const [name, setName] = useState('Sans titre-1')
+  const [w, setW] = useState(1920)
+  const [h, setH] = useState(1080)
+  const [bg, setBg] = useState('transparent')
+  const [custom, setCustom] = useState('#ffffff')
+  useEffect(() => {
+    if (open) { setName('Sans titre-1'); setW(1920); setH(1080); setBg('transparent'); setCustom('#ffffff') }
+  }, [open])
+  return (
+    <Modal open={open} onClose={onClose} title="Nouveau document"
+      subtitle="Canevas vierge — les photos s'y importent ensuite" width="420px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => onCreate({
+              name: name.trim() || 'Sans titre-1',
+              w: Math.max(8, Math.min(16000, Math.round(w))),
+              h: Math.max(8, Math.min(16000, Math.round(h))),
+              bg: bg === 'custom' ? custom : bg,
+            })}>Créer</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="3">
+        <Field label="Nom">
+          <Input value={name} onChange={(e) => setName(e.target.value)} h="34px" fontSize="sm" />
+        </Field>
+        <Field label="Format prédéfini">
+          <Select w="100%" onChange={(e) => {
+            const p = NEW_DOC_PRESETS[+e.target.value]
+            if (p) { setW(p.w); setH(p.h) }
+          }}>
+            <option value="-1">Personnalisé</option>
+            {NEW_DOC_PRESETS.map((p, i) => <option key={p.name} value={i}>{p.name} — {p.w}×{p.h}</option>)}
+          </Select>
+        </Field>
+        <HStack gap="3">
+          <Field label="Largeur (px)" flex="1">
+            <Input type="number" value={w} min={8} max={16000} h="34px" fontSize="sm"
+              onChange={(e) => setW(+e.target.value || 8)} />
+          </Field>
+          <Field label="Hauteur (px)" flex="1">
+            <Input type="number" value={h} min={8} max={16000} h="34px" fontSize="sm"
+              onChange={(e) => setH(+e.target.value || 8)} />
+          </Field>
+        </HStack>
+        <Field label="Contenu de l'arrière-plan">
+          <HStack>
+            <Select flex="1" value={bg} onChange={(e) => setBg(e.target.value)}>
+              <option value="transparent">Transparent</option>
+              <option value="#ffffff">Blanc</option>
+              <option value="#000000">Noir</option>
+              <option value="custom">Couleur…</option>
+            </Select>
+            {bg === 'custom' && (
+              <Input type="color" value={custom} w="44px" h="34px" p="0.5"
+                onChange={(e) => setCustom(e.target.value)} />
+            )}
+          </HStack>
+        </Field>
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Image → Taille de la zone de travail (Canvas Size + ancre) --------------------
+
+export function CanvasSizeModal({ open, onClose, editor, onApply }) {
+  const [w, setW] = useState(0)
+  const [h, setH] = useState(0)
+  const [anchor, setAnchor] = useState(4) // index 0-8 dans la grille 3×3 (4 = centre)
+  useEffect(() => {
+    if (open && editor?.w) { setW(editor.w); setH(editor.h); setAnchor(4) }
+  }, [open]) // eslint-disable-line
+  const ax = (anchor % 3) / 2, ay = Math.floor(anchor / 3) / 2
+  return (
+    <Modal open={open} onClose={onClose} title="Taille de la zone de travail"
+      subtitle={`Actuelle : ${editor?.w || 0} × ${editor?.h || 0} px — les pixels ne sont pas mis à l'échelle`}
+      width="400px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => onApply(Math.max(8, Math.round(w)), Math.max(8, Math.round(h)), ax, ay)}>OK</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="3">
+        <HStack gap="3">
+          <Field label="Nouvelle largeur (px)" flex="1">
+            <Input type="number" value={w} min={8} max={16000} h="34px" fontSize="sm"
+              onChange={(e) => setW(+e.target.value || 8)} />
+          </Field>
+          <Field label="Nouvelle hauteur (px)" flex="1">
+            <Input type="number" value={h} min={8} max={16000} h="34px" fontSize="sm"
+              onChange={(e) => setH(+e.target.value || 8)} />
+          </Field>
+        </HStack>
+        <Box>
+          <Text fontSize="xs" fontWeight="500" color={C.ink} mb="1.5">Ancrage</Text>
+          <SimpleGrid columns={3} gap="1" w="120px">
+            {Array.from({ length: 9 }, (_, i) => (
+              <Box as="button" key={i} w="36px" h="36px" borderRadius="sm" cursor="pointer"
+                border="1px solid" borderColor={anchor === i ? C.primary : S.border}
+                bg={anchor === i ? C.primary : S.input}
+                onClick={() => setAnchor(i)} />
+            ))}
+          </SimpleGrid>
+          <Text fontSize="2xs" color={S.muted} mt="1.5">
+            Le carré bleu indique le bord de l'image qui reste fixe.
+          </Text>
+        </Box>
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Édition → Remplir… (contenu + mode + opacité + plume) -------------------------
+
+export function FillModal({ open, onClose, fg, bg, onApply }) {
+  const [content, setContent] = useState('fg')
+  const [custom, setCustom] = useState('#808080')
+  const [blend, setBlend] = useState('source-over')
+  const [opacity, setOpacity] = useState(100)
+  const [feather, setFeather] = useState(0)
+  useEffect(() => {
+    if (open) { setContent('fg'); setBlend('source-over'); setOpacity(100); setFeather(0) }
+  }, [open])
+  const color = content === 'fg' ? fg : content === 'bg' ? bg
+    : content === 'black' ? '#000000' : content === 'gray50' ? '#808080'
+    : content === 'white' ? '#ffffff' : custom
+  return (
+    <Modal open={open} onClose={onClose} title="Remplir"
+      subtitle="Remplit la sélection (ou le calque actif entier)" width="400px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => onApply({ color, opacity: opacity / 100, blend, feather })}>OK</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="3">
+        <Field label="Contenu">
+          <HStack>
+            <Select flex="1" value={content} onChange={(e) => setContent(e.target.value)}>
+              <option value="fg">Premier plan</option>
+              <option value="bg">Arrière-plan</option>
+              <option value="custom">Couleur…</option>
+              <option value="black">Noir</option>
+              <option value="gray50">50 % gris</option>
+              <option value="white">Blanc</option>
+            </Select>
+            <Box w="30px" h="30px" borderRadius="sm" border="1px solid" borderColor={S.border} bg={color} />
+            {content === 'custom' && (
+              <Input type="color" value={custom} w="44px" h="30px" p="0.5"
+                onChange={(e) => setCustom(e.target.value)} />
+            )}
+          </HStack>
+        </Field>
+        <Field label="Mode">
+          <Select w="100%" value={blend} onChange={(e) => setBlend(e.target.value)}>
+            {BLEND_MODES.map(([label, v]) => <option key={v} value={v}>{label}</option>)}
+          </Select>
+        </Field>
+        <HStack justify="space-between">
+          <Text fontSize="xs" color={C.ink}>Opacité</Text>
+          <Text fontSize="xs" color={S.fg}>{opacity} %</Text>
+        </HStack>
+        <Input type="range" min={1} max={100} value={opacity} h="20px"
+          onChange={(e) => setOpacity(+e.target.value)} />
+        <HStack justify="space-between">
+          <Text fontSize="xs" color={C.ink}>Contour progressif</Text>
+          <Text fontSize="xs" color={S.fg}>{feather} px</Text>
+        </HStack>
+        <Input type="range" min={0} max={100} value={feather} h="20px"
+          onChange={(e) => setFeather(+e.target.value)} />
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Édition → Contour… (trait le long de la sélection) ----------------------------
+
+export function StrokeModal({ open, onClose, fg, onApply }) {
+  const [width, setWidth] = useState(4)
+  const [color, setColor] = useState(null)
+  const [pos, setPos] = useState('center')
+  useEffect(() => { if (open) { setWidth(4); setColor(null); setPos('center') } }, [open])
+  return (
+    <Modal open={open} onClose={onClose} title="Contour"
+      subtitle="Trace un trait le long du bord de la sélection" width="380px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => onApply({ color: color || fg, width, pos })}>OK</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="3">
+        <HStack gap="3">
+          <Field label="Largeur (px)" flex="1">
+            <Input type="number" value={width} min={1} max={250} h="34px" fontSize="sm"
+              onChange={(e) => setWidth(Math.max(1, +e.target.value || 1))} />
+          </Field>
+          <Field label="Couleur">
+            <Input type="color" value={color || fg} w="60px" h="34px" p="0.5"
+              onChange={(e) => setColor(e.target.value)} />
+          </Field>
+        </HStack>
+        <Field label="Position">
+          <Select w="100%" value={pos} onChange={(e) => setPos(e.target.value)}>
+            <option value="inside">Intérieur</option>
+            <option value="center">Centré</option>
+            <option value="outside">Extérieur</option>
+          </Select>
+        </Field>
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Sélection → Plage de couleurs (pipette sur l'aperçu + tolérance) --------------
+
+export function ColorRangeModal({ open, onClose, editor, onApply }) {
+  const cvRef = useRef(null)
+  const [rgb, setRgb] = useState(null)
+  const [tol, setTol] = useState(60)
+  const W = 460, H = 300
+
+  const draw = () => {
+    const cv = cvRef.current
+    if (!cv || !editor?.w) return
+    const k = Math.min(W / editor.w, H / editor.h)
+    cv.width = Math.round(editor.w * k); cv.height = Math.round(editor.h * k)
+    const ctx = cv.getContext('2d')
+    ctx.drawImage(editor.compositeFiltered(), 0, 0, cv.width, cv.height)
+    if (rgb) { // aperçu : pixels retenus en surbrillance rouge
+      const mask = colorMask(cv, rgb, tol)
+      const img = ctx.getImageData(0, 0, cv.width, cv.height)
+      for (let i = 0; i < mask.length; i++) if (mask[i]) {
+        img.data[i * 4] = 255
+        img.data[i * 4 + 1] = img.data[i * 4 + 1] * 0.35
+        img.data[i * 4 + 2] = img.data[i * 4 + 2] * 0.35
+      }
+      ctx.putImageData(img, 0, 0)
+    }
+  }
+  useEffect(() => { if (open) { setRgb(null); setTol(60) } }, [open])
+  useEffect(draw, [open, rgb, tol]) // eslint-disable-line
+
+  return (
+    <Modal open={open} onClose={onClose} title="Plage de couleurs"
+      subtitle="Clique la couleur à sélectionner dans l'aperçu — la zone retenue s'affiche en rouge"
+      width="500px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            disabled={!rgb} onClick={() => onApply(rgb, tol)}>OK</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="3">
+        <Box as="canvas" ref={cvRef} borderRadius="md" border="1px solid" borderColor={S.border}
+          cursor="crosshair" bg={S.canvas}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            const x = Math.round((e.clientX - r.left) * (cvRef.current.width / r.width))
+            const y = Math.round((e.clientY - r.top) * (cvRef.current.height / r.height))
+            const d = cvRef.current.getContext('2d').getImageData(x, y, 1, 1).data
+            setRgb([d[0], d[1], d[2]])
+          }} />
+        <HStack justify="space-between">
+          <HStack gap="2">
+            <Box w="24px" h="24px" borderRadius="sm" border="1px solid" borderColor={S.border}
+              bg={rgb ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : 'transparent'} />
+            <Text fontSize="xs" color={S.fg}>{rgb ? `RVB ${rgb.join(', ')}` : 'Cliquez dans l’aperçu'}</Text>
+          </HStack>
+          <HStack gap="2">
+            <Text fontSize="xs" color={C.ink}>Tolérance</Text>
+            <Text fontSize="xs" color={S.fg}>{tol}</Text>
+          </HStack>
+        </HStack>
+        <Input type="range" min={5} max={200} value={tol} h="20px"
+          onChange={(e) => setTol(+e.target.value)} />
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Sélection → Transformer la sélection (translation, échelle, rotation) ---------
+
+export function TransformSelModal({ open, onClose, onApply }) {
+  const [dx, setDx] = useState(0)
+  const [dy, setDy] = useState(0)
+  const [sx, setSx] = useState(100)
+  const [sy, setSy] = useState(100)
+  const [angle, setAngle] = useState(0)
+  useEffect(() => { if (open) { setDx(0); setDy(0); setSx(100); setSy(100); setAngle(0) } }, [open])
+  const num = (v, set, d = 0) => set(Number.isFinite(+v) ? +v : d)
+  return (
+    <Modal open={open} onClose={onClose} title="Transformer la sélection"
+      subtitle="Déplace, redimensionne ou pivote le cadre de sélection — l'image n'est pas modifiée" width="380px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => onApply({ dx, dy, sx: sx / 100, sy: sy / 100, angle: (angle * Math.PI) / 180 })}>OK</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="3">
+        <HStack gap="3">
+          <Field label="Déplacer X (px)" flex="1">
+            <Input type="number" value={dx} h="34px" fontSize="sm" onChange={(e) => num(e.target.value, setDx)} />
+          </Field>
+          <Field label="Déplacer Y (px)" flex="1">
+            <Input type="number" value={dy} h="34px" fontSize="sm" onChange={(e) => num(e.target.value, setDy)} />
+          </Field>
+        </HStack>
+        <HStack gap="3">
+          <Field label="Échelle X (%)" flex="1">
+            <Input type="number" value={sx} h="34px" fontSize="sm" onChange={(e) => num(e.target.value, setSx, 100)} />
+          </Field>
+          <Field label="Échelle Y (%)" flex="1">
+            <Input type="number" value={sy} h="34px" fontSize="sm" onChange={(e) => num(e.target.value, setSy, 100)} />
+          </Field>
+        </HStack>
+        <Field label="Rotation (°)">
+          <Input type="number" value={angle} h="34px" fontSize="sm" onChange={(e) => num(e.target.value, setAngle)} />
+        </Field>
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Sélection → Canaux alpha (Mémoriser / Récupérer la sélection) -----------------
+
+export function SavedSelModal({ open, onClose, editor, version, onApply }) {
+  const [name, setName] = useState('')
+  const list = editor?.savedSels || []
+  return (
+    <Modal open={open} onClose={onClose} title="Sélections mémorisées"
+      subtitle="Canaux alpha du document — récupérer une zone pour la retravailler plus tard" width="420px">
+      <VStack align="stretch" gap="3">
+        <HStack gap="2">
+          <Input flex="1" placeholder="Nom du canal (ex : dent 21)" value={name} h="34px" fontSize="sm"
+            onChange={(e) => setName(e.target.value)} />
+          <Button size="sm" variant="outline"
+            onClick={() => { editor.saveSel(name); setName(''); onApply() }}>
+            Mémoriser la sélection
+          </Button>
+        </HStack>
+        <VStack align="stretch" gap="1" maxH="300px" overflowY="auto">
+          {list.map((s) => (
+            <HStack key={s.id} gap="2" px="2" py="1" borderRadius="sm" bg={S.tile}>
+              <Box w="42px" h="30px" flexShrink={0} borderRadius="sm" overflow="hidden"
+                border="1px solid" borderColor={S.border} bg="#000">
+                <img src={s.cv.toDataURL('image/png')} alt="" style={{ width: '100%', height: '100%' }} />
+              </Box>
+              <Text flex="1" fontSize="xs" color={S.fg} isTruncated>{s.name}</Text>
+              <Button size="xs" variant="outline" onClick={() => { editor.loadSel(s.id); onApply() }}>Récupérer</Button>
+              <Button size="xs" variant="outline" onClick={() => { editor.deleteSel(s.id); onApply() }}>✕</Button>
+            </HStack>
+          ))}
+          {!list.length && (
+            <Text fontSize="xs" color="gray.500" textAlign="center" py="4">
+              Aucun canal — sélectionne une zone puis « Mémoriser la sélection ».
+            </Text>
+          )}
+        </VStack>
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Édition → Atténuer (fondu du dernier filtre) ----------------------------------
+
+export function FadeModal({ open, onClose, label = 'le dernier filtre', onApply }) {
+  const [t, setT] = useState(50)
+  useEffect(() => { if (open) setT(50) }, [open])
+  return (
+    <Modal open={open} onClose={onClose} title={`Atténuer ${label}`}
+      subtitle="Dose l'effet du dernier filtre appliqué — 100 % = inchangé" width="360px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => onApply(t / 100)}>OK</Button>
+        </>
+      }>
+      <VStack align="stretch" gap="2">
+        <HStack justify="space-between">
+          <Text fontSize="xs" color={C.ink}>Opacité de l'effet</Text>
+          <Text fontSize="xs" color={S.fg}>{t} %</Text>
+        </HStack>
+        <Input type="range" min={0} max={100} value={t} h="20px"
+          onChange={(e) => setT(+e.target.value)} />
+      </VStack>
+    </Modal>
+  )
+}
+
+// ---- Filtre → Fluidité : déformation interactive au pinceau --------------------
+// Champ de déplacement cumulé sur une grille (cell=8px) ; l'aperçu est calculé
+// par échantillonnage inverse en résolution réduite, la cuisson utilise
+// editor.warpField (triangles affines, pleine résolution) à la validation.
+
+const LIQ_TOOLS = [
+  ['push', 'Pousser', 'Glisser pour déplacer la matière dans le sens du geste'],
+  ['bloat', 'Gonfler', 'Éloigne les pixels du centre — maintien pour amplifier'],
+  ['pucker', 'Pincer', 'Rapproche les pixels du centre — maintien pour amplifier'],
+  ['twirl', 'Tourbillon', 'Fait pivoter la matière autour du centre'],
+  ['recon', 'Reconstruire', 'Atténue la déformation là où vous peignez'],
+]
+
+export function LiquifyModal({ open, onClose, editor, onDone }) {
+  const [tool, setTool] = useState('push')
+  const [size, setSize] = useState(120)
+  const [strength, setStrength] = useState(60)
+  const cvRef = useRef(null)
+  const st = useRef(null) // { layer, src, data, gw, gh, cell, s, pw, ph, down, last }
+  const [, setTick] = useState(0)
+
+  // (Ré)initialisation à l'ouverture : source = raster courant du calque actif
+  useEffect(() => {
+    if (!open) return
+    const layer = editor.active
+    if (!layer?.cv) { st.current = null; return }
+    const w = editor.w, h = editor.h
+    const src = document.createElement('canvas')
+    src.width = w; src.height = h
+    src.getContext('2d').drawImage(layer.cv, 0, 0)
+    const cell = 8, gw = Math.ceil(w / cell) + 1, gh = Math.ceil(h / cell) + 1
+    const s = Math.min(1, 680 / w, 520 / h)
+    st.current = {
+      layer, src, gw, gh, cell, s,
+      pw: Math.max(8, Math.round(w * s)), ph: Math.max(8, Math.round(h * s)),
+      data: new Float32Array(gw * gh * 2), down: false, last: null,
+      srcData: src.getContext('2d').getImageData(0, 0, w, h).data,
+    }
+    setTick((t) => t + 1)
+  }, [open])
+
+  // Rendu de l'aperçu : chaque pixel de sortie lit la source à (p − field(p)).
+  const render = () => {
+    const S = st.current, cv = cvRef.current
+    if (!S || !cv) return
+    const { pw, ph, s, data, gw, gh, cell, srcData } = S
+    if (cv.width !== pw) { cv.width = pw; cv.height = ph }
+    const ctx = cv.getContext('2d')
+    const out = ctx.createImageData(pw, ph)
+    const o = out.data
+    const w2 = editor.w, h2 = editor.h
+    const fieldAt = (x, y) => {
+      const gx = Math.min(Math.max(x / cell, 0), gw - 1.001)
+      const gy = Math.min(Math.max(y / cell, 0), gh - 1.001)
+      const i = Math.floor(gx), j = Math.floor(gy), u = gx - i, v = gy - j
+      const k = (j * gw + i) * 2
+      const fx = data[k] * (1 - u) * (1 - v) + data[k + 2] * u * (1 - v)
+        + data[k + 2 * gw] * (1 - u) * v + data[k + 2 * gw + 2] * u * v
+      const fy = data[k + 1] * (1 - u) * (1 - v) + data[k + 3] * u * (1 - v)
+        + data[k + 2 * gw + 1] * (1 - u) * v + data[k + 2 * gw + 3] * u * v
+      return [fx, fy]
+    }
+    for (let y = 0; y < ph; y++) {
+      for (let x = 0; x < pw; x++) {
+        const X = x / s, Y = y / s
+        const [fx, fy] = fieldAt(X, Y)
+        const sx = Math.min(Math.max(X - fx, 0), w2 - 1), sy = Math.min(Math.max(Y - fy, 0), h2 - 1)
+        const si = (Math.round(sy) * w2 + Math.round(sx)) * 4
+        const di = (y * pw + x) * 4
+        o[di] = srcData[si]; o[di + 1] = srcData[si + 1]; o[di + 2] = srcData[si + 2]; o[di + 3] = srcData[si + 3]
+      }
+    }
+    const tmp = document.createElement('canvas')
+    tmp.width = pw; tmp.height = ph
+    tmp.getContext('2d').putImageData(out, 0, 0)
+    ctx.fillStyle = '#e5e7eb'; ctx.fillRect(0, 0, pw, ph)
+    ctx.fillStyle = '#cbd5e1'
+    for (let y = 0; y < ph; y += 12) for (let x = ((y / 12) % 2) * 12; x < pw; x += 24) ctx.fillRect(x, y, 12, 12)
+    ctx.drawImage(tmp, 0, 0)
+  }
+  useEffect(() => { if (open) render() })
+
+  // Application du pinceau au champ (coords doc)
+  const brush = (x, y, dx = 0, dy = 0) => {
+    const S = st.current
+    if (!S) return
+    const r = size, stg = strength / 100
+    const i0 = Math.max(0, Math.floor((x - r) / S.cell)), i1 = Math.min(S.gw - 1, Math.ceil((x + r) / S.cell))
+    const j0 = Math.max(0, Math.floor((y - r) / S.cell)), j1 = Math.min(S.gh - 1, Math.ceil((y + r) / S.cell))
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const vx = i * S.cell - x, vy = j * S.cell - y
+        const d = Math.hypot(vx, vy)
+        if (d >= r) continue
+        const w = (1 - d / r) ** 2 * stg
+        const k = (j * S.gw + i) * 2
+        if (tool === 'push') { S.data[k] += dx * w; S.data[k + 1] += dy * w }
+        else if (tool === 'bloat' || tool === 'pucker') {
+          const m = (r * 0.08 * w) / (d || 1) * (tool === 'bloat' ? 1 : -1)
+          S.data[k] += vx * m; S.data[k + 1] += vy * m
+        } else if (tool === 'twirl') {
+          const m = (r * 0.35 * w) / (d || 1)
+          S.data[k] += -vy * m; S.data[k + 1] += vx * m
+        } else if (tool === 'recon') { S.data[k] *= 1 - w * 0.3; S.data[k + 1] *= 1 - w * 0.3 }
+      }
+    }
+  }
+
+  const pos = (e) => {
+    const S = st.current, b = cvRef.current.getBoundingClientRect()
+    return [(e.clientX - b.left) / S.s, (e.clientY - b.top) / S.s]
+  }
+  const onDown = (e) => {
+    e.preventDefault()
+    const S = st.current
+    if (!S) return
+    const [x, y] = pos(e)
+    S.down = true; S.last = [x, y]
+    if (tool !== 'push') brush(x, y)
+    const tick = setInterval(() => {
+      if (!S.down || tool === 'push' || !S.last) return
+      brush(S.last[0], S.last[1]); render()
+    }, 40)
+    const up = () => { clearInterval(tick); window.removeEventListener('pointerup', up) }
+    window.addEventListener('pointerup', up)
+  }
+  const onMove = (e) => {
+    const S = st.current
+    if (!S?.down) return
+    const [x, y] = pos(e)
+    const [lx, ly] = S.last
+    if (tool === 'push') brush(x, y, (x - lx) / 2, (y - ly) / 2)
+    else brush(x, y)
+    S.last = [x, y]
+    render()
+  }
+  const onUp = () => { if (st.current) st.current.down = false }
+
+  const apply = () => {
+    const S = st.current
+    if (!S) { onClose(); return }
+    const has = S.data.some((v) => v !== 0)
+    if (has) {
+      editor.snapshot('Fluidité')
+      editor.warpField(S.layer, { data: S.data, gw: S.gw, gh: S.gh, cell: S.cell }, 2)
+      onDone?.()
+    }
+    onClose()
+  }
+  const reset = () => { st.current?.data.fill(0); render() }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Fluidité"
+      subtitle="Déformation interactive au pinceau — façon Photoshop (Ctrl+Maj+X)" width="980px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={reset}>Tout reconstruire</Button>
+          <Box flex="1" />
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={apply}>OK</Button>
+        </>
+      }>
+      <HStack align="stretch" gap="3">
+        <VStack w="150px" flexShrink={0} align="stretch" gap="0.5">
+          {LIQ_TOOLS.map(([k, label, tip]) => (
+            <Tip key={k} label={tip}>
+              <Box as="button" w="100%" textAlign="left" px="2" py="1.5" fontSize="xs" borderRadius="md"
+                cursor="pointer" bg={tool === k ? C.primary : 'transparent'}
+                color={tool === k ? '#ffffff' : C.ink}
+                _hover={{ bg: tool === k ? C.primary : 'blackAlpha.50' }}
+                onClick={() => setTool(k)}>
+                {label}
+              </Box>
+            </Tip>
+          ))}
+          <Box pt="3">
+            <Text fontSize="2xs" color="gray.500">Taille : {size}px</Text>
+            <Input type="range" min={10} max={400} value={size} h="18px"
+              onChange={(e) => setSize(+e.target.value)} />
+            <Text fontSize="2xs" color="gray.500">Intensité : {strength}%</Text>
+            <Input type="range" min={5} max={100} value={strength} h="18px"
+              onChange={(e) => setStrength(+e.target.value)} />
+          </Box>
+        </VStack>
+        <Box flex="1" bg="blackAlpha.50" borderRadius="md" overflow="hidden"
+          display="flex" alignItems="center" justifyContent="center" minH="300px">
+          <canvas ref={cvRef} style={{ cursor: 'crosshair', maxWidth: '100%' }}
+            onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} />
+        </Box>
+      </HStack>
+    </Modal>
+  )
+}
+
+// ---- Filtre → Galerie de filtres : vignettes de prévisualisation (Photoshop) ---
+// Chaque vignette = composite réduit + filtre appliqué avec ses paramètres par
+// défaut. Clic sur une vignette → grande préview ; OK ouvre le dialogue de
+// réglage du filtre (ou applique directement s'il est sans paramètre).
+
+const GALLERY_GROUPS = [
+  ['Flou', ['gaussian', 'motion']],
+  ['Netteté', ['sharpen', 'highpass']],
+  ['Distorsion', ['twirl', 'wave']],
+  ['Bruit', ['noise', 'denoise']],
+  ['Pixellisation', ['pixelate']],
+  ['Stylisation', ['emboss', 'solarize', 'posterize', 'edge', 'vignette', 'sepia', 'invert', 'desaturate', 'equalize']],
+]
+
+export function FilterGalleryModal({ open, onClose, editor, applyTo, onPick, onApply }) {
+  const [sel, setSel] = useState('gaussian')
+  const [thumbs, setThumbs] = useState({})
+  const [prevUrl, setPrevUrl] = useState(null)
+
+  // vignette du composite à une taille donnée
+  const thumb = (max) => {
+    const comp = editor.compositeFiltered()
+    const s = Math.min(1, max / comp.width, max / comp.height)
+    const cv = document.createElement('canvas')
+    cv.width = Math.max(4, Math.round(comp.width * s))
+    cv.height = Math.max(4, Math.round(comp.height * s))
+    cv.getContext('2d').drawImage(comp, 0, 0, cv.width, cv.height)
+    return cv
+  }
+  const filtered = (key, max) => { const t = thumb(max); applyTo(key, t); return t.toDataURL() }
+
+  useEffect(() => {
+    if (!open) return
+    setSel('gaussian')
+    const map = {}
+    for (const [, keys] of GALLERY_GROUPS) {
+      const base = thumb(120)
+      for (const k of keys) {
+        const t = document.createElement('canvas')
+        t.width = base.width; t.height = base.height
+        t.getContext('2d').drawImage(base, 0, 0)
+        applyTo(k, t)
+        map[k] = t.toDataURL()
+      }
+    }
+    setThumbs(map)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  useEffect(() => { if (open) setPrevUrl(filtered(sel, 420)) }, [sel, open])
+
+  const def = FILTER_DEFS[sel]
+  const hasParams = (def?.params || []).length > 0
+
+  return (
+    <Modal open={open} onClose={onClose} title="Galerie de filtres"
+      subtitle="Aperçu de chaque effet avec ses réglages par défaut — façon Photoshop" width="920px"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
+          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+            onClick={() => (hasParams ? onPick(sel) : onApply(sel))}>
+            {hasParams ? 'Régler ce filtre…' : 'Appliquer'}
+          </Button>
+        </>
+      }>
+      <HStack align="stretch" gap="3">
+        <Box w="470px" flexShrink={0} maxH="420px" overflowY="auto" pr="1">
+          {GALLERY_GROUPS.map(([group, keys]) => (
+            <Box key={group} mb="3">
+              <Text fontSize="2xs" fontWeight="700" color="gray.500" textTransform="uppercase"
+                letterSpacing="wide" mb="1.5">{group}</Text>
+              <SimpleGrid columns={4} gap="2">
+                {keys.map((k) => (
+                  <Box key={k} cursor="pointer" onClick={() => setSel(k)}
+                    border="2px solid" borderColor={sel === k ? '#4f8fe8' : 'transparent'}
+                    borderRadius="md" overflow="hidden" _hover={{ borderColor: sel === k ? '#4f8fe8' : 'gray.300' }}>
+                    <Box bg="blackAlpha.50" display="flex" alignItems="center" justifyContent="center" h="86px">
+                      {thumbs[k]
+                        ? <img src={thumbs[k]} alt={FILTER_DEFS[k]?.label} style={{ maxWidth: '100%', maxHeight: '100%' }} />
+                        : <Box w="100%" h="86px" />}
+                    </Box>
+                    <Text fontSize="2xs" color={sel === k ? '#4f8fe8' : 'gray.600'} px="1" py="0.5" isTruncated
+                      fontWeight={sel === k ? '600' : '400'}>
+                      {FILTER_DEFS[k]?.label || k}
+                    </Text>
+                  </Box>
+                ))}
+              </SimpleGrid>
+            </Box>
+          ))}
+        </Box>
+        <VStack flex="1" align="stretch" minW="0">
+          <Text fontSize="xs" fontWeight="600" color={C.ink}>{def?.label || '—'}</Text>
+          <Box flex="1" bg="blackAlpha.50" borderRadius="md" minH="300px"
+            display="flex" alignItems="center" justifyContent="center" overflow="hidden">
+            {prevUrl && <img src={prevUrl} alt="" style={{ maxWidth: '100%', maxHeight: '400px' }} />}
+          </Box>
+        </VStack>
+      </HStack>
     </Modal>
   )
 }

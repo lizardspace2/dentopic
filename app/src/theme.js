@@ -46,22 +46,23 @@ export const C = {
 }
 
 // Palette Studio — suit le mode clair/sombre (vars --s-* dans index.css).
+const sv = (name) => `var(--s-${name})`
 export const S = {
-  bg: v('s-bg'), // fond de page / zone canvas
-  panel: v('s-panel'), // barres d'outils, rails
-  card: v('s-card'), // panneaux
-  deep: v('s-deep'), // menus, popovers
-  tile: v('s-tile'), // tuiles, vignettes
-  input: v('s-input'), // champs, selects
-  border: v('s-border'),
-  fg: v('s-fg'),
-  muted: v('s-muted'),
-  canvas: v('s-canvas'), // entourage du document
-  a50: v('s-a50'), // équivalents whiteAlpha (bordures/survols discrets)
-  a100: v('s-a100'),
-  a200: v('s-a200'),
-  a300: v('s-a300'),
-  a400: v('s-a400'),
+  bg: sv('bg'), // fond de page / zone canvas
+  panel: sv('panel'), // barres d'outils, rails
+  card: sv('card'), // panneaux
+  deep: sv('deep'), // menus, popovers
+  tile: sv('tile'), // tuiles, vignettes
+  input: sv('input'), // champs, selects
+  border: sv('border'),
+  fg: sv('fg'),
+  muted: sv('muted'),
+  canvas: sv('canvas'), // entourage du document
+  a50: sv('a50'), // équivalents whiteAlpha (bordures/survols discrets)
+  a100: sv('a100'),
+  a200: sv('a200'),
+  a300: sv('a300'),
+  a400: sv('a400'),
 }
 
 // ---- Bascule clair / sombre -------------------------------------------------

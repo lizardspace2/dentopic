@@ -5,6 +5,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Flex, HStack, Input, Text } from '@chakra-ui/react'
 import { useSearchParams } from 'react-router-dom'
+import {
+  FiCheck, FiDroplet, FiEdit2, FiMove, FiRefreshCw, FiSquare, FiTarget, FiX,
+} from 'react-icons/fi'
+import { LuPaintBucket, LuWaves } from 'react-icons/lu'
+import { TbMask } from 'react-icons/tb'
 import { C, S, getMode } from '../../theme'
 import { useApp } from '../../context/AppContext'
 import {
@@ -16,12 +21,18 @@ import {
   Editor, buildMontage, buildProtocolSheet, fetchImg, loadImg, rgbToHex,
   DEFAULT_ADJUST, applyFilterRegion, conv3x3, equalize, gaussianBlur, medianFilter,
   motionBlur, pixelate, twirl, unsharp, vignette, wave, applyLUTs, curveLUT,
+  addNoise, highPass, autoLevels, levelsLUT, warpQuad,
 } from './engine'
-import { FILTER_DEFS } from './constants'
+import { FILTER_DEFS, nearestVita } from './constants'
 import {
-  MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas,
+  MenuBar, ToolBar, OptionsBar, RightPanel, StatusBar, EmptyCanvas, ContextBar,
 } from './panels'
-import { OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal, ColorPickerModal, FilterModal, SelectMaskModal } from './modals'
+import {
+  OpenPhotoModal, ExportModal, MontageModal, SheetModal, LayerStyleModal,
+  ColorPickerModal, FilterModal, SelectMaskModal, NewDocModal, CanvasSizeModal,
+  FillModal, StrokeModal, ColorRangeModal, FadeModal, TransformSelModal, SavedSelModal,
+  LiquifyModal, FilterGalleryModal,
+} from './modals'
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v))
 const cssVar = (n, fb) => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || fb
@@ -46,6 +57,11 @@ export default function Studio() {
   const stroke = useRef(null) // état du drag en cours
   const cloneSrc = useRef(null) // source du tampon de duplication [x, y] (Alt+clic)
   const [gradLine, setGradLine] = useState(null) // aperçu du dégradé pendant le drag
+  const [measure, setMeasure] = useState(null)   // ligne de mesure [x0,y0,x1,y1] (outil Règle)
+  const [fdiArm, setFdiArm] = useState(null)     // numéro FDI armé : le prochain clic le pose
+  const [smileGuide, setSmileGuide] = useState(false) // repères esthétiques du sourire
+  const fadeRef = useRef(null)                   // {layerId, before, after, label} du dernier filtre
+  const lastFilter = useRef(null)                // {key, params} — « Filtre précédent » (Ctrl+Alt+F)
   const lastSample = useRef(0) // throttle pipette (panneau Infos)
 
   const [tool, setTool] = useState('move')
@@ -85,12 +101,18 @@ export default function Studio() {
   const [refImg, setRefImg] = useState(null)         // photo de référence (img)
   const [refOverlay, setRefOverlay] = useState(false)// incrustation sur le canevas
   const [shade, setShade] = useState(null)           // teinte VITA de la photo
+  const [shadePick, setShadePick] = useState(false)  // pipette d'analyse de teinte armée
+  const [shadeGuess, setShadeGuess] = useState(null) // suggestion VITA {code, color, de, rgb}
   // -- Affichage : règles, grille, guides, magnétisme -------------------------------
   const [rulers, setRulers] = useState(false)
   const [gridOn, setGridOn] = useState(false)
   const [guidesOn, setGuidesOn] = useState(true)
   const [guides, setGuides] = useState({ v: [], h: [] }) // positions en coords doc
   const [snapOn, setSnapOn] = useState(false)
+  const [extras, setExtras] = useState(true)     // Extras (Ctrl+H) : ants, guides, grille
+  const [ctxBar, setCtxBar] = useState(true)     // barre contextuelle flottante (PS 2026)
+  const [qm, setQm] = useState(false)            // mode masque rapide (peinture sur la sélection)
+  const [measureLog, setMeasureLog] = useState([]) // journal des mesures (outil Règle)
   const [filterKey, setFilterKey] = useState(null)   // clé FILTER_DEFS ouverte
   const [shapePrev, setShapePrev] = useState(null)    // aperçu de forme en cours
   const [ft, setFt] = useState(null)                  // transformation manuelle (Ctrl+T)
@@ -145,18 +167,94 @@ export default function Studio() {
       cx0: l.dx + bb.x + bb.w / 2, cy0: l.dy + bb.y + bb.h / 2,
       cx: l.dx + bb.x + bb.w / 2, cy: l.dy + bb.y + bb.h / 2,
       sx: 1, sy: 1, angle: 0, link: true, interp: 'bicubic',
+      mode: 'free', cs: null, wp: null,
     })
     bump()
+  }
+  // coins du cadre du calque en coords doc
+  const ftDocCorners = (f) => {
+    const x0 = f.l.dx + f.bx, y0 = f.l.dy + f.by
+    return [[x0, y0], [x0 + f.w, y0], [x0 + f.w, y0 + f.h], [x0, y0 + f.h]]
+  }
+  // treillis 3×3 (9 points) sur le cadre du calque en coords doc
+  const ftDocLattice = (f) => {
+    const x0 = f.l.dx + f.bx, y0 = f.l.dy + f.by, pts = []
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) pts.push([x0 + c * f.w / 2, y0 + r * f.h / 2])
+    return pts
+  }
+  // Déformation : le treillis 3×3 forme 4 cellules, chacune = quart de la zone source
+  const ftWarpCells = (f) => {
+    const cells = []
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
+      cells.push({
+        sx: f.bx + c * f.w / 2, sy: f.by + r * f.h / 2, sw: f.w / 2, sh: f.h / 2,
+        quad: [f.wp[r * 3 + c], f.wp[r * 3 + c + 1], f.wp[(r + 1) * 3 + c + 1], f.wp[(r + 1) * 3 + c]],
+      })
+    }
+    return cells
+  }
+  // Cuit la géométrie courante dans ft.src → repart sur un cadre propre à chaque
+  // changement de mode (libre → distorsion → déformation, sans perte).
+  const bakeFt = (f) => {
+    const out = document.createElement('canvas')
+    out.width = editor.w; out.height = editor.h
+    const ctx = out.getContext('2d')
+    const toLoc = (p) => [p[0] - f.l.dx, p[1] - f.l.dy]
+    if (f.mode === 'distort') {
+      warpQuad(ctx, f.src, f.bx, f.by, f.w, f.h, (f.cs || ftDocCorners(f)).map(toLoc), 24)
+    } else if (f.mode === 'warp') {
+      for (const cell of ftWarpCells(f.wp ? f : { ...f, wp: ftDocLattice(f) }))
+        warpQuad(ctx, f.src, cell.sx, cell.sy, cell.sw, cell.sh, cell.quad.map(toLoc), 24)
+    } else {
+      const [a, b, c, d, e2, f2] = ftMatrix(f)
+      ctx.setTransform(a, b, c, d, a * f.l.dx + c * f.l.dy + e2 - f.l.dx, b * f.l.dx + d * f.l.dy + f2 - f.l.dy)
+      ctx.imageSmoothingEnabled = f.interp !== 'nearest'
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(f.src, 0, 0)
+    }
+    const bb = editor.contentBBox({ cv: out, ctx: out.getContext('2d') })
+    if (!bb) return null
+    const dxc = bb.x + f.l.dx, dyc = bb.y + f.l.dy
+    return {
+      src: out, bx: bb.x, by: bb.y, w: bb.w, h: bb.h,
+      cx0: dxc + bb.w / 2, cy0: dyc + bb.h / 2, cx: dxc + bb.w / 2, cy: dyc + bb.h / 2,
+      sx: 1, sy: 1, angle: 0, cs: null, wp: null,
+    }
+  }
+  const setFtMode = (mode) => {
+    setFt((f) => {
+      if (!f || f.mode === mode) return f
+      const baked = bakeFt(f)
+      if (!baked) return f
+      const n = { ...f, ...baked, mode }
+      if (mode === 'distort') n.cs = ftDocCorners(n)
+      if (mode === 'warp') n.wp = ftDocLattice(n)
+      return n
+    })
   }
   const applyFt = () => {
     const f = ft; if (!f) return
     f.l.visible = true // restaurer AVANT le snapshot : l'annulation doit rendre un calque visible
-    // identité → pas d'entrée d'historique (comme Photoshop)
-    const identity = f.sx === 1 && f.sy === 1 && f.angle === 0 && f.cx === f.cx0 && f.cy === f.cy0
-    if (!identity) {
-      editor.snapshot('Free Transform')
-      editor.applyTransform(f.l, ftMatrix(f), f.interp)
-    } else editor.markDirty()
+    const toLoc = (p) => [p[0] - f.l.dx, p[1] - f.l.dy]
+    const samePts = (a, b) => a.every((p, i) => Math.abs(p[0] - b[i][0]) < 0.5 && Math.abs(p[1] - b[i][1]) < 0.5)
+    if (f.mode === 'distort') {
+      if (f.cs && !samePts(f.cs, ftDocCorners(f))) {
+        editor.snapshot('Distorsion')
+        editor.applyWarp(f.l, [{ sx: f.bx, sy: f.by, sw: f.w, sh: f.h, quad: f.cs.map(toLoc) }])
+      } else editor.markDirty()
+    } else if (f.mode === 'warp') {
+      if (f.wp && !samePts(f.wp, ftDocLattice(f))) {
+        editor.snapshot('Déformation')
+        editor.applyWarp(f.l, ftWarpCells(f).map((c) => ({ ...c, quad: c.quad.map(toLoc) })))
+      } else editor.markDirty()
+    } else {
+      // identité → pas d'entrée d'historique (comme Photoshop)
+      const identity = f.sx === 1 && f.sy === 1 && f.angle === 0 && f.cx === f.cx0 && f.cy === f.cy0
+      if (!identity) {
+        editor.snapshot('Free Transform')
+        editor.applyTransform(f.l, ftMatrix(f), f.interp)
+      } else editor.markDirty()
+    }
     setFt(null); bump()
   }
   const cancelFt = () => {
@@ -196,6 +294,24 @@ export default function Studio() {
     fitView()
     bump()
     e.target.value = ''
+  }
+
+  // Fichier → Nouveau : canevas vierge (transparent ou fond coloré)
+  const newDocument = ({ name, w, h, bg }) => {
+    const cv = document.createElement('canvas')
+    cv.width = w; cv.height = h
+    if (bg && bg !== 'transparent') {
+      const x = cv.getContext('2d')
+      x.fillStyle = bg; x.fillRect(0, 0, w, h)
+    }
+    editor.open(cv, name)
+    editor.isMontage = false
+    setSrcPhoto(null); setShade(null)
+    setDocOpen(true)
+    setModal(null)
+    setCompare(null); setWbPick(false); setMeasure(null)
+    fitView()
+    bump()
   }
 
   const fitView = () => {
@@ -319,11 +435,12 @@ export default function Studio() {
       showOriginal, cropRect, compare,
       handles: tool === 'move' && opts.transform ? editor.active : null,
       previewRotate: straighten?.angle || 0,
-      line: straighten?.line || gradLine || null,
+      line: straighten?.line || gradLine || measure || null,
       overlay: refOverlay && refImg ? { img: refImg } : null,
+      hideExtras: !extras,
     })
   }, [editor, view, showOriginal, cropRect, compare, tool, opts.transform, version,
-    straighten, refOverlay, refImg, gradLine])
+    straighten, refOverlay, refImg, gradLine, measure, extras])
 
   useEffect(render, [render, version])
 
@@ -337,7 +454,7 @@ export default function Studio() {
     if (!docOpen || !editor.w) return
     const { scale, ox, oy } = view
     const docL = ox, docT = oy, docR = ox + editor.w * scale, docB = oy + editor.h * scale
-    if (gridOn) {
+    if (gridOn && extras) {
       const st = gridStep()
       ctx.strokeStyle = 'rgba(255,255,255,.15)'; ctx.lineWidth = 1; ctx.beginPath()
       for (let x = Math.ceil(-ox / scale / st) * st; x <= editor.w; x += st) {
@@ -350,7 +467,7 @@ export default function Studio() {
       }
       ctx.stroke()
     }
-    if (guidesOn) {
+    if (guidesOn && extras) {
       ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1
       for (const g of guides.v) {
         const sx = Math.round(g * scale + ox) + .5
@@ -360,6 +477,33 @@ export default function Studio() {
         const sy = Math.round(g * scale + oy) + .5
         ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(cv.width, sy); ctx.stroke()
       }
+    }
+    // repères esthétiques du sourire : ligne médiane, tiers, proportions dorées
+    if (smileGuide && extras) {
+      const toX = (fx) => Math.round(editor.w * fx * scale + ox) + .5
+      const toY = (fy) => Math.round(editor.h * fy * scale + oy) + .5
+      ctx.lineWidth = 1
+      // ligne médiane (rouge)
+      ctx.strokeStyle = 'rgba(239,68,68,0.85)'
+      ctx.beginPath(); ctx.moveTo(toX(0.5), docT); ctx.lineTo(toX(0.5), docB); ctx.stroke()
+      // tiers verticaux (cyan pointillé)
+      ctx.strokeStyle = 'rgba(34,211,238,0.7)'
+      ctx.setLineDash([6, 4])
+      for (const f of [1 / 3, 2 / 3]) {
+        ctx.beginPath(); ctx.moveTo(toX(f), docT); ctx.lineTo(toX(f), docB); ctx.stroke()
+      }
+      // proportions dorées : les incisives centrales occupent ~0,618 de la largeur du sourire
+      ctx.strokeStyle = 'rgba(242,194,0,0.7)'
+      ctx.setLineDash([2, 3])
+      for (const f of [0.5 - 0.191, 0.5 + 0.191]) { // 0,382/2 autour du centre
+        ctx.beginPath(); ctx.moveTo(toX(f), docT); ctx.lineTo(toX(f), docB); ctx.stroke()
+      }
+      // tiers horizontaux (ligne pupillaire / sous-nasale)
+      ctx.strokeStyle = 'rgba(34,211,238,0.5)'
+      for (const f of [1 / 3, 2 / 3]) {
+        ctx.beginPath(); ctx.moveTo(docL, toY(f)); ctx.lineTo(docR, toY(f)); ctx.stroke()
+      }
+      ctx.setLineDash([])
     }
     // aperçu de la forme en cours de tracé (outil Forme)
     if (shapePrev) {
@@ -377,28 +521,53 @@ export default function Studio() {
     }
     // ---- Transformation manuelle : calque prévisualisé transformé + cadre ----
     if (ft) {
-      const [a, b, c, d, e2, f2] = ftMatrix(ft)
       ctx.save()
       ctx.translate(ox, oy); ctx.scale(scale, scale)
-      ctx.transform(a, b, c, d, e2, f2)
-      ctx.imageSmoothingEnabled = ft.interp !== 'nearest'
-      ctx.imageSmoothingQuality = 'high'
-      ctx.drawImage(ft.src, ft.l.dx, ft.l.dy)
-      ctx.restore()
-      const { cs, ms } = ftPts(ft)
-      const toS = (p) => [p[0] * scale + ox, p[1] * scale + oy]
-      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5; ctx.beginPath()
-      cs.forEach((p, i) => { const [x, y] = toS(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) })
-      ctx.closePath(); ctx.stroke()
-      // 8 poignées carrées + repère de centre
-      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1
-      for (const p of [...cs, ...ms]) {
-        const [x, y] = toS(p)
-        ctx.fillRect(x - 4, y - 4, 8, 8); ctx.strokeRect(x - 4, y - 4, 8, 8)
+      if (ft.mode === 'distort') {
+        warpQuad(ctx, ft.src, ft.bx, ft.by, ft.w, ft.h, ft.cs, 10)
+      } else if (ft.mode === 'warp') {
+        for (const cell of ftWarpCells(ft)) warpQuad(ctx, ft.src, cell.sx, cell.sy, cell.sw, cell.sh, cell.quad, 8)
+      } else {
+        const [a, b, c, d, e2, f2] = ftMatrix(ft)
+        ctx.transform(a, b, c, d, e2, f2)
+        ctx.imageSmoothingEnabled = ft.interp !== 'nearest'
+        ctx.imageSmoothingQuality = 'high'
+        ctx.drawImage(ft.src, ft.l.dx, ft.l.dy)
       }
-      ctx.fillStyle = '#4f8fe8'; ctx.beginPath()
-      const [ccx, ccy] = toS([ft.cx, ft.cy])
-      ctx.arc(ccx, ccy, 3.5, 0, Math.PI * 2); ctx.fill()
+      ctx.restore()
+      const toS = (p) => [p[0] * scale + ox, p[1] * scale + oy]
+      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'
+      if (ft.mode === 'warp') {
+        // treillis : 12 segments entre les 9 points + poignées
+        const wp = ft.wp
+        ctx.beginPath()
+        for (const [i, j] of [[0, 1], [1, 2], [3, 4], [4, 5], [6, 7], [7, 8], [0, 3], [3, 6], [1, 4], [4, 7], [2, 5], [5, 8]]) {
+          const [x0, y0] = toS(wp[i]); const [x1, y1] = toS(wp[j])
+          ctx.moveTo(x0, y0); ctx.lineTo(x1, y1)
+        }
+        ctx.stroke()
+        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1
+        for (const p of wp) {
+          const [x, y] = toS(p)
+          ctx.fillRect(x - 4, y - 4, 8, 8); ctx.strokeRect(x - 4, y - 4, 8, 8)
+        }
+      } else {
+        const { cs, ms } = ft.mode === 'distort' ? { cs: ft.cs, ms: [] } : ftPts(ft)
+        ctx.beginPath()
+        cs.forEach((p, i) => { const [x, y] = toS(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y) })
+        ctx.closePath(); ctx.stroke()
+        // 8 poignées carrées + repère de centre
+        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1
+        for (const p of [...cs, ...ms]) {
+          const [x, y] = toS(p)
+          ctx.fillRect(x - 4, y - 4, 8, 8); ctx.strokeRect(x - 4, y - 4, 8, 8)
+        }
+        if (ft.mode === 'free') {
+          ctx.fillStyle = '#4f8fe8'; ctx.beginPath()
+          const [ccx, ccy] = toS([ft.cx, ft.cy])
+          ctx.arc(ccx, ccy, 3.5, 0, Math.PI * 2); ctx.fill()
+        }
+      }
     }
     // ---- Plume : aperçu du tracé en cours + élastique vers le curseur ----
     const tracePath = (pts, hover) => {
@@ -454,7 +623,7 @@ export default function Studio() {
         ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([])
       }
     }
-  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor, shapePrev, opts.shapeKind, ft, penPath, pathEdit])
+  }, [view, gridOn, guidesOn, guides, stageSize, docOpen, version, editor, shapePrev, opts.shapeKind, ft, penPath, pathEdit, smileGuide, extras])
 
   // Règles : graduations en px document + repère de curseur
   useEffect(() => {
@@ -528,6 +697,43 @@ export default function Studio() {
     setModal(null)
   }
 
+  // Couleur moyenne du composite dans un disque de rayon ~12 px autour de (x,y)
+  const sampleShade = (x, y) => {
+    const comp = editor.composite()
+    const ctx = comp.getContext('2d')
+    const R = 12
+    const x0 = clamp(Math.round(x - R), 0, comp.width - 1)
+    const y0 = clamp(Math.round(y - R), 0, comp.height - 1)
+    const w = Math.min(2 * R, comp.width - x0), h = Math.min(2 * R, comp.height - y0)
+    const d = ctx.getImageData(x0, y0, w, h).data
+    let r = 0, g = 0, b = 0, n = 0
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      if (Math.hypot(i - R, j - R) > R) continue
+      const k = (j * w + i) * 4
+      if (d[k + 3] < 64) continue
+      r += d[k]; g += d[k + 1]; b += d[k + 2]; n++
+    }
+    if (!n) return null
+    const v = nearestVita(r / n, g / n, b / n)
+    return { ...v, rgb: [Math.round(r / n), Math.round(g / n), Math.round(b / n)] }
+  }
+  // Moyenne pondérée dans la sélection (masque de fusion de la sélection)
+  const analyzeSelShade = () => {
+    if (!editor.sel && !editor.selPoly) return
+    const comp = editor.composite()
+    const mask = editor.selMaskCanvas(0)
+    const cd = comp.getContext('2d').getImageData(0, 0, comp.width, comp.height).data
+    const md = mask.getContext('2d').getImageData(0, 0, comp.width, comp.height).data
+    let r = 0, g = 0, b = 0, n = 0
+    for (let i = 0; i < cd.length; i += 40) { // échantillonnage 1/10
+      if (md[i + 3] > 128 && cd[i + 3] > 64) { r += cd[i]; g += cd[i + 1]; b += cd[i + 2]; n++ }
+    }
+    if (!n) return
+    const v = nearestVita(r / n, g / n, b / n)
+    setShadeGuess({ ...v, rgb: [Math.round(r / n), Math.round(g / n), Math.round(b / n)] })
+    bump()
+  }
+
   // Teinte VITA — enregistrée sur la fiche photo (patient_photos.tooth_shade)
   const onShade = async (code) => {
     if (!srcPhoto) return
@@ -548,7 +754,7 @@ export default function Studio() {
   }
 
   // Planche du référentiel : compose les 8 vues sur une image éditable
-  const composeSheet = async (slots) => {
+  const composeSheet = async (slots, thenExport = false) => {
     const cells = await Promise.all(slots.map(async (s) => ({
       label: s.label,
       img: s.photo ? await fetchImg(await photoUrl(s.photo.storage_path)) : null,
@@ -567,7 +773,7 @@ export default function Studio() {
     setSrcPhoto(null)
     setShade(null)
     setDocOpen(true)
-    setModal(null)
+    setModal(thenExport ? 'export' : null)
     fitView()
     bump()
   }
@@ -581,7 +787,7 @@ export default function Studio() {
 
   // ---- Montage avant / après ---------------------------------------------------------
 
-  const openMontage = async (pA, pB, { layout, labels }) => {
+  const openMontage = async (pA, pB, { layout, labels }, thenExport = false) => {
     const [urlA, urlB] = await Promise.all([photoUrl(pA.storage_path), photoUrl(pB.storage_path)])
     if (!urlA || !urlB) return
     const [imgA, imgB] = await Promise.all([fetchImg(urlA), fetchImg(urlB)])
@@ -590,7 +796,7 @@ export default function Studio() {
     editor.isMontage = true
     setSrcPhoto(null)
     setDocOpen(true)
-    setModal(null)
+    setModal(thenExport ? 'export' : null)
     setCompare(null); setWbPick(false)
     fitView()
     bump()
@@ -611,6 +817,13 @@ export default function Studio() {
       bump()
       return
     }
+    // pipette de teinte : le clic échantillonne la couleur de la dent → VITA le plus proche
+    if (shadePick) {
+      setShadeGuess(sampleShade(ix, iy))
+      setShadePick(false)
+      bump()
+      return
+    }
     // comparaison : tout drag déplace le séparateur
     if (compare != null) {
       stroke.current = { kind: 'divider' }
@@ -623,11 +836,40 @@ export default function Studio() {
       setStraighten((s) => ({ ...s, line: [ix, iy, ix, iy] }))
       return
     }
+    // numérotation FDI armée : le clic pose le numéro en calque texte
+    if (fdiArm) {
+      editor.snapshot(`Dent ${fdiArm}`)
+      editor.addTextLayer(fdiArm, {
+        font: opts.textFont, size: Math.max(16, opts.textSize), bold: true,
+        color: opts.fg, align: 'center',
+      }, ix, iy)
+      setFdiArm(null)
+      bump()
+      return
+    }
 
     // ---- Transformation manuelle active : les poignées pilotent l'interaction ----
     if (ft) {
       const { cs, ms } = ftPts(ft)
       const R = 12 / view.scale
+      // modes Distorsion / Déformation : points libres du quadrilatère / treillis
+      if (ft.mode !== 'free') {
+        const pts = ft.mode === 'distort' ? ft.cs : ft.wp
+        if (!pts) return
+        const poly = ft.mode === 'distort' ? ft.cs : [ft.wp[0], ft.wp[2], ft.wp[8], ft.wp[6]]
+        const inside = ((x, y, pl) => {
+          let ins = false
+          for (let i = 0, j = pl.length - 1; i < pl.length; j = i++) {
+            const [xi, yi] = pl[i], [xj, yj] = pl[j]
+            if (((yi > y) !== (yj > y)) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) ins = !ins
+          }
+          return ins
+        })(ix, iy, poly)
+        const hi = pts.findIndex((p) => Math.hypot(ix - p[0], iy - p[1]) < R)
+        if (hi >= 0) stroke.current = { kind: 'ftPoint', i: hi }
+        else if (inside) stroke.current = { kind: 'ftMovePts', ox: ix, oy: iy, pts0: pts.map((p) => [...p]) }
+        return
+      }
       // point dans un polygone (ray casting)
       const inBox = ((x, y, poly) => {
         let inside = false
@@ -668,6 +910,19 @@ export default function Studio() {
         stroke.current = { kind: 'ftRotate', a0: ft.angle, grab: Math.atan2(iy - ft.cy, ix - ft.cx) }
       }
       return // en mode transformation, aucun autre outil ne répond
+    }
+
+    // ---- Masque rapide : pinceau/crayon/gomme écrivent dans le masque ----
+    // (gomme = ajoute à la sélection, pinceau/crayon = masque en rouge)
+    if (qm && (tool === 'brush' || tool === 'pencil' || tool === 'eraser')) {
+      const size = tool === 'pencil' ? opts.pencilSize : tool === 'eraser' ? opts.eraserSize : opts.brushSize
+      const hard = tool === 'eraser' ? opts.eraserHard ?? 1 : opts.brushHard ?? 1
+      const soft = (1 - hard) * size * 0.6
+      const op = tool === 'pencil' ? opts.pencilOpacity ?? 1 : tool === 'eraser' ? opts.eraserOpacity ?? 1 : opts.brushOpacity ?? 1
+      stroke.current = { kind: 'qm', last: [ix, iy], size, soft, op }
+      editor.qmPaint(ix, iy, ix, iy, size, tool === 'eraser', soft, op)
+      bump()
+      return
     }
 
     switch (tool) {
@@ -752,6 +1007,13 @@ export default function Studio() {
         const snap = editor.composite()
         stroke.current = { kind: 'stroke', l, last: [ix, iy], srcSnap: snap, so: cloneSrc.current, st: [ix, iy] }
         paint(ix, iy, l)
+        break
+      }
+      case 'ruler': {
+        // outil Mesure : glisser trace la ligne, la longueur s'affiche dans la barre d'options
+        const [sx, sy] = snapPair(ix, iy)
+        stroke.current = { kind: 'measure', x0: sx, y0: sy }
+        setMeasure([sx, sy, sx, sy])
         break
       }
       case 'gradient': {
@@ -912,6 +1174,13 @@ export default function Studio() {
   const paint = (ix, iy, l) => {
     const s = stroke.current
     if (!s) return
+    // masque rapide : la gomme révèle la sélection, le pinceau la masque
+    if (s.kind === 'qm') {
+      editor.qmPaint(s.last[0], s.last[1], ix, iy, s.size, tool === 'eraser', s.soft, s.op)
+      s.last = [ix, iy]
+      bump()
+      return
+    }
     // verrou « pixels » (rangée Lock façon Photoshop) : rien ne peint ce calque
     if (l.lockPx && tool !== 'redeye') return
     // Édition du masque de fusion : le pinceau écrit l'alpha du masque
@@ -1114,6 +1383,22 @@ export default function Studio() {
       return
     }
     // ---- Transformation manuelle : mise à jour de l'état ft pendant le drag ----
+    if (s.kind === 'ftPoint') { // distorsion/déformation : un point libre
+      setFt((f) => {
+        if (!f) return f
+        const key = f.mode === 'distort' ? 'cs' : 'wp'
+        return { ...f, [key]: f[key].map((p, j) => (j === s.i ? [ix, iy] : p)) }
+      })
+      return
+    }
+    if (s.kind === 'ftMovePts') { // distorsion/déformation : déplacer tout l'ensemble
+      setFt((f) => {
+        if (!f) return f
+        const key = f.mode === 'distort' ? 'cs' : 'wp'
+        return { ...f, [key]: s.pts0.map((p) => [p[0] + ix - s.ox, p[1] + iy - s.oy]) }
+      })
+      return
+    }
     if (s.kind === 'ftMove') {
       setFt((f) => f && ({ ...f, cx: s.cx0 + ix - s.ox, cy: s.cy0 + iy - s.oy }))
       return
@@ -1152,7 +1437,7 @@ export default function Studio() {
       })
       return
     }
-    if (s.kind === 'stroke') paint(ix, iy, s.l)
+    if (s.kind === 'stroke' || s.kind === 'qm') paint(ix, iy, s.l)
     else if (s.kind === 'shapeDrag') setShapePrev([s.x0, s.y0, ix, iy])
     else if (s.kind === 'lasso') {
       s.pts.push([ix, iy])
@@ -1162,6 +1447,7 @@ export default function Studio() {
     else if (s.kind === 'gradient') { const [sx, sy] = snapPair(ix, iy); setGradLine([s.x0, s.y0, sx, sy]) }
     else if (s.kind === 'divider') setCompare(clamp(ix / editor.w, 0.02, 0.98))
     else if (s.kind === 'ruler') setStraighten((st) => ({ ...st, line: [s.x0, s.y0, ix, iy] }))
+    else if (s.kind === 'measure') { const [sx, sy] = snapPair(ix, iy); setMeasure([s.x0, s.y0, sx, sy]) }
     else if (s.kind === 'guide') {
       const [gx, gy] = toImg(...evPt(e))
       const lim = s.axis === 'v' ? editor.w : editor.h
@@ -1250,6 +1536,17 @@ export default function Studio() {
       }
       setShapePrev(null)
     }
+    // journal des mesures : la ligne tracée est consignée (avec mm si calibré)
+    if (s?.kind === 'measure' && measure) {
+      const len = Math.hypot(measure[2] - measure[0], measure[3] - measure[1])
+      if (len > 2) {
+        setMeasureLog((log) => [...log.slice(-49), {
+          id: Date.now(), len,
+          mm: opts.pxPerMm ? len / opts.pxPerMm : null,
+          t: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+        }])
+      }
+    }
     if (s?.kind === 'ruler' && straighten?.line) {
       const [x1, y1, x2, y2] = straighten.line
       const dx = x2 - x1, dy = y2 - y1
@@ -1329,6 +1626,68 @@ export default function Studio() {
     a.click()
   }
 
+  // Export PDF : planche clinique A4 paysage — en-tête (document, dossier, date),
+  // image centrée (JPEG DCTDecode), pied de page (teinte VITA, mesures, étalonnage).
+  const exportPdf = () => {
+    const src = editor.compositeFiltered()
+    const jbytes = Uint8Array.from(atob(src.toDataURL('image/jpeg', 0.92).split(',')[1]), (c) => c.charCodeAt(0))
+    const PW = 842, PH = 595, M = 36, HEAD = 42, FOOT = 30 // A4 paysage en points
+    const s = Math.min((PW - 2 * M) / src.width, (PH - HEAD - FOOT - 2 * M / 2) / src.height)
+    const w = Math.round(src.width * s), h = Math.round(src.height * s)
+    const x = Math.round((PW - w) / 2), y = FOOT + Math.round((PH - HEAD - FOOT - h) / 2)
+    const esc = (t) => String(t).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+    const txt = (font, size, tx, ty, t) => `BT /${font} ${size} Tf 0 g ${tx} ${ty} Td (${esc(t)}) Tj ET\n`
+    // chaîne approximative en points (Helvetica ≈ 0,5 × corps) pour l'alignement droit
+    const tw = (t, size) => Math.round(String(t).length * size * 0.52)
+
+    const dossier = dossiers.find((d) => d.id === srcPhoto?.dossier_id)
+    const dateStr = new Date().toLocaleDateString('fr-FR')
+      + ' ' + new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    const metaR = [dossier ? `Dossier : ${dossier.name}` : null, dateStr].filter(Boolean).join('  ·  ')
+    const footL = [
+      shade ? `Teinte VITA : ${shade}` : null,
+      opts.pxPerMm ? `Etalonnage : ${opts.pxPerMm.toFixed(2)} px/mm` : null,
+      measureLog.length
+        ? 'Mesures : ' + measureLog.slice(-3).map((m) =>
+            `${Math.round(m.len)} px${m.mm ? ` (${m.mm.toFixed(1)} mm)` : ''}`).join('  ·  ')
+        : null,
+    ].filter(Boolean).join('   |   ')
+
+    const content =
+      `q\n${w} 0 0 ${h} ${x} ${y} cm\n/Im1 Do\nQ\n` +
+      txt('F2', 11, M, PH - 26, `DentoPic — ${editor.docName}`) +
+      txt('F1', 8, PW - M - tw(metaR, 8), PH - 24, metaR) +
+      txt('F1', 8, M, 20, footL || '—') +
+      txt('F1', 7, PW - M - tw('Studio DentoPic', 7), 20, 'Studio DentoPic')
+
+    const enc = new TextEncoder()
+    const parts = []
+    const offs = []
+    let size = 0
+    const add = (d) => { const b = typeof d === 'string' ? enc.encode(d) : d; parts.push(b); size += b.length }
+    add('%PDF-1.4\n')
+    const obj = (n, body) => { offs[n] = size; add(`${n} 0 obj\n${body}\nendobj\n`) }
+    obj(1, '<< /Type /Catalog /Pages 2 0 R >>')
+    obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
+    obj(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im1 4 0 R >> /Font << /F1 6 0 R /F2 7 0 R >> /ProcSet [/PDF /ImageC /Text] >> /Contents 5 0 R >>`)
+    offs[4] = size
+    add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${src.width} /Height ${src.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jbytes.length} >>\nstream\n`)
+    add(jbytes)
+    add('\nendstream\nendobj\n')
+    offs[5] = size
+    add(`5 0 obj\n<< /Length ${content.length} >>\nstream\n${content}endstream\nendobj\n`)
+    obj(6, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')
+    obj(7, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>')
+    const xref = size
+    add('xref\n0 8\n0000000000 65535 f \n')
+    for (let i = 1; i <= 7; i++) add(`${String(offs[i]).padStart(10, '0')} 00000 n \n`)
+    add(`trailer\n<< /Size 8 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`)
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob(parts, { type: 'application/pdf' }))
+    a.download = `${editor.docName.replace(/\.\w+$/, '')}.pdf`
+    a.click()
+  }
+
   const doSave = async (dossierId) => {
     const blob = await new Promise((r) => editor.compositeFiltered().toBlob(r, 'image/png'))
     const dId = dossierId || srcPhoto?.dossier_id || null
@@ -1367,19 +1726,110 @@ export default function Studio() {
     invert: (cv) => { const l = new Uint8ClampedArray(256); for (let i = 0; i < 256; i++) l[i] = 255 - i; applyLUTs(cv, { rgb: l }) },
     desaturate: (cv) => cssFiltered(cv, 'grayscale(100%)'),
     equalize: (cv) => equalize(cv),
+    noise: (cv, p) => addNoise(cv, p.amount / 200),
+    highpass: (cv, p) => highPass(cv, p.radius),
+    // réglages automatiques (menu Image — Photoshop)
+    autotone: (cv) => {
+      const t = (ch) => { const { inBlack, inWhite } = autoLevels(cv, ch); return levelsLUT(inBlack, inWhite, 100) }
+      applyLUTs(cv, { r: t('r'), g: t('g'), b: t('b') })
+    },
+    autocontrast: (cv) => {
+      const { inBlack, inWhite } = autoLevels(cv, 'rgb')
+      applyLUTs(cv, { rgb: levelsLUT(inBlack, inWhite, 100) })
+    },
+    autocolor: (cv) => {
+      const t = (ch) => { const { inBlack, inWhite } = autoLevels(cv, ch); return levelsLUT(inBlack, inWhite, 100) }
+      applyLUTs(cv, { r: t('r'), g: t('g'), b: t('b') })
+      // ramène les moyennes par canal sur la moyenne globale (tons neutres)
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data
+      let sr = 0, sg = 0, sb = 0, n = 0
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 4) continue
+        sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; n++
+      }
+      if (!n) return
+      const m = (sr + sg + sb) / (3 * n)
+      const cl = (mu) => { const l = new Uint8ClampedArray(256); for (let i = 0; i < 256; i++) l[i] = i + mu; return l }
+      applyLUTs(cv, { r: cl(m - sr / n), g: cl(m - sg / n), b: cl(m - sb / n) })
+    },
   }
 
   const runFilter = (key, params) => {
     const l = editor.active
-    if (!l || l.type === 'adjust') return
+    if (!l || l.type === 'adjust' || l.type === 'group') return
     if (l.locked) l.locked = false
+    // « Atténuer » (Photoshop Fade) : avant/après conservés pour doser l'effet
+    const before = mkCv(editor.w, editor.h)
+    before.getContext('2d').drawImage(l.cv, 0, 0)
     applyFilterRegion(editor, l, (cv) => FILTER_FNS[key]?.(cv, params))
+    const after = mkCv(editor.w, editor.h)
+    after.getContext('2d').drawImage(l.cv, 0, 0)
+    fadeRef.current = { layerId: l.id, before, after, label: FILTER_DEFS[key]?.label || 'le dernier filtre' }
+    lastFilter.current = { key, params } // « Filtre précédent » (Ctrl+Alt+F)
+  }
+
+  // Édition → Atténuer : résultat = before + (after - before) × t
+  const applyFade = (t) => {
+    const f = fadeRef.current
+    const l = f && editor._find(f.layerId)?.l
+    if (!l) { setModal(null); return }
+    editor.snapshot('Atténuer')
+    l.ctx.save()
+    l.ctx.globalAlpha = 1
+    l.ctx.clearRect(0, 0, editor.w, editor.h)
+    l.ctx.drawImage(f.before, 0, 0)
+    l.ctx.globalAlpha = t
+    l.ctx.drawImage(f.after, 0, 0)
+    l.ctx.restore()
+    editor.markDirty()
+    fadeRef.current = null
+    setModal(null)
+    bump()
+  }
+
+  // Image → Taille de la zone de travail : rogne/étend sans mise à l'échelle
+  const applyCanvasSize = (nw, nh, ax, ay) => {
+    editor.snapshot('Zone de travail')
+    const r = editor.resizeCanvas(nw, nh, ax, ay)
+    if (r) setGuides((g) => ({ v: g.v.map((x) => x + r.ox), h: g.h.map((y) => y + r.oy) }))
+    setModal(null); fitView(); bump()
+  }
+
+  // Édition → Remplir… : contenu + mode + opacité (+ plume)
+  const applyFill = ({ color, opacity, blend, feather }) => {
+    if (editor.active?.locked) editor.addLayer()
+    editor.snapshot('Remplir')
+    editor.fill(color, feather, { opacity, blend })
+    setModal(null); bump()
+  }
+
+  // Édition → Contour… : trait le long du bord de la sélection
+  const applyStroke = ({ color, width, pos }) => {
+    if (editor.active?.locked) editor.addLayer()
+    editor.snapshot('Contour')
+    editor.strokeSel(color, width, pos)
+    setModal(null); bump()
+  }
+
+  // Sélection → Plage de couleurs : composante connexe la plus grande → lasso
+  const applyColorRange = (rgb, tol) => {
+    editor.snapshot('Plage de couleurs')
+    editor.colorRangeSelect(rgb, tol)
+    setModal(null); bump()
+  }
+  // Sélection → Transformer la sélection (déplacement/échelle/rotation du cadre)
+  const applySelTransform = (t) => {
+    editor.snapshot('Transformer la sélection')
+    editor.transformSel(t)
+    setModal(null); bump()
   }
   const openFilter = (key) => {
     if (!editor.active || editor.active.type === 'adjust') return
     filterBase.current = JSON.stringify(editor._dump())
     setFilterKey(key)
   }
+  // paramètres par défaut d'un filtre (galerie de filtres)
+  const defParams = (key) => Object.fromEntries((FILTER_DEFS[key]?.params || []).map((p) => [p.key, p.def]))
   // chaque changement de paramètre : restaure la base puis ré-applique → aperçu réversible
   const previewT = useRef(null)
   const previewFilter = (params) => {
@@ -1410,11 +1860,17 @@ export default function Studio() {
 
   const clipRef = useRef(null) // copie interne (canvas) — le clipboard OS peut être refusé
 
-  const copySelection = async () => {
-    const comp = editor.compositeFiltered()
+  // what : 'layer' = contenu du calque actif (Photoshop Ctrl+C),
+  //        'merged' = composite de tous les calques (Ctrl+Maj+C)
+  const copySelection = async (what = 'layer') => {
     const t = mkCv(editor.w, editor.h)
     const x = t.getContext('2d')
-    x.drawImage(comp, 0, 0)
+    if (what === 'merged') {
+      x.drawImage(editor.compositeFiltered(), 0, 0)
+    } else {
+      const l = editor.active
+      if (l) { x.translate(l.dx, l.dy); x.drawImage(l.cv, 0, 0); x.translate(-l.dx, -l.dy) }
+    }
     // limite à la sélection : efface le reste via le masque
     if (editor.sel || editor.selPoly) {
       x.globalCompositeOperation = 'destination-in'
@@ -1425,6 +1881,14 @@ export default function Studio() {
       const blob = await new Promise((r) => t.toBlob(r, 'image/png'))
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
     } catch { /* clipboard OS indisponible — le repli interne suffit */ }
+  }
+  // Couper (Ctrl+X) : copie le calque actif dans la sélection, puis l'efface
+  const cutSelection = async () => {
+    await copySelection('layer')
+    if (editor.active?.locked) editor.addLayer()
+    editor.snapshot('Couper')
+    editor.deleteContent(opts.selFeather)
+    bump()
   }
   const pasteClipboard = async () => {
     // 1) clipboard OS (permet de coller une image extérieure)
@@ -1451,8 +1915,21 @@ export default function Studio() {
     }
   }
 
+  // Calque → Grouper les calques : la multi-sélection du panneau (Ctrl+clic)
+  // si elle existe, sinon le calque actif seul (Photoshop Ctrl+G).
+  const groupSel = () => {
+    const ids = editor.selLayerIds?.size > 1 ? [...editor.selLayerIds] : editor.active ? [editor.activeId] : []
+    if (!ids.length) return
+    editor.snapshot('Grouper')
+    editor.groupLayers(ids)
+    editor.selLayerIds?.clear()
+    bump()
+  }
+
   const menus = [
     { label: 'Fichier', tip: 'Document : ouvrir, montage avant/après, exporter', items: [
+      { label: 'Nouveau document…', onClick: () => setModal('newdoc') },
+      '-',
       { label: 'Ouvrir une photo…', onClick: () => setModal('open') },
       { label: 'Importer un fichier…', onClick: () => fileInput.current?.click() },
       { label: 'Montage avant / après…', onClick: () => setModal('montage') },
@@ -1466,8 +1943,14 @@ export default function Studio() {
       { label: 'Annuler', shortcut: 'Ctrl+Z', disabled: !docOpen, onClick: async () => { await editor.undo(); bump() } },
       { label: 'Rétablir', shortcut: 'Ctrl+Y', disabled: !docOpen, onClick: async () => { await editor.redo(); bump() } },
       '-',
-      { label: 'Copier', shortcut: 'Ctrl+C', disabled: !docOpen, onClick: copySelection },
+      { label: 'Couper', shortcut: 'Ctrl+X', disabled: !docOpen, onClick: cutSelection },
+      { label: 'Copier', shortcut: 'Ctrl+C', disabled: !docOpen, onClick: () => copySelection('layer') },
+      { label: 'Copier avec fusion', shortcut: 'Ctrl+Maj+C', disabled: !docOpen, onClick: () => copySelection('merged') },
       { label: 'Coller en calque', shortcut: 'Ctrl+V', disabled: !docOpen, onClick: pasteClipboard },
+      { label: 'Atténuer le dernier filtre…', shortcut: 'Ctrl+Maj+F', disabled: !docOpen || !fadeRef.current, onClick: () => setModal('fade') },
+      '-',
+      { label: 'Remplir…', shortcut: 'Maj+F5', disabled: !docOpen, onClick: () => setModal('fill') },
+      { label: 'Contour…', disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => setModal('stroke') },
       '-',
       { label: 'Remplir (premier plan)', shortcut: 'Alt+Suppr', disabled: !docOpen, onClick: () => {
         if (editor.active?.locked) editor.addLayer()
@@ -1484,6 +1967,10 @@ export default function Studio() {
       '-',
       { label: 'Transformation manuelle', shortcut: 'Ctrl+T', disabled: !docOpen || !editor.active || editor.active?.locked,
         onClick: startFt },
+      { label: 'Distorsion', disabled: !docOpen || !editor.active || editor.active?.locked,
+        onClick: () => { if (!ft) startFt(); setFtMode('distort') } },
+      { label: 'Déformation', disabled: !docOpen || !editor.active || editor.active?.locked,
+        onClick: () => { if (!ft) startFt(); setFtMode('warp') } },
     ]},
     { label: 'Sélection', tip: 'Zones de travail : créer, modifier, inverser', items: [
       { label: 'Tout sélectionner', shortcut: 'Ctrl+A', disabled: !docOpen, onClick: () => { editor.selectAll(); bump() } },
@@ -1505,29 +1992,70 @@ export default function Studio() {
         if (v > 0) { editor.snapshot('Contracter'); editor.resizeSelection(-v); bump() }
       } },
       '-',
+      { label: 'Plage de couleurs…', disabled: !docOpen, onClick: () => setModal('colorrange') },
       { label: 'Sélection et masque…', shortcut: 'Ctrl+Alt+R', disabled: !docOpen || (!editor.sel && !editor.selPoly),
         onClick: () => setModal('selmask') },
+      '-',
+      { label: 'Transformer la sélection…', disabled: !docOpen || (!editor.sel && !editor.selPoly),
+        onClick: () => setModal('seltransform') },
+      { label: 'Étendre la sélection', disabled: !docOpen || (!editor.sel && !editor.selPoly),
+        onClick: () => { editor.snapshot('Étendre'); editor.growSel(32, false); bump() } },
+      { label: 'Généraliser', disabled: !docOpen || (!editor.sel && !editor.selPoly),
+        onClick: () => { editor.snapshot('Généraliser'); editor.growSel(32, true); bump() } },
+      { label: 'Sélections mémorisées…', disabled: !docOpen, onClick: () => setModal('sels') },
+      '-',
+      { label: `${qm ? '✓ ' : ''}Mode Masque`, disabled: !docOpen,
+        onClick: () => {
+          if (editor.qm) { editor.exitQuickMask(); setQm(false) }
+          else { editor.snapshot('Masque rapide'); editor.enterQuickMask(); setQm(true) }
+          bump()
+        } },
     ]},
     { label: 'Image', tip: 'Transformations du document (rotation, miroir, taille, aplatir)', items: [
+      { label: 'Tonalité automatique', shortcut: 'Ctrl+Maj+L', disabled: !docOpen,
+        onClick: () => { editor.snapshot('Tonalité auto'); runFilter('autotone', {}); bump() } },
+      { label: 'Contraste automatique', shortcut: 'Ctrl+Alt+Maj+L', disabled: !docOpen,
+        onClick: () => { editor.snapshot('Contraste auto'); runFilter('autocontrast', {}); bump() } },
+      { label: 'Couleur automatique', shortcut: 'Ctrl+Maj+B', disabled: !docOpen,
+        onClick: () => { editor.snapshot('Couleur auto'); runFilter('autocolor', {}); bump() } },
+      '-',
       { label: 'Pivoter 90°', disabled: !docOpen, onClick: () => { editor.snapshot('Pivoter'); editor.rotate90(); bump() } },
       { label: 'Miroir horizontal', disabled: !docOpen, onClick: () => { editor.snapshot('Miroir H'); editor.flipH(); bump() } },
       { label: 'Miroir vertical', disabled: !docOpen, onClick: () => { editor.snapshot('Miroir V'); editor.flipV(); bump() } },
       '-',
       { label: 'Recadrer sur la sélection', disabled: !docOpen || !editor.sel, onClick: () => { editor.snapshot('Recadrer'); editor.cropToSelection(); bump(); fitView() } },
       { label: 'Rogner les pixels transparents', disabled: !docOpen, onClick: () => { editor.snapshot('Rogner'); editor.trim(); bump(); fitView() } },
+      { label: 'Tout faire apparaître', disabled: !docOpen, onClick: () => { editor.snapshot('Tout faire apparaître'); editor.revealAll(); bump(); fitView() } },
       { label: 'Taille de l\'image…', disabled: !docOpen, onClick: () => {
         const v = +window.prompt(`Taille actuelle : ${editor.w} × ${editor.h} px — nouveau pourcentage :`, '50')
         if (v > 0) { editor.snapshot('Redimensionner'); editor.resizeDoc(v / 100); bump(); fitView() }
       } },
+      { label: 'Taille de la zone de travail…', disabled: !docOpen, onClick: () => setModal('canvassize') },
       '-',
       { label: 'Aplatir l\'image', disabled: !docOpen, onClick: () => { editor.snapshot('Aplatir'); editor.flatten(); bump() } },
     ]},
     { label: 'Filtre', tip: 'Filtres avec aperçu sur le canevas — écrêtés à la sélection', items: [
+      { label: `Filtre précédent${lastFilter.current ? ` — ${FILTER_DEFS[lastFilter.current.key]?.label || lastFilter.current.key}` : ''}`,
+        shortcut: 'Ctrl+Alt+F', disabled: !docOpen || !lastFilter.current,
+        onClick: () => {
+          editor.snapshot('Filtre précédent')
+          runFilter(lastFilter.current.key, lastFilter.current.params)
+          bump()
+        } },
+      '-',
+      { label: 'Galerie de filtres…', disabled: !docOpen || !editor.active || editor.active.type === 'adjust',
+        onClick: () => setModal('gallery') },
+      { label: 'Fluidité…', shortcut: 'Ctrl+Maj+X',
+        disabled: !docOpen || !editor.active || editor.active.locked || editor.active.type === 'adjust' || editor.active.type === 'group',
+        onClick: () => setModal('liquify') },
+      '-',
       { label: 'Flou gaussien…', disabled: !docOpen, onClick: () => openFilter('gaussian') },
       { label: 'Flou de mouvement…', disabled: !docOpen, onClick: () => openFilter('motion') },
       { label: 'Accentuation…', disabled: !docOpen, onClick: () => openFilter('sharpen') },
       { label: 'Réduire le bruit', disabled: !docOpen, onClick: () => openFilter('denoise') },
       { label: 'Mosaïque…', disabled: !docOpen, onClick: () => openFilter('pixelate') },
+      { label: 'Ajouter du bruit…', disabled: !docOpen, onClick: () => openFilter('noise') },
+      { label: 'Passe-haut…', disabled: !docOpen, onClick: () => openFilter('highpass') },
       '-',
       { label: 'Tourbillon…', disabled: !docOpen, onClick: () => openFilter('twirl') },
       { label: 'Onde…', disabled: !docOpen, onClick: () => openFilter('wave') },
@@ -1550,12 +2078,30 @@ export default function Studio() {
       '-',
       { label: 'Nouveau via copier', disabled: !docOpen, onClick: () => { editor.snapshot('Via copier'); editor.layerViaCopy(); bump() } },
       { label: 'Nouveau via couper', disabled: !docOpen, onClick: () => { editor.snapshot('Via couper'); editor.layerViaCut(); bump() } },
+      { label: 'Fusionner vers le bas', shortcut: 'Ctrl+E', disabled: !docOpen || (editor._find(editor.activeId)?.i ?? 0) < 1,
+        onClick: () => { editor.snapshot('Fusionner vers le bas'); editor.mergeDown(); bump() } },
       { label: 'Fusionner les visibles', shortcut: 'Ctrl+Maj+Alt+E', disabled: !docOpen, onClick: () => { editor.snapshot('Fusion'); editor.mergeVisible(); bump() } },
+      '-',
+      { label: 'Nouveau groupe', disabled: !docOpen, onClick: () => { editor.snapshot('Groupe'); editor.addGroup(); bump() } },
+      { label: 'Grouper les calques', shortcut: 'Ctrl+G', disabled: !docOpen || !editor.active,
+        onClick: groupSel },
+      { label: 'Dissocier les calques', shortcut: 'Ctrl+Maj+G', disabled: !docOpen || editor.active?.type !== 'group',
+        onClick: () => { editor.snapshot('Dissocier'); editor.ungroup(editor.activeId); editor.selLayerIds?.clear(); bump() } },
       '-',
       { label: 'Nouveau calque de réglage…', disabled: !docOpen, onClick: () => {
         editor.snapshot('Calque de réglage')
         editor.addAdjustLayer('bc')
         bump() // les paramètres s'éditent dans l'onglet Propriétés (façon Photoshop)
+      } },
+      { label: 'Remplissage : couleur unie', disabled: !docOpen, onClick: () => {
+        editor.snapshot('Calque de remplissage')
+        editor.addFillLayer({ kind: 'solid', color: opts.fg })
+        bump()
+      } },
+      { label: 'Remplissage : dégradé', disabled: !docOpen, onClick: () => {
+        editor.snapshot('Calque de remplissage')
+        editor.addFillLayer({ kind: 'gradient', from: opts.fg, to: opts.bg, angle: 90, style: 'linear' })
+        bump()
       } },
       '-',
       { label: 'Ajouter un masque de fusion', disabled: !docOpen || !editor.active || editor.active.locked || editor.active.type === 'adjust' || !!editor.active?.mask,
@@ -1564,6 +2110,18 @@ export default function Studio() {
         onClick: () => { editor.snapshot('Masque'); editor.addMask(editor.active, true); bump() } },
       { label: 'Supprimer le masque', disabled: !docOpen || !editor.active?.mask,
         onClick: () => { editor.snapshot('Masque'); editor.removeMask(editor.active); bump() } },
+      '-',
+      { label: `${editor.active?.clip ? '✓ ' : ''}Créer un masque d'écrêtage`, shortcut: 'Ctrl+Alt+G',
+        disabled: !docOpen || !editor.active,
+        onClick: () => { editor.snapshot('Écrêtage'); editor.active.clip = !editor.active.clip; bump() } },
+      { label: `${editor.active?.locked ? '✓ ' : ''}Verrouiller le calque`, shortcut: 'Ctrl+/',
+        disabled: !docOpen || !editor.active,
+        onClick: () => { editor.snapshot('Verrouiller'); editor.active.locked = !editor.active.locked; bump() } },
+      { label: 'Masquer / afficher le calque', shortcut: 'Ctrl+,',
+        disabled: !docOpen || !editor.active,
+        onClick: () => { editor.toggleVisible(editor.activeId); bump() } },
+      { label: 'Pixelliser le calque', disabled: !docOpen || !['text', 'shape', 'fill'].includes(editor.active?.type),
+        onClick: () => { editor.snapshot('Pixelliser'); editor.rasterizeLayer(editor.activeId); bump() } },
     ]},
     { label: 'Affichage', tip: 'Zoom, règles, guides, grille, magnétisme', items: [
       { label: 'Zoom +', shortcut: '+', onClick: () => zoomAt(1.25) },
@@ -1576,8 +2134,10 @@ export default function Studio() {
       '-',
       { label: `${rulers ? '✓ ' : ''}Règles`, shortcut: 'Ctrl+R', disabled: !docOpen, onClick: () => setRulers((v) => !v) },
       { label: `${guidesOn ? '✓ ' : ''}Guides`, shortcut: 'Ctrl+;', disabled: !docOpen, onClick: () => setGuidesOn((v) => !v) },
-      { label: `${gridOn ? '✓ ' : ''}Grille`, shortcut: 'Ctrl+G', disabled: !docOpen, onClick: () => setGridOn((v) => !v) },
+      { label: `${gridOn ? '✓ ' : ''}Grille`, shortcut: "Ctrl+'", disabled: !docOpen, onClick: () => setGridOn((v) => !v) },
+      { label: `${extras ? '✓ ' : ''}Extras`, shortcut: 'Ctrl+H', disabled: !docOpen, onClick: () => setExtras((v) => !v) },
       { label: `${snapOn ? '✓ ' : ''}Magnétisme`, disabled: !docOpen, onClick: () => setSnapOn((v) => !v) },
+      { label: `${ctxBar ? '✓ ' : ''}Barre contextuelle`, disabled: !docOpen, onClick: () => setCtxBar((v) => !v) },
       { label: 'Effacer les guides', disabled: !docOpen || (!guides.v.length && !guides.h.length), onClick: () => setGuides({ v: [], h: [] }) },
       '-',
       { label: 'Plein écran', shortcut: 'F', onClick: () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()) },
@@ -1586,6 +2146,37 @@ export default function Studio() {
         onClick: () => setCompare(compare != null ? null : 0.5) },
     ]},
   ]
+
+  // ---- Barre contextuelle (PS 2026) : actions selon le contexte ---------------------------
+
+  const ctxItems = (() => {
+    if (!docOpen || !ctxBar) return null
+    if (ft) return [
+      { icon: FiCheck, label: 'Appliquer', tip: 'Valider la transformation (Entrée)', onClick: applyFt },
+      { icon: FiX, label: 'Annuler', tip: 'Annuler la transformation (Échap)', onClick: cancelFt },
+    ]
+    if (editor.sel || editor.selPoly) return [
+      { icon: FiMove, label: 'Transformer', tip: 'Transformer la sélection…', onClick: () => setModal('seltransform') },
+      { icon: LuPaintBucket, label: 'Remplir', tip: 'Remplir la sélection (Maj+F5)…', onClick: () => setModal('fill') },
+      { icon: FiEdit2, label: 'Contour', tip: 'Tracer un contour le long de la sélection…', onClick: () => setModal('stroke') },
+      '-',
+      { icon: TbMask, tip: 'Masque de fusion depuis la sélection', onClick: () => {
+        if (editor.active && !editor.active.locked) { editor.snapshot('Masque'); editor.addMask(editor.active, true); bump() }
+      } },
+      { icon: FiRefreshCw, tip: 'Inverser la sélection (Ctrl+Maj+I)', onClick: () => { editor.invertSelection(); bump() } },
+      { icon: FiDroplet, tip: 'Analyser la teinte VITA de la sélection', onClick: analyzeSelShade },
+      '-',
+      { icon: FiX, tip: 'Désélectionner (Ctrl+D)', onClick: () => { editor.deselect(); bump() } },
+    ]
+    const canLiquify = editor.active && !editor.active.locked
+      && editor.active.type !== 'adjust' && editor.active.type !== 'group'
+    return [
+      { icon: FiSquare, label: 'Tout', tip: 'Tout sélectionner (Ctrl+A)', onClick: () => { editor.selectAll(); bump() } },
+      { icon: FiTarget, label: 'Plage de couleurs', tip: 'Sélection par couleur…', onClick: () => setModal('colorrange') },
+      { icon: FiDroplet, label: 'Teinte', tip: 'Analyser la teinte sur l\'image (pipette VITA)', onClick: () => setShadePick(true) },
+      ...(canLiquify ? [{ icon: LuWaves, label: 'Fluidité', tip: 'Déformation interactive (Ctrl+Maj+X)…', onClick: () => setModal('liquify') }] : []),
+    ]
+  })()
 
   // ---- Raccourcis clavier -----------------------------------------------------------------
 
@@ -1610,9 +2201,44 @@ export default function Studio() {
         else if (k === 'd') { e.preventDefault(); editor.deselect(); bump() }
         else if (k === 'r' && e.altKey && docOpen) { e.preventDefault(); if (editor.sel || editor.selPoly) setModal('selmask') }
         else if (k === 'r') { e.preventDefault(); setRulers((v) => !v) }
-        else if (k === 'g') { e.preventDefault(); setGridOn((v) => !v) }
-        else if (k === 'c') { copySelection() }
+        else if (k === 'g' && e.altKey && docOpen && editor.active) { // Alt+Ctrl+G : écrêtage
+          e.preventDefault(); editor.snapshot('Écrêtage'); editor.active.clip = !editor.active.clip; bump()
+        }
+        else if (k === 'g' && e.shiftKey && docOpen) { // Ctrl+Maj+G : dissocier
+          e.preventDefault()
+          if (editor.active?.type === 'group') { editor.snapshot('Dissocier'); editor.ungroup(editor.activeId); bump() }
+        }
+        else if (k === 'g' && docOpen) { e.preventDefault(); groupSel() } // Ctrl+G : grouper
+        else if (k === 'g' || k === "'") { e.preventDefault(); setGridOn((v) => !v) }
+        else if (k === '/' && docOpen && editor.active) { // Ctrl+/ : verrouiller le calque
+          e.preventDefault(); editor.snapshot('Verrouiller'); editor.active.locked = !editor.active.locked; bump()
+        }
+        else if (k === ',' && docOpen) { e.preventDefault(); editor.toggleVisible(editor.activeId); bump() }
+        else if (k === 'h') { e.preventDefault(); setExtras((v) => !v) }
+        else if (k === 'l' && e.shiftKey && e.altKey && docOpen) { e.preventDefault(); editor.snapshot('Contraste auto'); runFilter('autocontrast', {}); bump() }
+        else if (k === 'l' && e.shiftKey && docOpen) { e.preventDefault(); editor.snapshot('Tonalité auto'); runFilter('autotone', {}); bump() }
+        else if (k === 'b' && e.shiftKey && docOpen) { e.preventDefault(); editor.snapshot('Couleur auto'); runFilter('autocolor', {}); bump() }
+        else if (k === 'c' && e.shiftKey && docOpen) { copySelection('merged') }
+        else if (k === 'c') { copySelection('layer') }
+        else if (k === 'x' && e.shiftKey && docOpen && editor.active && !editor.active.locked
+          && editor.active.type !== 'adjust' && editor.active.type !== 'group') {
+          e.preventDefault(); setModal('liquify')
+        }
+        else if (k === 'x' && docOpen) { e.preventDefault(); cutSelection() }
         else if (k === 'v') { pasteClipboard() }
+        else if (k === 'f' && e.altKey && docOpen && lastFilter.current) { // Ctrl+Alt+F : filtre précédent
+          e.preventDefault()
+          editor.snapshot('Filtre précédent')
+          runFilter(lastFilter.current.key, lastFilter.current.params)
+          bump()
+        }
+        else if (k === 'f' && e.shiftKey && docOpen && fadeRef.current) { e.preventDefault(); setModal('fade') }
+        else if (k === 'e' && !e.shiftKey && !e.altKey && docOpen) {
+          e.preventDefault()
+          if ((editor._find(editor.activeId)?.i ?? 0) > 0) {
+            editor.snapshot('Fusionner vers le bas'); editor.mergeDown(); bump()
+          }
+        }
         else if (k === 'j' && e.shiftKey && docOpen) { e.preventDefault(); editor.snapshot('Via couper'); editor.layerViaCut(); bump() }
         else if (k === 'j' && docOpen) { e.preventDefault(); editor.snapshot('Via copier'); editor.layerViaCopy(); bump() }
         else if (k === 'i' && e.shiftKey && docOpen) { e.preventDefault(); editor.invertSelection(); bump() }
@@ -1634,10 +2260,17 @@ export default function Studio() {
       else if (k === '-') zoomAt(0.8)
       else if (k === '0') fitView()
       else if (k === 'x') setOpts((o) => ({ ...o, fg: o.bg, bg: o.fg }))
-      else if (k === 'q' && docOpen) setCompare((c) => (c != null ? null : 0.5))
+      else if (k === 'q' && docOpen) {
+        // masque rapide actif → Q le quitte (priorité, façon Photoshop) ; sinon comparaison A/A
+        if (editor.qm) { editor.exitQuickMask(); setQm(false); bump() }
+        else setCompare((c) => (c != null ? null : 0.5))
+      }
       else if (k === 'f') { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen() }
       else if (k === 'delete' || k === 'backspace') { if (docOpen) { if (editor.active?.locked) editor.addLayer(); editor.snapshot(); editor.deleteContent(); bump() } }
-      else if (k === 'escape') { editor.deselect(); setCropRect(null); bump() }
+      else if (k === 'escape') {
+        if (editor.qm) { editor.exitQuickMask(); setQm(false) }
+        editor.deselect(); setCropRect(null); setMeasure(null); setFdiArm(null); setShadePick(false); bump()
+      }
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
@@ -1669,7 +2302,7 @@ export default function Studio() {
           onRedo={async () => { await editor.redo(); bump() }}
           onPickColor={setPickColor}
           freeTransform={ft} onFtChange={(p) => setFt((f) => f && ({ ...f, ...p }))}
-          onFtApply={applyFt} onFtCancel={cancelFt} />
+          onFtApply={applyFt} onFtCancel={cancelFt} onFtMode={setFtMode} measure={measure} />
       )}
       <Flex flex="1" minH="0">
         <ToolBar tool={tool} setTool={setTool}
@@ -1714,6 +2347,7 @@ export default function Studio() {
           {docOpen && (
             <canvas ref={ovlRef} style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none' }} />
           )}
+          <ContextBar items={ctxItems} />
           {docOpen && rulers && (
             <>
               <canvas
@@ -1732,7 +2366,8 @@ export default function Studio() {
           )}
           {!docOpen && (
             <Box position="absolute" inset="0" zIndex="10" display="flex">
-              <EmptyCanvas onPick={() => setModal('open')} onOpen={() => fileInput.current?.click()} />
+              <EmptyCanvas onPick={() => setModal('open')} onOpen={() => fileInput.current?.click()}
+                onNew={() => setModal('newdoc')} />
             </Box>
           )}
           {docOpen && (
@@ -1787,16 +2422,36 @@ export default function Studio() {
             wbPick, onWbPick: () => setWbPick((v) => !v),
             onCalRef: () => setModal('calref'),
             shade, onShade, srcPhoto,
+            shadePick, onShadePick: () => setShadePick((v) => !v),
+            shadeGuess, onApplyGuess: () => { if (shadeGuess) onShade(shadeGuess.code); setShadeGuess(null) },
+            onDismissGuess: () => setShadeGuess(null),
+            onAnalyzeSel: analyzeSelShade, hasSel: !!(editor.sel || editor.selPoly),
             steps, refStep, onRefStep: pickRefStep,
             refImg, refOverlay,
             onToggleOverlay: () => setRefOverlay((v) => !v),
             onPickRef: () => setModal('refpick'),
             onSheet: () => setModal('sheet'),
+            fdiArm, onFdiArm: setFdiArm,
+            smileGuide, onToggleSmileGuide: () => setSmileGuide((v) => !v),
+            measureLog, onClearMeasureLog: () => setMeasureLog([]),
+            onRemoveMeasure: (id) => setMeasureLog((l) => l.filter((m) => m.id !== id)),
+            pxPerMm: opts.pxPerMm,
           }} />}
       </Flex>
       <StatusBar editor={editor} zoom={view.scale} tool={tool} onZoom={(f) => zoomAt(f)} />
 
       <OpenPhotoModal open={modal === 'open'} onClose={() => setModal(null)} wsId={wsId} onPick={openPhoto} />
+      <NewDocModal open={modal === 'newdoc'} onClose={() => setModal(null)} onCreate={newDocument} />
+      <CanvasSizeModal open={modal === 'canvassize'} onClose={() => setModal(null)}
+        editor={editor} onApply={applyCanvasSize} />
+      <FillModal open={modal === 'fill'} onClose={() => setModal(null)}
+        fg={opts.fg} bg={opts.bg} onApply={applyFill} />
+      <StrokeModal open={modal === 'stroke'} onClose={() => setModal(null)}
+        fg={opts.fg} onApply={applyStroke} />
+      <ColorRangeModal open={modal === 'colorrange'} onClose={() => setModal(null)}
+        editor={editor} onApply={applyColorRange} />
+      <FadeModal open={modal === 'fade'} onClose={() => setModal(null)}
+        label={fadeRef.current?.label} onApply={applyFade} />
       <OpenPhotoModal open={modal === 'calref'} onClose={() => setModal(null)} wsId={wsId} onPick={calibrateToRef} />
       <OpenPhotoModal open={modal === 'refpick'} onClose={() => setModal(null)} wsId={wsId} onPick={pickRefPhoto} />
       <MontageModal open={modal === 'montage'} onClose={() => setModal(null)} wsId={wsId} onCreate={openMontage} />
@@ -1816,13 +2471,23 @@ export default function Studio() {
           bump()
         }} />
       <ExportModal open={modal === 'export'} onClose={() => setModal(null)}
-        editor={editor} docName={editor.docName} dossiers={dossiers} onExport={doExport} onSave={doSave} />
+        editor={editor} docName={editor.docName} dossiers={dossiers}
+        onExport={doExport} onSave={doSave} onExportPdf={exportPdf} />
       <FilterModal open={!!filterKey} def={filterKey ? FILTER_DEFS[filterKey] : null}
         onPreview={previewFilter} onApply={applyFilter} onCancel={cancelFilter}
         onPreviewOff={async () => {
           clearTimeout(previewT.current)
           if (filterBase.current) { await editor._restore(filterBase.current); bump() }
         }} />
+      <TransformSelModal open={modal === 'seltransform'} onClose={() => setModal(null)}
+        onApply={applySelTransform} />
+      <SavedSelModal open={modal === 'sels'} onClose={() => setModal(null)}
+        editor={editor} version={version} onApply={bump} />
+      <LiquifyModal open={modal === 'liquify'} onClose={() => setModal(null)} editor={editor} onDone={bump} />
+      <FilterGalleryModal open={modal === 'gallery'} onClose={() => setModal(null)} editor={editor}
+        applyTo={(key, cv) => FILTER_FNS[key]?.(cv, defParams(key))}
+        onPick={(key) => { setModal(null); openFilter(key) }}
+        onApply={(key) => { setModal(null); editor.snapshot(FILTER_DEFS[key]?.label || 'Filtre'); runFilter(key, defParams(key)); bump() }} />
       <SelectMaskModal open={modal === 'selmask'} onClose={() => setModal(null)}
         editor={editor} onChange={bump}
         onApply={(fe) => { setOpts((o) => ({ ...o, selFeather: fe })); bump() }} />

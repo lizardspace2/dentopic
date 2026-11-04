@@ -7,12 +7,13 @@ import {
   FiArrowDown, FiArrowUp, FiCopy, FiEye, FiEyeOff, FiGrid, FiImage, FiLayers, FiLock,
   FiMove, FiPlus, FiRefreshCw, FiTrash2, FiEdit2, FiType, FiZap, FiShare2,
   FiAlignLeft, FiAlignCenter, FiAlignRight,
+  FiFolder, FiFolderPlus, FiChevronDown, FiChevronRight,
 } from 'react-icons/fi'
-import { LuContrast, LuHistory, LuRedo2, LuUndo2 } from 'react-icons/lu'
+import { LuContrast, LuHistory, LuPaintBucket, LuRedo2, LuUndo2 } from 'react-icons/lu'
 import { TbMask } from 'react-icons/tb'
 import { Tip } from '../../components/ui'
 import { C, S, svar, getMode } from '../../theme'
-import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
+import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, FDI_TEETH, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
 import { ADJUST_KINDS, ADJUST_PARAMS, autoLevels, curveLUT, histogram } from './engine'
 
 const panelBg = S.card
@@ -145,7 +146,7 @@ export function ToolBar({ tool, setTool, fgColor, bgColor, onSwap, onPickColor }
 export function OptionsBar({
   tool, opts, setOpts, cropRect, onApplyCrop, onCancelCrop, onRotate,
   hasSel, onFill, onDelete, onDeselect, onSelMask, canUndo, canRedo, onUndo, onRedo, onPickColor,
-  freeTransform, onFtChange, onFtApply, onFtCancel,
+  freeTransform, onFtChange, onFtApply, onFtCancel, onFtMode, measure,
 }) {
   const row = { fontSize: '2xs', color: muted }
   // slider + saisie numérique exacte (comme les champs de valeur de Photoshop)
@@ -184,16 +185,30 @@ export function OptionsBar({
         )
         return (
           <>
-            {num('X', f.cx, (v) => onFtChange({ cx: v }))}
-            {num('Y', f.cy, (v) => onFtChange({ cy: v }))}
-            {num('L', f.sx * 100, (v) => onFtChange({ sx: v / 100, sy: f.link ? v / 100 : f.sy }), 1, '%')}
-            <Tip label="Conserver les proportions — L et H liés">
-              <Box as="button" w="18px" h="18px" fontSize="2xs" borderRadius="sm" cursor="pointer"
-                bg={f.link ? C.primary : 'var(--s-a100)'} color={f.link ? '#ffffff' : fg}
-                onClick={() => onFtChange({ link: !f.link })}>⛓</Box>
-            </Tip>
-            {num('H', f.sy * 100, (v) => onFtChange({ sy: v / 100, sx: f.link ? v / 100 : f.sx }), 1, '%')}
-            {num('∠', f.angle * 180 / Math.PI, (v) => onFtChange({ angle: v * Math.PI / 180 }), 1, '°')}
+            {/* mode de transformation — façon Édition > Transformer de Photoshop */}
+            <HStack gap="0.5">
+              {[['free', 'Libre'], ['distort', 'Distorsion'], ['warp', 'Déformation']].map(([m, label]) => (
+                <Tip key={m} label={m === 'free' ? 'Déplacer, redimensionner, tourner' : m === 'distort' ? 'Tirer chaque coin librement (perspective)' : 'Treillis 3×3 : déformer localement'}>
+                  <Box as="button" px="2" h="18px" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                    bg={f.mode === m ? C.primary : 'var(--s-a100)'} color={f.mode === m ? '#ffffff' : fg}
+                    onClick={() => onFtMode?.(m)}>{label}</Box>
+                </Tip>
+              ))}
+            </HStack>
+            {f.mode === 'free' && (
+              <>
+                {num('X', f.cx, (v) => onFtChange({ cx: v }))}
+                {num('Y', f.cy, (v) => onFtChange({ cy: v }))}
+                {num('L', f.sx * 100, (v) => onFtChange({ sx: v / 100, sy: f.link ? v / 100 : f.sy }), 1, '%')}
+                <Tip label="Conserver les proportions — L et H liés">
+                  <Box as="button" w="18px" h="18px" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                    bg={f.link ? C.primary : 'var(--s-a100)'} color={f.link ? '#ffffff' : fg}
+                    onClick={() => onFtChange({ link: !f.link })}>⛓</Box>
+                </Tip>
+                {num('H', f.sy * 100, (v) => onFtChange({ sy: v / 100, sx: f.link ? v / 100 : f.sx }), 1, '%')}
+                {num('∠', f.angle * 180 / Math.PI, (v) => onFtChange({ angle: v * Math.PI / 180 }), 1, '°')}
+              </>
+            )}
             <Tip label="Méthode de rééchantillonnage des pixels">
               <HStack gap="1">
                 <Text {...row}>Interpolation :</Text>
@@ -426,6 +441,47 @@ export function OptionsBar({
       {tool === 'rotate' && (
         <Tip label="Rotation d'un quart de tour du document">{btn('Pivoter 90°', onRotate, true)}</Tip>
       )}
+      {tool === 'ruler' && (() => {
+        const len = measure ? Math.hypot(measure[2] - measure[0], measure[3] - measure[1]) : 0
+        const mm = opts.pxPerMm ? len / opts.pxPerMm : null
+        return (
+          <>
+            <Tip label="Glissez une ligne sur l'image — la longueur s'affiche ici">
+              <Text {...row}>
+                {measure ? `L : ${len.toFixed(1)} px` : 'Glissez une ligne à mesurer'}
+              </Text>
+            </Tip>
+            {measure && mm != null && (
+              <Tip label="Longueur réelle selon l'étalonnage courant">
+                <Text {...row} color="#4f8fe8" fontWeight="700">≈ {mm.toFixed(2)} mm</Text>
+              </Tip>
+            )}
+            {measure && (
+              <Tip label="Étalonnage : saisissez la longueur réelle de la ligne tracée (ex. largeur d'une dent connue, règle dans le champ)">
+                <HStack gap="1">
+                  <Text {...row}>=</Text>
+                  <Input type="number" w="52px" h="20px" fontSize="2xs" px="1" step="0.1" min="0.1"
+                    placeholder="mm" onKeyDown={(e) => {
+                      if (e.key === 'Enter' && +e.target.value > 0 && len > 0) {
+                        setOpts({ ...opts, pxPerMm: len / +e.target.value })
+                        e.target.value = ''
+                      }
+                    }} />
+                  <Text {...row}>mm</Text>
+                </HStack>
+              </Tip>
+            )}
+            {opts.pxPerMm && (
+              <Tip label="Étalonnage courant — cliquez pour réinitialiser">
+                <Box as="button" px="1.5" h="20px" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                  bg="var(--s-a100)" color={fg} onClick={() => setOpts({ ...opts, pxPerMm: null })}>
+                  {opts.pxPerMm.toFixed(2)} px/mm ✕
+                </Box>
+              </Tip>
+            )}
+          </>
+        )
+      })()}
       {tool === 'move' && (
         <>
           {/* Sélection auto + portée — comme « Auto-Select: Layer » de Photoshop */}
@@ -589,6 +645,8 @@ function SwatchPicker({ value, onChange, onCustom }) {
 
 export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
   const [kind, setKind] = useState('all') // filtre « Genre » façon Photoshop
+  const [dropHint, setDropHint] = useState(null) // {id, pos:'up'|'down'|'in'} — ligne cible du drag & drop
+  const dragIdRef = useRef(null)
   // effets listés sous le calque : activés ou masqués par l'œil (_listed)
   const fxKeys = (l) => l.fx ? Object.keys(l.fx).filter((k) => l.fx[k]?.on || l.fx[k]?._listed) : []
   const match = (l) =>
@@ -597,7 +655,7 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
         : kind === 'adjust' ? l.type === 'adjust'
           : kind === 'shape' ? l.type === 'shape'
             : kind === 'fx' ? fxKeys(l).some((k) => l.fx[k]?.on)
-              : (l.type || 'pixel') === 'pixel'
+              : (l.type || 'pixel') === 'pixel' || l.type === 'fill'
   const layers = [...editor.layers].reverse().filter(match)
   const act = editor.active
 
@@ -629,7 +687,19 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
     </Tip>
   )
   return (
-    <VStack align="stretch" gap="0" flex="1" overflowY="auto">
+    <VStack align="stretch" gap="0" flex="1" overflowY="auto"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        // dépôt dans le vide = bas de pile racine (sortir un calque d'un groupe)
+        e.preventDefault()
+        const did = dragIdRef.current
+        dragIdRef.current = null
+        setDropHint(null)
+        const f = did != null && editor._find(did)
+        if (!f || f.l.locked) return
+        editor.snapshot('Déplacer')
+        if (editor.moveToRoot(did, false)) { editor.setActive(did); onChange() }
+      }}>
       {/* Genre — filtres de calques (Tous / pixels / texte / réglage / effets) */}
       <HStack px="2.5" py="1" gap="1" borderBottom="1px solid" borderColor={panelBorder}>
         <Text fontSize="2xs" color={muted} flexShrink={0}>Genre :</Text>
@@ -679,22 +749,79 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
           <Text flex="1" fontSize="xs">Réglages (filtres)</Text>
         </Tip>
       </HStack>
-      {layers.map((l) => {
-        const fxs = fxKeys(l)
-        const isAdjust = l.type === 'adjust'
-        return (
-          <Box key={l.id}>
-            <HStack
-              px="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
-              bg={editor.activeId === l.id ? 'var(--s-a100)' : 'transparent'}
-              color={l.visible ? fg : muted}
-              onClick={() => {
-                editor.setActive(l.id)
-                onChange()
-                if (isAdjust) onAdjust?.(l)
-              }}
-            >
-              <Tip label={l.visible ? 'Masquer le calque' : 'Afficher le calque'}>
+      {(() => {
+        const renderRow = (l, depth) => {
+          const fxs = fxKeys(l)
+          const isAdjust = l.type === 'adjust'
+          const isGroup = l.type === 'group'
+          return (
+            <Box key={l.id}>
+              <HStack
+                pr="2" py="1.5" gap="2" fontSize="xs" cursor="pointer"
+                pl={`${8 + depth * 14}px`}
+                draggable={!l.locked}
+                onDragStart={(e) => { dragIdRef.current = l.id; e.dataTransfer.effectAllowed = 'move' }}
+                onDragEnd={() => { dragIdRef.current = null; setDropHint(null) }}
+                onDragOver={(e) => {
+                  e.preventDefault(); e.stopPropagation()
+                  if (dragIdRef.current == null || dragIdRef.current === l.id) return
+                  const r = e.currentTarget.getBoundingClientRect()
+                  const q = (e.clientY - r.top) / r.height
+                  const pos = isGroup ? (q < 0.3 ? 'up' : q > 0.7 ? 'down' : 'in') : (q < 0.5 ? 'up' : 'down')
+                  // refus visuel : déplacement illégal (descendant de soi, cible non-groupe…)
+                  const where = pos === 'in' ? 'inside' : pos === 'up' ? 'after' : 'before'
+                  if (!editor.canMove(dragIdRef.current, l.id, where)) {
+                    e.dataTransfer.dropEffect = 'none'
+                    if (dropHint?.id !== l.id || dropHint.pos !== 'no') setDropHint({ id: l.id, pos: 'no' })
+                    return
+                  }
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dropHint?.id !== l.id || dropHint.pos !== pos) setDropHint({ id: l.id, pos })
+                }}
+                onDragLeave={() => { if (dropHint?.id === l.id) setDropHint(null) }}
+                onDrop={(e) => {
+                  e.preventDefault(); e.stopPropagation()
+                  setDropHint(null)
+                  const did = dragIdRef.current
+                  dragIdRef.current = null
+                  if (did == null || did === l.id) return
+                  // position recalculée depuis l'événement (le state dropHint peut être en retard)
+                  const r = e.currentTarget.getBoundingClientRect()
+                  const q = (e.clientY - r.top) / r.height
+                  const pos = isGroup ? (q < 0.3 ? 'up' : q > 0.7 ? 'down' : 'in') : (q < 0.5 ? 'up' : 'down')
+                  // affichage haut→bas = pile du haut vers le bas : 'up' visuel = 'after' dans le tableau
+                  const where = pos === 'in' ? 'inside' : pos === 'up' ? 'after' : 'before'
+                  if (!editor.canMove(did, l.id, where)) return
+                  editor.snapshot('Déplacer')
+                  if (editor.moveInto(did, l.id, where)) { editor.setActive(did); onChange() }
+                }}
+                bg={dropHint?.id === l.id && dropHint.pos === 'no' ? 'rgba(248,113,113,0.18)'
+                  : dropHint?.id === l.id && dropHint.pos === 'in' ? 'rgba(79,143,232,0.25)'
+                  : editor.activeId === l.id ? 'var(--s-a100)' : editor.selLayerIds?.has(l.id) ? 'var(--s-a50)' : 'transparent'}
+                borderTop={dropHint?.id === l.id && dropHint.pos === 'up' ? '2px solid #4f8fe8' : '2px solid transparent'}
+                borderBottom={dropHint?.id === l.id && dropHint.pos === 'down' ? '2px solid #4f8fe8' : '2px solid transparent'}
+                color={l.visible ? fg : muted}
+                onClick={(e) => {
+                  // Ctrl+clic = multi-sélection (pour « Grouper les calques » Ctrl+G)
+                  if (e.ctrlKey || e.metaKey) {
+                    const s = editor.selLayerIds || (editor.selLayerIds = new Set())
+                    if (s.has(l.id)) s.delete(l.id); else s.add(l.id)
+                    onChange()
+                    return
+                  }
+                  editor.selLayerIds?.clear()
+                  editor.setActive(l.id)
+                  onChange()
+                  if (isAdjust) onAdjust?.(l)
+                }}
+              >
+                {isGroup ? (
+                  <Tip label={l.collapsed ? 'Déplier le groupe' : 'Plier le groupe'}>
+                    <Box as={l.collapsed ? FiChevronRight : FiChevronDown} color={muted} fontSize="12px" flexShrink={0}
+                      onClick={(e) => { e.stopPropagation(); l.collapsed = !l.collapsed; onChange() }} />
+                  </Tip>
+                ) : <Box w="12px" flexShrink={0} />}
+                <Tip label={l.visible ? 'Masquer le calque' : 'Afficher le calque'}>
                 <Box as={l.visible ? FiEye : FiEyeOff} color={muted} fontSize="13px" flexShrink={0}
                   onClick={(e) => { e.stopPropagation(); editor.toggleVisible(l.id); onChange() }} />
               </Tip>
@@ -703,8 +830,13 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
                   <Text fontSize="xs" color="#4f8fe8" flexShrink="0" fontWeight="700">↳</Text>
                 </Tip>
               )}
-              <Tip label={isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.type === 'text' ? 'Calque de texte — éditable dans Propriétés' : l.type === 'shape' ? 'Calque de forme vectoriel — éditable dans Propriétés' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
-                {isAdjust ? (
+              <Tip label={isGroup ? 'Groupe de calques — contient les calques imbriqués' : isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.type === 'text' ? 'Calque de texte — éditable dans Propriétés' : l.type === 'shape' ? 'Calque de forme vectoriel — éditable dans Propriétés' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
+                {isGroup ? (
+                  <Center w="42px" h="30px" flexShrink={0} borderRadius="sm" bg={S.tile}
+                    border="1px solid" borderColor="#6b7280" color="#e5e7eb" fontSize="15px">
+                    <Box as={FiFolder} />
+                  </Center>
+                ) : isAdjust ? (
                   <Center w="42px" h="30px" flexShrink={0} borderRadius="sm" bg={S.tile}
                     border="1px solid" borderColor="#7c3aed" color="#c4b5fd" fontSize="15px">
                     <Box as={LuContrast} />
@@ -790,9 +922,13 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
               </VStack>
             )}
             <Box h="1px" bg="var(--s-a50)" />
+            {isGroup && !l.collapsed &&
+              (l.children || []).slice().reverse().filter(match).map((c) => renderRow(c, depth + 1))}
           </Box>
-        )
-      })}
+          )
+        }
+        return layers.map((l) => renderRow(l, 0))
+      })()}
       {/* Barre d'icônes en bas — façon Photoshop */}
       <HStack px="2.5" py="1.5" gap="1" mt="auto" borderTop="1px solid" borderColor={panelBorder} justify="flex-end">
         <Tip label="Style de calque — ombres, lueurs, contour, incrustations…">
@@ -818,6 +954,18 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
           <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="14px" color={muted} _hover={{ color: fg }}
             onClick={() => { editor.snapshot('Calque de réglage'); const l = editor.addAdjustLayer('bc'); onChange(); onAdjust?.(l) }}>
             <Box as={LuContrast} />
+          </Center>
+        </Tip>
+        <Tip label="Nouveau groupe de calques (dossier)">
+          <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="14px" color={muted} _hover={{ color: fg }}
+            onClick={() => { editor.snapshot('Groupe'); editor.addGroup(); onChange() }}>
+            <Box as={FiFolderPlus} />
+          </Center>
+        </Tip>
+        <Tip label="Calque de remplissage uni (blanc — couleur rééditable dans Propriétés)">
+          <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="14px" color={muted} _hover={{ color: fg }}
+            onClick={() => { editor.snapshot('Remplissage'); editor.addFillLayer({ kind: 'solid', color: '#ffffff' }); onChange() }}>
+            <Box as={LuPaintBucket} />
           </Center>
         </Tip>
         <Tip label="Nouveau calque transparent au-dessus">
@@ -1174,8 +1322,11 @@ export function DentalPanel({ editor, version, onChange, dental }) {
     straighten, setStraighten, onApplyStraighten,
     wbPick, onWbPick, onAutoWB, onCalRef,
     shade, onShade, srcPhoto,
+    shadePick, onShadePick, shadeGuess, onApplyGuess, onDismissGuess, onAnalyzeSel, hasSel,
     steps, refStep, onRefStep, refImg, refOverlay, onToggleOverlay, onPickRef,
     onSheet,
+    fdiArm, onFdiArm, smileGuide, onToggleSmileGuide,
+    measureLog, onClearMeasureLog, onRemoveMeasure,
   } = dental
   const st = straighten // null | {angle, ruler, line}
   return (
@@ -1244,6 +1395,36 @@ export function DentalPanel({ editor, version, onChange, dental }) {
 
       {/* Prise de teinte */}
       <Section title="Prise de teinte">
+        {/* Analyse assistée : pipette sur la dent ou moyenne de la sélection → VITA le plus proche */}
+        <VStack align="stretch" gap="1.5">
+          <DBtn tip="Cliquez ensuite sur la dent dans l'image — la couleur moyenne est convertie en teinte VITA"
+            active={shadePick} disabled={!editor.w} onClick={onShadePick}>
+            {shadePick ? '🎯 Cliquez sur la dent…' : 'Analyser la teinte (pipette)'}
+          </DBtn>
+          <DBtn tip="Teinte VITA déduite de la couleur moyenne de la sélection courante"
+            disabled={!hasSel} onClick={onAnalyzeSel}>
+            Analyser la sélection
+          </DBtn>
+          {shadeGuess && (
+            <HStack bg="var(--s-a50)" border="1px solid" borderColor={panelBorder}
+              borderRadius="md" px="2" py="1.5" gap="2">
+              <Box w="22px" h="22px" borderRadius="sm" flexShrink="0" border="1px solid" borderColor={panelBorder}
+                bg={shadeGuess.rgb ? `rgb(${shadeGuess.rgb.join(',')})` : 'transparent'} />
+              <VStack align="stretch" gap="0" flex="1" minW="0">
+                <Text fontSize="2xs" color={fg} fontWeight="700">
+                  Teinte détectée : <Box as="span" color="#f2c200">{shadeGuess.code}</Box>
+                </Text>
+                <Text fontSize="2xs" color={muted}>
+                  ΔE {shadeGuess.de.toFixed(1)} {shadeGuess.de < 5 ? '— excellente correspondance' : shadeGuess.de < 10 ? '— correspondance correcte' : '— approximative'}
+                </Text>
+              </VStack>
+              <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                bg={C.primary} color="#ffffff" onClick={onApplyGuess}>Appliquer</Box>
+              <Box as="button" px="1.5" py="1" fontSize="2xs" borderRadius="sm" cursor="pointer"
+                color={muted} onClick={onDismissGuess}>✕</Box>
+            </HStack>
+          )}
+        </VStack>
         {srcPhoto ? (
           <>
             <HStack justify="space-between">
@@ -1303,6 +1484,63 @@ export function DentalPanel({ editor, version, onChange, dental }) {
             </Box>
           )}
         </VStack>
+      </Section>
+
+      {/* Numérotation FDI */}
+      <Section title="Numérotation FDI">
+        <Text fontSize="2xs" color={muted}>
+          Cliquez une dent puis cliquez sur l'image — le numéro est posé en calque texte.
+        </Text>
+        {[1, 2, 3, 4].map((q) => (
+          <HStack key={q} gap="1">
+            {FDI_TEETH.filter((t) => t.quadrant === q).map((t) => (
+              <Tip key={t.code} label={`Dent ${t.code} — ${fdiArm === t.code ? 'cliquez sur l\'image' : 'armer la pose'}`}>
+                <Box as="button" flex="1" h="22px" fontSize="2xs" fontWeight="700" borderRadius="sm"
+                  cursor="pointer" border="1px solid"
+                  borderColor={fdiArm === t.code ? '#f2c200' : panelBorder}
+                  bg={fdiArm === t.code ? '#f2c200' : 'var(--s-a100)'}
+                  color={fdiArm === t.code ? '#111827' : fg}
+                  onClick={() => onFdiArm(fdiArm === t.code ? null : t.code)}>
+                  {t.code}
+                </Box>
+              </Tip>
+            ))}
+          </HStack>
+        ))}
+        {fdiArm && (
+          <Text fontSize="2xs" color="#f2c200" fontWeight="700">
+            Pose armée : {fdiArm} — cliquez sur l'image
+          </Text>
+        )}
+      </Section>
+
+      {/* Repères esthétiques */}
+      <Section title="Repères esthétiques">
+        <DBtn tip="Ligne médiane + tiers verticaux du sourire + proportions dorées — superposition non destructive"
+          active={smileGuide} onClick={onToggleSmileGuide}>
+          {smileGuide ? 'Guides du sourire ✓' : 'Guides du sourire'}
+        </DBtn>
+      </Section>
+
+      {/* Journal des mesures */}
+      <Section title="Journal des mesures">
+        {(measureLog || []).length === 0 ? (
+          <Text fontSize="2xs" color={muted}>
+            Outil Règle : chaque ligne tracée est consignée ici (px, et mm après étalonnage).
+          </Text>
+        ) : (
+          <VStack align="stretch" gap="1" maxH="180px" overflowY="auto">
+            {measureLog.map((m, i) => (
+              <HStack key={m.id} gap="2" px="2" py="1" borderRadius="sm" bg="var(--s-a100)" fontSize="2xs">
+                <Text color={muted} w="34px">#{i + 1} {m.t}</Text>
+                <Text flex="1" color={fg}>{m.len.toFixed(1)} px{m.mm != null ? ` · ${m.mm.toFixed(2)} mm` : ''}</Text>
+                <Box as="button" color={muted} cursor="pointer" _hover={{ color: '#f87171' }}
+                  onClick={() => onRemoveMeasure?.(m.id)}>✕</Box>
+              </HStack>
+            ))}
+            <DBtn tip="Vider le journal" onClick={onClearMeasureLog}>Effacer le journal</DBtn>
+          </VStack>
+        )}
       </Section>
 
       {/* Planche du référentiel */}
@@ -1719,9 +1957,70 @@ function PixelLayerProps({ editor, layer, onChange, onFx }) {
   )
 }
 
+/** Calque de remplissage : couleur unie ou dégradé non destructif (éditable). */
+function FillLayerProps({ editor, layer, onChange }) {
+  const d = layer.fillDef || {}
+  const snap = () => editor.snapshot('Remplissage')
+  const up = (patch) => { Object.assign(layer.fillDef, patch); editor.drawFillLayer(layer); onChange() }
+  const cIn = (label, key, val) => (
+    <VStack key={key} align="stretch" gap="0" flex="1">
+      <Text fontSize="2xs" color={muted}>{label}</Text>
+      <Box as="input" type="color" w="100%" h="22px" p="0" cursor="pointer" borderRadius="sm"
+        border="1px solid" borderColor={panelBorder} bg={S.input}
+        value={val || '#ffffff'} onFocus={snap}
+        onChange={(e) => up({ [key]: e.target.value })} />
+    </VStack>
+  )
+  return (
+    <VStack align="stretch" gap="2" px="3" py="3" overflowY="auto" flex="1">
+      <Text fontSize="2xs" color={muted}>Calque de remplissage</Text>
+      <LayerBox editor={editor} layer={layer} onChange={onChange} w={editor.w} h={editor.h} />
+      <Box h="1px" bg="var(--s-a50)" />
+      {d.kind === 'solid' ? (
+        <>
+          {cIn('Couleur', 'color', d.color)}
+          <Text fontSize="2xs" color={muted}>
+            Couleur unie non destructive — double-cliquez la vignette du calque pour changer, ou « Pixelliser » pour cuire.
+          </Text>
+        </>
+      ) : (
+        <>
+          <HStack gap="1.5">
+            {cIn('De', 'from', d.from)}
+            {cIn('À', 'to', d.to)}
+          </HStack>
+          <HStack gap="1.5" align="end">
+            <VStack align="stretch" gap="0" flex="1">
+              <Text fontSize="2xs" color={muted}>Angle</Text>
+              <Input type="number" h="20px" fontSize="2xs" px="1" bg={S.input} color={fg}
+                border="1px solid" borderColor={panelBorder} value={d.angle ?? 90}
+                onFocus={snap}
+                onChange={(e) => { const v = +e.target.value; if (!isNaN(v)) up({ angle: v }) }} />
+            </VStack>
+            <VStack align="stretch" gap="0" flex="1">
+              <Text fontSize="2xs" color={muted}>Style</Text>
+              <Box as="select" w="100%" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
+                border="1px solid" borderColor={panelBorder} h="20px" px="1" cursor="pointer"
+                value={d.style || 'linear'}
+                onChange={(e) => { snap(); up({ style: e.target.value }) }}>
+                <option value="linear">Linéaire</option>
+                <option value="radial">Radial</option>
+              </Box>
+            </VStack>
+          </HStack>
+          <Text fontSize="2xs" color={muted}>
+            Dégradé non destructif — les couleurs, l'angle et le style restent rééditables.
+          </Text>
+        </>
+      )}
+    </VStack>
+  )
+}
+
 export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
   if (layer?.type === 'text') return <TextLayerProps editor={editor} layer={layer} onChange={onChange} />
   if (layer?.type === 'shape') return <ShapeLayerProps editor={editor} layer={layer} onChange={onChange} />
+  if (layer?.type === 'fill') return <FillLayerProps editor={editor} layer={layer} onChange={onChange} />
   if (layer?.type !== 'adjust') return <PixelLayerProps editor={editor} layer={layer} onChange={onChange} onFx={onFx} />
   const adj = layer.adj
   const p = adj?.params || {}
@@ -2140,7 +2439,8 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
   const isAdj = editor.active?.type === 'adjust'
   const isText = editor.active?.type === 'text'
   const isShape = editor.active?.type === 'shape'
-  const propsTab = (isAdj || isText || isShape) ? 'props' : topTab // Propriétés suit le calque actif
+  const isFill = editor.active?.type === 'fill'
+  const propsTab = (isAdj || isText || isShape || isFill) ? 'props' : topTab // Propriétés suit le calque actif
   return (
     <Flex w="252px" direction="column" bg={panelBg} borderLeft="1px solid" borderColor={panelBorder} flexShrink={0}>
       {/* Groupe haut : Propriétés (réglage du calque actif) / Réglages / Courbes / Dentaire */}
@@ -2200,7 +2500,7 @@ export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, on
 
 // ---- Zone centrale vide (pas de document ouvert) -------------------------------------
 
-export function EmptyCanvas({ onOpen, onPick }) {
+export function EmptyCanvas({ onOpen, onPick, onNew }) {
   return (
     <Center flex="1" color={muted}>
       <VStack gap="3">
@@ -2209,10 +2509,16 @@ export function EmptyCanvas({ onOpen, onPick }) {
           <Box as={FiLayers} />
         </Center>
         <Text fontSize="sm" fontWeight="600" color={fg}>Aucun document ouvert</Text>
-        <Text fontSize="xs" color={muted}>Ouvrez une photo du workspace ou un fichier local</Text>
+        <Text fontSize="xs" color={muted}>Créez un canevas vierge, ouvrez une photo du workspace ou un fichier local</Text>
         <HStack gap="2" mt="1">
-          <Tip label="Photo déjà rangée dans un dossier du workspace">
+          <Tip label="Canevas vierge aux dimensions de votre choix">
             <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" bg={C.primary} color="#ffffff"
+              cursor="pointer" onClick={onNew}>
+              Nouveau document…
+            </Box>
+          </Tip>
+          <Tip label="Photo déjà rangée dans un dossier du workspace">
+            <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" bg="var(--s-a100)" color={fg}
               cursor="pointer" onClick={onPick}>
               Choisir une photo
             </Box>
@@ -2226,5 +2532,32 @@ export function EmptyCanvas({ onOpen, onPick }) {
         </HStack>
       </VStack>
     </Center>
+  )
+}
+
+// ---- Barre contextuelle (façon Photoshop 2026) ---------------------------------
+// Pilule flottante bas-centre du canevas : le contenu (items) est fourni par la
+// page selon le contexte — sélection active, transformation, ou défaut.
+
+export function ContextBar({ items }) {
+  if (!items?.length) return null
+  return (
+    <HStack data-ctxbar="1" position="absolute" bottom="14px" left="50%" transform="translateX(-50%)"
+      zIndex="8" gap="0.5" px="2" py="1" bg={S.input}
+      border="1px solid" borderColor={panelBorder} borderRadius="full" boxShadow="lg">
+      {items.map((it, i) => it === '-' ? (
+        <Box key={i} w="1px" h="16px" bg={panelBorder} mx="0.5" />
+      ) : (
+        <Tip key={i} label={it.tip || it.label}>
+          <Box as="button" display="flex" alignItems="center" gap="1.5" px="2" py="1"
+            fontSize="2xs" color={it.active ? '#4f8fe8' : fg} cursor="pointer"
+            borderRadius="full" _hover={{ bg: 'var(--s-a100)' }}
+            onClick={it.onClick}>
+            {it.icon && <Box as={it.icon} fontSize="13px" />}
+            {it.label && <Text>{it.label}</Text>}
+          </Box>
+        </Tip>
+      ))}
+    </HStack>
   )
 }

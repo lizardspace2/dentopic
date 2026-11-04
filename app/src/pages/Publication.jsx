@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Box, Button, Center, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
-  FiBell, FiPlus, FiZap, FiShare2, FiEdit3, FiList, FiGlobe,
-  FiChevronLeft, FiChevronRight, FiFilter, FiCalendar, FiCheck,
+  FiBell, FiPlus, FiZap, FiShare2, FiEdit3,
+  FiChevronLeft, FiChevronRight, FiCalendar, FiCheck, FiSend,
   FiImage, FiLayers, FiVideo, FiTrash2,
   FiClock, FiAlertCircle,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
-  Card, EmptyPane, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
+  Card, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
   Tip, Tag, ago, ConfirmModal,
 } from '../components/ui'
 import { C } from '../theme'
@@ -18,10 +19,60 @@ import { useApp } from '../context/AppContext'
 import {
   listSocialAccounts, connectSocialAccount, disconnectSocialAccount,
   listSocialPosts, createSocialPost, updateSocialPost, deleteSocialPost,
+  publishDuePosts, getWorkspaceSettings, saveWorkspaceSetting,
   listPhotos, listMontages, listVideoProjects, listDossiers, getPatient,
+  socialOAuthStart, socialSyncAccounts, socialDisconnectAccount,
 } from '../api'
 
-const DAYS = ['LUN 26', 'MAR 27', 'MER 28', 'JEU 29', 'VEN 30', 'SAM 31', 'DIM 1']
+// ---- Calendrier ---------------------------------------------------------------
+const DAYS_FR = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM']
+const DAYS_SHORT = ['Lu', 'Ma', 'Me', 'Je', 'Ve', 'Sa', 'Di']
+
+const monday = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x }
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x }
+const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+const pad2 = (n) => String(n).padStart(2, '0')
+const toLocal = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`
+const fmtTime = (d) => d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+// Prochaine occurrence d'un créneau {day:0-6 (lun-dim), time:'HH:mm'}
+const nextSlotDate = (s) => {
+  const [h, m] = (s.time || '09:00').split(':').map(Number)
+  const d = new Date(); d.setHours(h, m, 0, 0)
+  let diff = ((s.day ?? 0) - ((d.getDay() + 6) % 7) + 7) % 7
+  if (diff === 0 && d <= new Date()) diff = 7
+  d.setDate(d.getDate() + diff)
+  return d
+}
+
+// Journées santé/dentaire — dates fixes annuelles + sourire (1er vendredi d'octobre)
+const HEALTH_DAYS = [
+  [2, 4, 'Journée mondiale contre le cancer'],
+  [3, 20, 'Journée mondiale de la santé bucco-dentaire'],
+  [4, 7, 'Journée mondiale de la santé'],
+  [5, 12, 'Journée internationale des infirmières'],
+  [5, 31, 'Journée mondiale sans tabac'],
+  [10, 10, 'Journée mondiale de la santé mentale'],
+  [11, 14, 'Journée mondiale du diabète'],
+]
+function upcomingEvents(n = 3) {
+  const now = new Date()
+  const out = []
+  for (const y of [now.getFullYear(), now.getFullYear() + 1]) {
+    for (const [m, d, t] of HEALTH_DAYS) out.push({ date: new Date(y, m - 1, d), label: t })
+    const o = new Date(y, 9, 1)
+    o.setDate(1 + ((5 - o.getDay() + 7) % 7))
+    out.push({ date: o, label: 'Journée mondiale du sourire' })
+  }
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return out.filter((e) => e.date >= start).sort((a, b) => a.date - b.date).slice(0, n)
+}
+
+const STATUS_META = {
+  draft: { color: 'gray', label: 'Brouillon' },
+  scheduled: { color: 'blue', label: 'Programmé' },
+  published: { color: 'green', label: 'Publié' },
+  failed: { color: 'red', label: 'Échec' },
+}
 
 const PROVIDERS = [
   { id: 'instagram', label: 'Instagram', color: '#d62976' },
@@ -42,28 +93,57 @@ const KINDS = [
   ['reel', 'Reel'],
 ]
 
-const EVENTS = [
-  ['13 nov.', 'Journée mondiale de la gentillesse'],
-  ['14 nov.', 'Journée mondiale du diabète'],
-]
-
 export default function Publication() {
   const { workspace } = useApp()
   const wsId = workspace?.id
+  const location = useLocation()
+  const navigate = useNavigate()
   const [view, setView] = useState('week')
   const [tab, setTab] = useState('moments')
   const [accounts, setAccounts] = useState([])
   const [posts, setPosts] = useState([])
+  const [slots, setSlots] = useState([])
+  const [notify, setNotify] = useState(false)
+  const [notice, setNotice] = useState(null)
+  const [cursor, setCursor] = useState(() => new Date())
+  const [kindFilter, setKindFilter] = useState('all')
   const [modal, setModal] = useState(null) // 'connect' | 'draft'
   const [editPost, setEditPost] = useState(null)
+  const [prefill, setPrefill] = useState(null) // Date pré-remplie (clic « + » sur un jour)
 
   const reload = async () => {
     if (!wsId) return
-    const [accs, ps] = await Promise.all([listSocialAccounts(wsId), listSocialPosts(wsId)])
+    const [accs, settings] = await Promise.all([listSocialAccounts(wsId), getWorkspaceSettings(wsId)])
+    const pub = await publishDuePosts(wsId)
+    const ps = await listSocialPosts(wsId)
     setAccounts(accs)
     setPosts(ps)
+    setSlots(settings.social_schedule || [])
+    setNotify(settings.social_notify === true)
+    if (settings.social_notify && (pub.published || pub.failed)) {
+      setNotice([
+        pub.published ? `${pub.published} publication(s) publiée(s)` : null,
+        pub.failed ? `${pub.failed} publication(s) en échec` : null,
+      ].filter(Boolean).join(' · '))
+    }
   }
   useEffect(() => { reload() }, [wsId]) // eslint-disable-line
+  // Retour de l'OAuth Meta (?meta_connected=1&n=2 posé par social-oauth-callback)
+  useEffect(() => {
+    const q = new URLSearchParams(location.search)
+    const ok = q.get('meta_connected')
+    if (!ok) return
+    const n = +(q.get('n') || 0)
+    setNotice(ok === '1'
+      ? `${n} compte(s) connecté(s) via Facebook${n > 1 ? 's' : ''}`
+      : 'La connexion Facebook a échoué ou a été annulée.')
+    navigate('/publication', { replace: true })
+  }, [location.search]) // eslint-disable-line
+  useEffect(() => {
+    if (!wsId) return
+    const t = setInterval(reload, 60000)
+    return () => clearInterval(t)
+  }, [wsId]) // eslint-disable-line
 
   const drafts = posts.filter((p) => p.status === 'draft')
   const scheduled = posts.filter((p) => p.status === 'scheduled')
@@ -74,7 +154,33 @@ export default function Publication() {
     { label: 'Une fois le réseau connecté, rattachez-le au brouillon puis programmez la publication.', done: scheduled.length > 0 },
   ]
 
-  const openDraft = (post = null) => { setEditPost(post); setModal('draft') }
+  const openDraft = (post = null, date = null) => {
+    setEditPost(post); setPrefill(date); setModal('draft')
+  }
+
+  const toggleNotify = async () => {
+    const v = !notify
+    setNotify(v)
+    await saveWorkspaceSetting(wsId, 'social_notify', v)
+  }
+
+  // ---- données du calendrier ----
+  const kindOk = (p) => kindFilter === 'all' || (p.kind || 'publication') === kindFilter
+  const postsOn = (day) => posts.filter((p) =>
+    kindOk(p) && p.scheduled_at && sameDay(new Date(p.scheduled_at), day))
+  const unscheduled = posts.filter((p) => kindOk(p) && !p.scheduled_at && p.status !== 'published')
+  const shift = (dir) => setCursor((c) =>
+    view === 'week' ? addDays(c, dir * 7) : new Date(c.getFullYear(), c.getMonth() + dir, 1))
+  const mon = monday(cursor)
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(mon, i))
+  const monthWeeks = (() => {
+    const start = monday(new Date(cursor.getFullYear(), cursor.getMonth(), 1))
+    return Array.from({ length: 6 }, (_, w) => Array.from({ length: 7 }, (_, d) => addDays(start, w * 7 + d)))
+  })()
+  const calTitle = view === 'week'
+    ? `Semaine du ${mon.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
+    : cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+  const events = upcomingEvents(3)
 
   return (
     <Box w="100%" px="6" py="6">
@@ -84,12 +190,22 @@ export default function Publication() {
         subtitle="Planifiez vos publications sur les réseaux sociaux."
       >
         <HelpButton />
-        <Tip label="Recevoir une alerte quand une publication est publiée ou échoue">
-          <Button variant="outline" size="sm" borderRadius="md" color="gray.600">
-            <FiBell /> Activer les notifications
+        <Tip label={notify ? 'Notifications activées — cliquer pour désactiver' : 'Recevoir une alerte quand une publication est publiée ou échoue'}>
+          <Button variant={notify ? 'solid' : 'outline'} size="sm" borderRadius="md"
+            color={notify ? '#ffffff' : 'gray.600'} bg={notify ? C.primary : 'transparent'}
+            onClick={toggleNotify}>
+            <FiBell /> Notifications {notify ? 'on' : 'off'}
           </Button>
         </Tip>
       </PageHeader>
+      {notice && (
+        <HStack bg={C.softBlue} border="1px solid" borderColor={C.softBlueBorder}
+          borderRadius="md" px="3" py="2" mb="4" gap="2">
+          <Box as={FiSend} color={C.primary} fontSize="sm" />
+          <Text fontSize="xs" color={C.ink} flex="1">{notice}</Text>
+          <Box as="button" color="gray.400" fontSize="xs" onClick={() => setNotice(null)}>✕</Box>
+        </HStack>
+      )}
       <HStack gap="2" mb="5" justify="flex-end">
         <Tip label="Composer un avant/après prêt à publier depuis un montage">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.500" onClick={() => openDraft()}>
@@ -104,6 +220,7 @@ export default function Publication() {
         <PrimaryButton icon={FiPlus} onClick={() => openDraft()}>Nouvelle publication</PrimaryButton>
       </HStack>
 
+      {!steps.every((s) => s.done) && (
       <Card p="5" mb="5" bg={C.softBlue} borderColor={C.softBlueBorder}>
         <HStack gap="2" mb="3">
           <Box as={FiShare2} color={C.primary} fontSize="sm" />
@@ -135,6 +252,7 @@ export default function Publication() {
           Un brouillon peut être préparé par tout membre autorisé à écrire.
         </Text>
       </Card>
+      )}
 
       <HStack gap="4" alignItems="start">
         <Box flex="1">
@@ -143,35 +261,86 @@ export default function Publication() {
               <Button size="xs" bg={view === 'week' ? C.primary : 'white'} color={view === 'week' ? '#ffffff' : 'gray.600'} border="1px solid" borderColor={C.cardBorder} borderRadius="md 0 0 md" onClick={() => setView('week')}>Semaine</Button>
               <Button size="xs" bg={view === 'month' ? C.primary : 'white'} color={view === 'month' ? '#ffffff' : 'gray.600'} border="1px solid" borderColor={C.cardBorder} borderRadius="0" onClick={() => setView('month')}>Calendrier</Button>
             </HStack>
-            <Button variant="outline" size="xs" px="2"><FiList /></Button>
-            <Button variant="outline" size="xs" px="2"><FiGlobe /></Button>
-            <Button variant="ghost" size="xs" px="1"><FiChevronLeft /></Button>
-            <Button variant="outline" size="xs">Aujourd'hui</Button>
-            <Button variant="ghost" size="xs" px="1"><FiChevronRight /></Button>
-            <Text fontSize="lg" fontWeight="700" color={C.ink} flex="1" textAlign="center">Octobre 2026</Text>
-            <HStack bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="md" px="2" h="30px" gap="1.5">
-              <Box as={FiFilter} color="gray.400" fontSize="xs" />
-              <Text fontSize="xs" color="gray.600">Type de contenu : Tous</Text>
-              <Text fontSize="2xs" color="gray.400">⌄</Text>
-            </HStack>
+            <Button variant="ghost" size="xs" px="1" onClick={() => shift(-1)} aria-label="Période précédente"><FiChevronLeft /></Button>
+            <Button variant="outline" size="xs" onClick={() => setCursor(new Date())}>Aujourd'hui</Button>
+            <Button variant="ghost" size="xs" px="1" onClick={() => shift(1)} aria-label="Période suivante"><FiChevronRight /></Button>
+            <Text fontSize="lg" fontWeight="700" color={C.ink} flex="1" textAlign="center">{calTitle}</Text>
+            <Select h="30px" fontSize="xs" value={kindFilter} aria-label="Filtrer par type de contenu"
+              onChange={(e) => setKindFilter(e.target.value)}>
+              <option value="all">Type : Tous</option>
+              {KINDS.map(([k, l]) => <option key={k} value={k}>Type : {l}</option>)}
+            </Select>
           </HStack>
+
+          {view === 'week' ? (
           <SimpleGrid columns={8} gap="0" border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
-            <EmptyPane borderRadius="0" border="none" borderRight="1px solid" borderColor={C.cardBorder} p="6" m="0" minH="220px">
-              <VStack gap="3" align="center" justify="center" h="100%">
-                <Text fontSize="xs" color="gray.600" textAlign="center">Créer une publication, une story ou un reel.</Text>
-                <Text fontSize="2xs" color="gray.400" textAlign="center">Partagez du contenu avec votre audience aujourd'hui.</Text>
-                <Button size="xs" variant="outline" onClick={() => openDraft()}>Créer +</Button>
+            <Box borderRight="1px solid" borderColor={C.cardBorder} p="1.5" minH="220px" bg="gray.50">
+              <Text fontSize="2xs" fontWeight="700" color="gray.500" mb="1">FILE</Text>
+              <VStack align="stretch" gap="1" maxH="190px" overflowY="auto" mb="1">
+                {unscheduled.map((p) => <PostChip key={p.id} p={p} onClick={() => openDraft(p)} />)}
+                {!unscheduled.length && (
+                  <Text fontSize="2xs" color="gray.400" textAlign="center" py="2">Aucun brouillon sans date.</Text>
+                )}
               </VStack>
-            </EmptyPane>
-            {DAYS.map((d, i) => (
-              <Box key={d} bg={i === 5 ? C.softBlue : 'white'} borderRight={i < 6 ? '1px solid' : 'none'} borderColor="gray.100" p="2" minH="220px">
-                <HStack justify="space-between">
-                  <Text fontSize="2xs" fontWeight={i === 5 ? '700' : '500'} color={i === 5 ? C.primary : 'gray.500'}>{d}</Text>
-                  <Text fontSize="2xs" color="gray.300">+</Text>
-                </HStack>
-              </Box>
-            ))}
+              <Button size="xs" variant="outline" w="100%" onClick={() => openDraft()}>Créer +</Button>
+            </Box>
+            {weekDays.map((day, i) => {
+              const today = sameDay(day, new Date())
+              return (
+                <Box key={i} bg={today ? C.softBlue : 'white'}
+                  borderRight={i < 6 ? '1px solid' : 'none'} borderColor="gray.100"
+                  p="1.5" minH="220px">
+                  <HStack justify="space-between" mb="1">
+                    <Text fontSize="2xs" fontWeight={today ? '700' : '500'}
+                      color={today ? C.primary : 'gray.500'}>
+                      {DAYS_FR[i]} {day.getDate()}
+                    </Text>
+                    <Tip label="Créer un brouillon pour ce jour">
+                      <Box as="button" fontSize="xs" color="gray.300" cursor="pointer"
+                        _hover={{ color: C.primary }} aria-label={`Créer le ${DAYS_FR[i]} ${day.getDate()}`}
+                        onClick={() => { const d = new Date(day); d.setHours(9, 0, 0, 0); openDraft(null, d) }}>+</Box>
+                    </Tip>
+                  </HStack>
+                  {postsOn(day).map((p) => <PostChip key={p.id} p={p} onClick={() => openDraft(p)} />)}
+                </Box>
+              )
+            })}
           </SimpleGrid>
+          ) : (
+          <Box border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
+            <SimpleGrid columns={7} gap="0" bg="gray.50">
+              {DAYS_FR.map((d) => (
+                <Text key={d} fontSize="2xs" fontWeight="700" color="gray.500"
+                  px="2" py="1" borderBottom="1px solid" borderColor="gray.100">{d}</Text>
+              ))}
+            </SimpleGrid>
+            {monthWeeks.map((week, w) => (
+              <SimpleGrid key={w} columns={7} gap="0">
+                {week.map((day, d) => {
+                  const inMonth = day.getMonth() === cursor.getMonth()
+                  const today = sameDay(day, new Date())
+                  return (
+                    <Box key={d} minH="92px" p="1" borderTop="1px solid" borderColor="gray.100"
+                      borderRight={d < 6 ? '1px solid' : 'none'}
+                      bg={today ? C.softBlue : 'white'} opacity={inMonth ? 1 : 0.45}>
+                      <HStack justify="space-between">
+                        <Text fontSize="2xs" fontWeight={today ? '700' : '400'}
+                          color={today ? C.primary : 'gray.500'}>{day.getDate()}</Text>
+                        <Box as="button" fontSize="2xs" color="gray.300" cursor="pointer"
+                          _hover={{ color: C.primary }} aria-label={`Créer le ${day.getDate()}`}
+                          onClick={() => { const x = new Date(day); x.setHours(9, 0, 0, 0); openDraft(null, x) }}>+</Box>
+                      </HStack>
+                      {postsOn(day).slice(0, 3).map((p) => <PostChip key={p.id} p={p} compact onClick={() => openDraft(p)} />)}
+                      {postsOn(day).length > 3 && (
+                        <Text fontSize="2xs" color="gray.400">+{postsOn(day).length - 3}</Text>
+                      )}
+                    </Box>
+                  )
+                })}
+              </SimpleGrid>
+            ))}
+          </Box>
+          )}
         </Box>
 
         <Card w="270px" flexShrink={0} p="4">
@@ -210,16 +379,27 @@ export default function Publication() {
           ) : (
             <>
               <Text fontSize="xs" fontWeight="600" color={C.ink} mb="1">Meilleurs moments</Text>
-              <Text fontSize="2xs" color="gray.500" mb="2">Heures où votre audience est la plus active cette semaine.</Text>
-              <Text fontSize="2xs" color="gray.400" mb="3">
-                {accounts.length ? 'Données d\u2019audience disponibles après les premières publications.' : 'Aucune donnée d\u2019audience — connectez un compte.'}
-              </Text>
+              <Text fontSize="2xs" color="gray.500" mb="2">Créneaux de publication par défaut (Réglages → Réseaux sociaux).</Text>
+              {slots.length ? (
+                <VStack align="stretch" gap="1" mb="3">
+                  {slots.slice(0, 5).map((s) => (
+                    <HStack key={`${s.day}-${s.time}`} bg={C.softBlue} borderRadius="md" px="2" py="1" gap="2">
+                      <Box as={FiClock} color={C.primary} fontSize="2xs" />
+                      <Text fontSize="2xs" color={C.body}>{['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'][s.day]} · {s.time}</Text>
+                    </HStack>
+                  ))}
+                </VStack>
+              ) : (
+                <Text fontSize="2xs" color="gray.400" mb="3">Aucun créneau défini — ajoutez-en dans Réglages → Réseaux sociaux.</Text>
+              )}
               <Text fontSize="xs" fontWeight="600" color={C.ink} mb="2">Événements à venir</Text>
               <VStack align="stretch" gap="2">
-                {EVENTS.map(([d, t]) => (
-                  <HStack key={d} bg={C.softBlue} borderRadius="md" px="2" py="1.5" gap="2">
-                    <Text fontSize="2xs" color={C.primary} fontWeight="600" whiteSpace="nowrap">{d}</Text>
-                    <Text fontSize="2xs" color={C.body} isTruncated flex="1">{t}</Text>
+                {events.map((e) => (
+                  <HStack key={e.label} bg={C.softBlue} borderRadius="md" px="2" py="1.5" gap="2">
+                    <Text fontSize="2xs" color={C.primary} fontWeight="600" whiteSpace="nowrap">
+                      {e.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                    </Text>
+                    <Text fontSize="2xs" color={C.body} isTruncated flex="1">{e.label}</Text>
                     <Box as={FiCalendar} color={C.primary} fontSize="2xs" />
                   </HStack>
                 ))}
@@ -231,8 +411,8 @@ export default function Publication() {
 
       <ConnectModal open={modal === 'connect'} onClose={() => setModal(null)}
         wsId={wsId} accounts={accounts} onDone={reload} />
-      <DraftModal open={modal === 'draft'} onClose={() => { setModal(null); setEditPost(null) }}
-        wsId={wsId} accounts={accounts} post={editPost} onDone={reload} />
+      <DraftModal open={modal === 'draft'} onClose={() => { setModal(null); setEditPost(null); setPrefill(null) }}
+        wsId={wsId} accounts={accounts} post={editPost} prefill={prefill} slots={slots} onDone={reload} />
     </Box>
   )
 }
@@ -277,8 +457,8 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
               </Box>
               <Box flex="1" minW="0">
                 <HStack gap="1.5" mb="0.5">
-                  <Tag color={p.status === 'scheduled' ? 'blue' : 'gray'}>
-                    {p.status === 'scheduled' ? 'Programmé' : 'Brouillon'}
+                  <Tag color={STATUS_META[p.status]?.color || 'gray'}>
+                    {STATUS_META[p.status]?.label || p.status}
                   </Tag>
                   {p.kind && <Tag color="purple">{p.kind}</Tag>}
                   {prov && <SocialIcon provider={p.account.provider} size={12} />}
@@ -291,6 +471,19 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
                   {p.patient ? ` · ${[p.patient.first_name, p.patient.last_name].filter(Boolean).join(' ')}` : ''}
                 </Text>
               </Box>
+              <VStack gap="0" align="center">
+              <Tip label="Publier maintenant (simulé — le vrai envoi nécessite l'OAuth du réseau)">
+                <Box as="button" aria-label="Publier maintenant" color="gray.400" p="1"
+                  cursor={busy ? 'wait' : 'pointer'} _hover={{ color: C.primary }}
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    setBusy(true)
+                    await updateSocialPost(p.id, { status: 'published' })
+                    setBusy(false); onReload()
+                  }}>
+                  <FiSend />
+                </Box>
+              </Tip>
               <Tip label="Supprimer ce brouillon">
                 <Box as="button" aria-label="Supprimer le brouillon" color="gray.400" p="1"
                   cursor={busy ? 'wait' : 'pointer'} _hover={{ color: 'red.500' }}
@@ -298,6 +491,7 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
                   <FiTrash2 />
                 </Box>
               </Tip>
+              </VStack>
             </HStack>
           </Card>
         )
@@ -317,6 +511,23 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
   const [provider, setProvider] = useState('instagram')
   const [handle, setHandle] = useState('')
   const [busy, setBusy] = useState(false)
+  const [oauthMsg, setOauthMsg] = useState('')
+
+  // OAuth réel via l'Edge Function (Meta natif ou page hébergée agrégateur).
+  const connectOAuth = async (prov) => {
+    setBusy(true); setOauthMsg('')
+    const r = await socialOAuthStart(wsId, prov)
+    setBusy(false)
+    if (r.url) window.open(r.url, '_blank', 'width=980,height=720')
+    else setOauthMsg(r.error || 'OAuth non configuré côté serveur — le mode manuel ci-dessous reste disponible.')
+  }
+  const syncAgg = async () => {
+    setBusy(true)
+    const r = await socialSyncAccounts(wsId)
+    setBusy(false)
+    if (r.synced !== undefined) { onDone(); setOauthMsg(`${r.synced} compte(s) synchronisé(s).`) }
+    else setOauthMsg(r.error || 'Agrégateur non configuré côté serveur.')
+  }
 
   const connect = async () => {
     if (!handle.trim()) return
@@ -328,7 +539,8 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
   const disconnect = async () => {
     if (!rmAcc) return
     setBusy(true)
-    await disconnectSocialAccount(rmAcc)
+    // Révocation côté serveur si la function est déployée, sinon suppression locale.
+    if (!(await socialDisconnectAccount(rmAcc))) await disconnectSocialAccount(rmAcc)
     setBusy(false); setRmAcc(null); onDone()
   }
 
@@ -368,6 +580,26 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
           })}
         </VStack>
       )}
+      <VStack align="stretch" gap="2" mb="4" p="3" bg={C.softBlue}
+        border="1px solid" borderColor={C.softBlueBorder} borderRadius="md">
+        <Text fontSize="xs" fontWeight="700" color={C.ink}>Connexion automatique (recommandé)</Text>
+        <HStack gap="2" flexWrap="wrap">
+          <Button size="sm" variant="outline" onClick={() => connectOAuth('facebook')} disabled={busy}>
+            <SocialIcon provider="facebook" size={13} /> via Facebook
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => connectOAuth('aggregator')} disabled={busy}>
+            <FiShare2 /> via l'agrégateur
+          </Button>
+          <Button size="xs" variant="ghost" onClick={syncAgg} disabled={busy} aria-label="Synchroniser les comptes agrégateur">
+            <FiClock /> Sync
+          </Button>
+        </HStack>
+        {oauthMsg && <Text fontSize="2xs" color="orange.700">{oauthMsg}</Text>}
+        <Text fontSize="2xs" color="gray.500">
+          Le flux Facebook ramène vos Pages et le compte Instagram Pro associé en une seule autorisation.
+        </Text>
+      </VStack>
+
       <Field label="Réseau" mb="3">
         <HStack gap="2">
           {PROVIDERS.map((p) => (
@@ -404,7 +636,7 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
 
 // ---- Modal « Préparer un brouillon » -------------------------------------------
 
-function DraftModal({ open, onClose, wsId, accounts, post, onDone }) {
+function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDone }) {
   const [kind, setKind] = useState('publication')
   const [mediaTab, setMediaTab] = useState('photos')
   const [mediaId, setMediaId] = useState(null)
@@ -440,9 +672,10 @@ function DraftModal({ open, onClose, wsId, accounts, post, onDone }) {
       setMediaTab(post.photo_id ? 'photos' : post.montage_id ? 'montages' : 'videos')
     } else {
       setKind('publication'); setCaption(''); setAccountId(accounts[0]?.id || '')
-      setSchedule(''); setWatermark(true); setDossierId(''); setMediaId(null); setMediaTab('photos')
+      setSchedule(prefill ? toLocal(prefill) : ''); setWatermark(true)
+      setDossierId(''); setMediaId(null); setMediaTab('photos')
     }
-  }, [open, post]) // eslint-disable-line
+  }, [open, post, prefill]) // eslint-disable-line
 
   const save = async () => {
     if (!mediaId) return
@@ -469,6 +702,13 @@ function DraftModal({ open, onClose, wsId, accounts, post, onDone }) {
     setBusy(false); onDone(); onClose()
   }
 
+  const publishNow = async () => {
+    if (!post) return
+    setBusy(true)
+    await updateSocialPost(post.id, { status: 'published' })
+    setBusy(false); onDone(); onClose()
+  }
+
   const pool = mediaTab === 'photos' ? photos : mediaTab === 'montages' ? montages : videos
 
   return (
@@ -481,6 +721,13 @@ function DraftModal({ open, onClose, wsId, accounts, post, onDone }) {
           {schedule ? 'Sera programmé à la date choisie' : 'Sera conservé en brouillon'}
         </Text>
         <HStack gap="2">
+          {post && (
+            <Tip label="Marquer comme publié immédiatement (simulé sans OAuth)">
+              <Button variant="outline" size="sm" onClick={publishNow} disabled={busy}>
+                <FiSend /> Publier
+              </Button>
+            </Tip>
+          )}
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
           <PrimaryButton onClick={save} disabled={!mediaId || busy}>
             {busy ? 'Enregistrement…' : post ? 'Enregistrer' : 'Créer le brouillon'}
@@ -575,6 +822,18 @@ function DraftModal({ open, onClose, wsId, accounts, post, onDone }) {
         <Field label="Programmer (optionnel)">
           <Input type="datetime-local" fontSize="sm" value={schedule}
             onChange={(e) => setSchedule(e.target.value)} />
+          {slots?.length > 0 && (
+            <HStack gap="1" flexWrap="wrap" mt="1.5">
+              {slots.map((s) => (
+                <Box key={`${s.day}-${s.time}`} as="button" fontSize="2xs" px="2" py="0.5"
+                  borderRadius="md" border="1px solid" borderColor={C.cardBorder} color="gray.600"
+                  _hover={{ borderColor: C.primary, color: C.primary }}
+                  onClick={() => setSchedule(toLocal(nextSlotDate(s)))}>
+                  {DAYS_SHORT[s.day]} {s.time}
+                </Box>
+              ))}
+            </HStack>
+          )}
         </Field>
         <Field label="Filigrane DentoPic">
           <HStack h="34px" gap="2" cursor="pointer" onClick={() => setWatermark(!watermark)}>
@@ -587,6 +846,25 @@ function DraftModal({ open, onClose, wsId, accounts, post, onDone }) {
         </Field>
       </SimpleGrid>
     </Modal>
+  )
+}
+
+// Pastille d'une publication sur le calendrier — clic = ouvrir le brouillon.
+function PostChip({ p, compact, onClick }) {
+  const meta = STATUS_META[p.status] || STATUS_META.draft
+  const prov = p.account && providerOf(p.account.provider)
+  const time = p.scheduled_at ? fmtTime(new Date(p.scheduled_at)) : null
+  return (
+    <Box mb="1" px="1.5" py="1" borderRadius="sm" bg="white" cursor="pointer"
+      border="1px solid" borderColor="gray.100" borderLeft="3px solid"
+      borderLeftColor={prov?.color || 'gray.300'} _hover={{ borderColor: 'blue.300' }}
+      onClick={onClick} title={p.caption || ''}>
+      <HStack gap="1" mb={compact ? 0 : '0.5'}>
+        {prov && <SocialIcon provider={p.account.provider} size={10} />}
+        <Tag color={meta.color}>{meta.label}{time && p.status === 'scheduled' ? ` ${time}` : ''}</Tag>
+      </HStack>
+      {!compact && <Text fontSize="2xs" color={C.body} isTruncated>{p.caption || '(sans légende)'}</Text>}
+    </Box>
   )
 }
 

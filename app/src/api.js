@@ -743,6 +743,60 @@ export function deleteSocialPost(id) {
   return supabase.from('social_posts').delete().eq('id', id).then(({ error }) => !error)
 }
 
+/** Démarre le flux OAuth via l'Edge Function (Meta natif ou agrégateur).
+ *  Retourne { url } à ouvrir, ou { configured:false } si le serveur n'est pas
+ *  configuré (le frontend bascule alors sur la connexion manuelle). */
+export async function socialOAuthStart(wsId, provider, action) {
+  const { data, error } = await supabase.functions.invoke('social-oauth-start', {
+    body: { workspace_id: wsId, provider, action },
+  })
+  if (error) return { url: null, configured: false, error: error.message }
+  return data || { url: null, configured: false }
+}
+
+/** Resynchronise les comptes liés côté agrégateur → lignes social_accounts. */
+export function socialSyncAccounts(wsId) {
+  return socialOAuthStart(wsId, 'aggregator', 'sync')
+}
+
+/** Déconnexion côté serveur (révocation best-effort + suppression). */
+export async function socialDisconnectAccount(id) {
+  const { data, error } = await supabase.functions.invoke('social-disconnect', {
+    body: { account_id: id },
+  })
+  if (error) return false
+  return data?.ok !== false
+}
+
+/** Moteur de publication : tente l'Edge Function (publication réelle via les
+ *  APIs réseau), puis replie sur la simulation locale si elle n'est pas déployée.
+ *  Une Edge Function + cron (x-cron-secret) remplacera le déclencheur client. */
+export async function publishDuePosts(wsId) {
+  try {
+    const { data, error } = await supabase.functions.invoke('social-publish-due', {
+      body: { workspace_id: wsId },
+    })
+    if (!error && data && data.errors !== undefined) {
+      return { published: data.published || 0, failed: data.failed || 0 }
+    }
+  } catch { /* function non déployée → simulation */ }
+  const { data: due, error } = await supabase
+    .from('social_posts')
+    .select('id,account_id')
+    .eq('workspace_id', wsId)
+    .eq('status', 'scheduled')
+    .lte('scheduled_at', new Date().toISOString())
+  if (error) { console.warn('publishDuePosts:', error.message); return { published: 0, failed: 0 } }
+  let published = 0, failed = 0
+  for (const p of due || []) {
+    const status = p.account_id ? 'published' : 'failed'
+    if (await updateSocialPost(p.id, { status })) {
+      if (status === 'published') published++; else failed++
+    }
+  }
+  return { published, failed }
+}
+
 // ---- Protocoles de prise de vues ----------------------------------------------
 // protocols (workspace_id, name, description, is_default) + protocol_steps
 // (protocol_id, position, name, expected_photo_class, required, instructions).
