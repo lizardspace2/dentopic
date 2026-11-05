@@ -478,6 +478,16 @@ export function getPatient(dossierId) {
     .then(({ data }) => data?.[0] || null)
 }
 
+/** Tous les patients du workspace — { dossierId: patient } si byDossier. */
+export function listPatients(wsId, { byDossier = false } = {}) {
+  return alive(supabase.from('patients').select('*').eq('workspace_id', wsId))
+    .then(({ data }) => {
+      const rows = data || []
+      if (!byDossier) return rows
+      return Object.fromEntries(rows.map((p) => [p.dossier_id, p]))
+    })
+}
+
 /** Étapes du protocole de prise de vues (référentiel DentoPic). */
 export function listProtocolSteps() {
   return supabase
@@ -620,6 +630,24 @@ export function predictionsByPhoto(photoIds) {
     .select('*')
     .in('photo_id', photoIds)
     .then(({ data }) => Object.fromEntries((data || []).map((p) => [p.photo_id, p])))
+}
+
+// ---- Recherche multicritères --------------------------------------------------
+
+/**
+ * Charge tout le nécessaire à la recherche multicritères :
+ * dossiers + patients + photos (+ prédictions IA) + montages du workspace.
+ * Le filtrage est fait côté client (volumes cabinet).
+ */
+export async function loadSearchData(wsId) {
+  const [dossiers, patients, photos, montages] = await Promise.all([
+    listDossiers(wsId),
+    listPatients(wsId),
+    listPhotos(wsId, { limit: 500 }),
+    listMontages(wsId, { limit: 200 }),
+  ])
+  const preds = await predictionsByPhoto(photos.map((p) => p.id))
+  return { dossiers, patients, photos, montages, preds }
 }
 
 // ---- Profil -----------------------------------------------------------------------
