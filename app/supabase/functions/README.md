@@ -14,7 +14,9 @@ META_APP_SECRET=...
 META_REDIRECT_URI=https://<ref>.supabase.co/functions/v1/social-oauth-callback
 
 # Adaptateur AGGREGATEUR — Upload-Post par défaut (évite l'App Review Meta)
+# Pool de clés : BYOK workspace (settings.social_agg_key) > AGGREGATOR_API_KEY > AGGREGATOR_API_KEYS
 AGGREGATOR_API_KEY=...
+AGGREGATOR_API_KEYS=key1,key2   # optionnel — clés plateforme supplémentaires (failover)
 AGGREGATOR_BASE_URL=https://api.upload-post.com/api   # optionnel (défaut)
 
 # Cron externe → appels social-publish-due authentifiés

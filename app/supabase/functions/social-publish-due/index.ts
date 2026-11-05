@@ -3,7 +3,7 @@
 // Appelé par le client (publishDuePosts, JWT membre) et/ou un cron (x-cron-secret).
 import {
   preflight, json, requireMember, cronOk, admin,
-  mediaSignedUrl, markPost, metaPublishPage, metaPublishIG, aggPublish,
+  mediaSignedUrl, markPost, metaPublishPage, metaPublishIG, aggPublish, aggProfile,
 } from '../_shared/social.ts'
 
 Deno.serve(async (req) => {
@@ -38,8 +38,10 @@ Deno.serve(async (req) => {
         let ref: string | null = null
 
         if (meta.aggregator && meta.profile_key) {
-          // Agrégateur : un appel publie sur toutes les plateformes liées.
-          ref = await aggPublish(meta.profile_key, meta.platforms || [acc.provider], mediaUrl, caption, !!p.video_id)
+          // Agrégateur : la clé se résout par la liaison profil (BYOK ou plateforme).
+          const prof = await aggProfile(sb, workspace_id)
+          ref = await aggPublish(meta.profile_key, prof.key,
+            meta.platforms || [acc.provider], mediaUrl, caption, !!p.video_id)
         } else if (acc.provider === 'instagram' && meta.ig_user_id && meta.page_token) {
           if (!mediaUrl) throw new Error('Instagram exige une image accessible')
           ref = await metaPublishIG(meta.ig_user_id, meta.page_token, mediaUrl, caption)

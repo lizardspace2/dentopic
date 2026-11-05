@@ -46,6 +46,8 @@ export default function ReglageReseaux() {
   const [scheduled, setScheduled] = useState([])
   const [slots, setSlots] = useState([])
   const [slotForm, setSlotForm] = useState({ day: 0, time: '09:00' })
+  const [aggKey, setAggKey] = useState('')
+  const [aggSaved, setAggSaved] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saved, setSaved] = useState(false)
   const [connect, setConnect] = useState(false)
@@ -65,6 +67,7 @@ export default function ReglageReseaux() {
     setAccounts(accs)
     setScheduled(posts.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)))
     setSlots(settings.social_schedule || [])
+    setAggKey(settings.social_agg_key || '')
   }
   useEffect(() => { reload() }, [wsId]) // eslint-disable-line
 
@@ -102,6 +105,12 @@ export default function ReglageReseaux() {
     setBusy(true)
     const ok = await saveWorkspaceSetting(wsId, 'social_schedule', slots)
     setBusy(false); if (ok) setSaved(true)
+  }
+
+  const saveAggKey = async () => {
+    setBusy(true)
+    const ok = await saveWorkspaceSetting(wsId, 'social_agg_key', aggKey.trim() || null)
+    setBusy(false); if (ok) setAggSaved(true)
   }
 
   const fmtWhen = (d) => d ? new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
@@ -227,6 +236,37 @@ export default function ReglageReseaux() {
               <Text fontSize="2xs" color={C.greenText}>Créneaux enregistrés.</Text>
             </HStack>
           )}
+        </Card>
+
+        {/* ---- clé API agrégateur (BYOK) ---- */}
+        <Card p="5">
+          <HStack mb="1" gap="2">
+            <Box as={FiKey} color={C.primary} />
+            <Text fontSize="sm" fontWeight="700" color={C.ink}>Clé API agrégateur (optionnel)</Text>
+          </HStack>
+          <Text fontSize="2xs" color="gray.500" mb="3">
+            Votre propre clé Upload-Post (ou compatible) — utilisée en priorité sur la clé de la
+            plateforme pour connecter vos comptes et publier. Laissez vide pour utiliser celle de DentoPic.
+          </Text>
+          <HStack gap="2">
+            <Input type="password" fontSize="sm" flex="1" placeholder="Clé API Upload-Post…"
+              value={aggKey} aria-label="Clé API agrégateur"
+              onChange={(e) => { setAggKey(e.target.value); setAggSaved(false) }} />
+            <PrimaryButton icon={FiCheck} onClick={saveAggKey} disabled={busy}>
+              {aggSaved ? 'Enregistré ✓' : 'Enregistrer'}
+            </PrimaryButton>
+          </HStack>
+          {aggSaved && (
+            <HStack mt="2" gap="1">
+              <Box as={FiCheck} color={C.greenText} fontSize="xs" />
+              <Text fontSize="2xs" color={C.greenText}>
+                {aggKey.trim() ? 'Clé enregistrée — vos prochaines connexions/publications l’utiliseront.' : 'Clé retirée — retour à la clé plateforme.'}
+              </Text>
+            </HStack>
+          )}
+          <Text fontSize="2xs" color="gray.400" mt="2">
+            Stockée dans les paramètres du workspace, jamais exposée au navigateur après enregistrement.
+          </Text>
         </Card>
       </SimpleGrid>
 

@@ -170,42 +170,64 @@ export async function metaPublishIG(
 // Multi-tenant natif : 1 « profile » (username) par workspace, page de connexion
 // hébergée via JWT, publish photo/texte en multipart. photos[] accepte des URLs
 // publiques → on passe directement la signed URL Supabase.
-// AGGREGATOR_BASE_URL permet de viser un autre service compatible.
+//
+// Clés (pool, dans l'ordre) :
+//   1. BYOK — workspaces.settings.social_agg_key (le cabinet apporte sa clé)
+//   2. AGGREGATOR_API_KEY puis AGGREGATOR_API_KEYS (séparées par virgules)
+// Le profil Upload-Post est lié à la clé qui l'a créé (fingerprint stocké dans
+// settings.social_agg_profile = {u, k}) → publication toujours sous la bonne clé.
 
 const AGG_BASE = () => Deno.env.get('AGGREGATOR_BASE_URL') || 'https://api.upload-post.com/api'
-const aggKey = () => Deno.env.get('AGGREGATOR_API_KEY')!
-export const aggConfigured = () => !!Deno.env.get('AGGREGATOR_API_KEY')
+export const aggConfigured = () =>
+  !!Deno.env.get('AGGREGATOR_API_KEY') || !!Deno.env.get('AGGREGATOR_API_KEYS')
 const AGG_PLATFORMS = ['instagram', 'facebook', 'tiktok', 'linkedin', 'youtube', 'x', 'threads', 'pinterest', 'google_business']
+const fp = (k: string) => k.slice(0, 16) // fingerprint de clé (stocké, jamais la clé entière)
 
-const aggJson = async (path: string, init: RequestInit = {}) =>
+const aggJson = async (path: string, key: string, init: RequestInit = {}) =>
   (await fetch(`${AGG_BASE()}${path}`, {
     ...init,
     headers: {
-      Authorization: `Apikey ${aggKey()}`,
+      Authorization: `Apikey ${key}`,
       'Content-Type': 'application/json',
       ...(init.headers || {}),
     },
   })).json()
 
-/** Un « profile » Upload-Post par workspace — persisté dans settings. */
-export async function aggProfileKey(sb: SupabaseClient, wsId: string) {
+/** Pool ordonné : BYOK workspace d'abord, puis clés plateforme. */
+async function aggPool(sb: SupabaseClient, wsId: string) {
   const { data: ws } = await sb.from('workspaces').select('settings').eq('id', wsId).single()
-  const existing = ws?.settings?.social_agg_profile_key
-  if (existing) return existing
-  const username = `dp-${wsId.replace(/-/g, '').slice(0, 12)}`
-  // POST /uploadposts/users — erreur « already exists » tolérée (profil réutilisé).
-  await aggJson('/uploadposts/users', {
-    method: 'POST', body: JSON.stringify({ username }),
-  }).catch(() => {})
-  await sb.from('workspaces').update({
-    settings: { ...(ws?.settings || {}), social_agg_profile_key: username },
-  }).eq('id', wsId)
-  return username
+  const wsKey = ws?.settings?.social_agg_key || null
+  const envKeys = [
+    Deno.env.get('AGGREGATOR_API_KEY'),
+    ...(Deno.env.get('AGGREGATOR_API_KEYS') || '').split(','),
+  ].map((k) => k?.trim()).filter(Boolean) as string[]
+  return { ws, keys: [...(wsKey ? [wsKey] : []), ...envKeys] }
+}
+
+/** Résout le profil Upload-Post du workspace + la clé qui le détient. */
+export async function aggProfile(sb: SupabaseClient, wsId: string) {
+  const { ws, keys } = await aggPool(sb, wsId)
+  if (!keys.length) throw new Error('aucune clé agrégateur configurée')
+  const bound = ws?.settings?.social_agg_profile
+  let key = bound?.k ? keys.find((k) => fp(k) === bound.k) : null
+  let username = bound?.u
+  if (!key || !username) {
+    // Première utilisation (ou clé liée disparue) : nouvelle liaison sur la 1re clé du pool.
+    key = keys[0]
+    username = bound?.u || `dp-${wsId.replace(/-/g, '').slice(0, 12)}`
+    await aggJson('/uploadposts/users', key, {
+      method: 'POST', body: JSON.stringify({ username }),
+    }).catch(() => {})
+    await sb.from('workspaces').update({
+      settings: { ...(ws?.settings || {}), social_agg_profile: { u: username, k: fp(key) } },
+    }).eq('id', wsId)
+  }
+  return { username, key }
 }
 
 /** URL de la page de connexion hébergée Upload-Post (JWT single-use, ~48 h). */
-export async function aggConnectUrl(username: string, redirectUrl: string) {
-  const r = await aggJson('/uploadposts/users/generate-jwt', {
+export async function aggConnectUrl(username: string, key: string, redirectUrl: string) {
+  const r = await aggJson('/uploadposts/users/generate-jwt', key, {
     method: 'POST',
     body: JSON.stringify({
       username,
@@ -222,8 +244,8 @@ export async function aggConnectUrl(username: string, redirectUrl: string) {
 
 /** Resynchronise les plateformes liées du profil → lignes social_accounts.
  *  Réponse réelle : { profiles:[{username, social_accounts:{platform: handle}}] } */
-export async function aggSyncAccounts(sb: SupabaseClient, wsId: string, username: string) {
-  const r = await aggJson('/uploadposts/users')
+export async function aggSyncAccounts(sb: SupabaseClient, wsId: string, username: string, key: string) {
+  const r = await aggJson('/uploadposts/users', key)
   const list: Record<string, unknown>[] = Array.isArray(r)
     ? r : (r.profiles || r.users || r.data || [])
   const u = list.find((x) => x.username === username)
@@ -249,7 +271,7 @@ export async function aggSyncAccounts(sb: SupabaseClient, wsId: string, username
 
 /** Publication réelle : photos[] accepte une URL publique (signed URL Supabase). */
 export async function aggPublish(
-  username: string, platforms: string[], mediaUrl: string | null,
+  username: string, key: string, platforms: string[], mediaUrl: string | null,
   caption: string, isVideo = false,
 ) {
   const fd = new FormData()
@@ -260,7 +282,7 @@ export async function aggPublish(
   if (mediaUrl) fd.append(isVideo ? 'video' : 'photos[]', mediaUrl)
   const r = await (await fetch(`${AGG_BASE()}${path}`, {
     method: 'POST',
-    headers: { Authorization: `Apikey ${aggKey()}` },
+    headers: { Authorization: `Apikey ${key}` },
     body: fd,
   })).json()
   if (r.success === false || r.error || r.errors?.length) {

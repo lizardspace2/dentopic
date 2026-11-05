@@ -4,7 +4,7 @@
 import {
   preflight, json, requireMember, signState,
   metaConfigured, metaOAuthUrl,
-  aggConfigured, aggProfileKey, aggConnectUrl, aggSyncAccounts, admin,
+  aggProfile, aggConnectUrl, aggSyncAccounts, admin,
 } from '../_shared/social.ts'
 
 Deno.serve(async (req) => {
@@ -18,12 +18,17 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: 'non autorisé' }, 401)
 
     // Agrégateur : comptes liés via page hébergée + sync des comptes existants.
+    // Pool de clés : BYOK workspace (settings.social_agg_key) puis env.
     if (provider === 'aggregator') {
-      if (!aggConfigured()) return json({ configured: false, error: 'AGGREGATOR_API_KEY absent' }, 200)
       const sb = admin()
-      const key = await aggProfileKey(sb, workspace_id)
-      if (action === 'sync') return json({ synced: await aggSyncAccounts(sb, workspace_id, key) })
-      const url = await aggConnectUrl(key, Deno.env.get('APP_URL') || '')
+      let prof
+      try { prof = await aggProfile(sb, workspace_id) } catch (e) {
+        return json({ configured: false, error: String((e as Error).message || e) }, 200)
+      }
+      if (action === 'sync') {
+        return json({ synced: await aggSyncAccounts(sb, workspace_id, prof.username, prof.key) })
+      }
+      const url = await aggConnectUrl(prof.username, prof.key, Deno.env.get('APP_URL') || '')
       return json({ url })
     }
 
