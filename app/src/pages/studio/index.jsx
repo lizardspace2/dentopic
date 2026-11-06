@@ -13,14 +13,18 @@ import { TbMask } from 'react-icons/tb'
 import { C, S, getMode } from '../../theme'
 import { useApp } from '../../context/AppContext'
 import {
-  createMontage, getPhoto, listDossiers, listProtocolSteps, saveEditedPhoto,
+  createMontage, getPhoto, listDossiers, listProtocols, saveEditedPhoto,
   updatePatientPhoto,
 } from '../../api'
 import { photoUrl } from '../../media'
+import { ConfirmModal } from '../../components/ui'
+import PatientFilmstrip, { PatientContext } from './PatientFilmstrip'
+import ProtocolGuideModal from './ProtocolGuideModal'
+import { rootDossierId } from '../../phototheque'
 import {
   Editor, buildMontage, buildProtocolSheet, fetchImg, loadImg, rgbToHex,
   DEFAULT_ADJUST, applyFilterRegion, conv3x3, equalize, gaussianBlur, medianFilter,
-  motionBlur, pixelate, twirl, unsharp, vignette, wave, applyLUTs, curveLUT,
+  motionBlur, pixelate, twirl, unsharp, vignette, wave, applyLUTs,
   addNoise, highPass, autoLevels, levelsLUT, warpQuad,
 } from './engine'
 import { FILTER_DEFS, nearestVita } from './constants'
@@ -84,6 +88,10 @@ export default function Studio() {
   const [version, setVersion] = useState(0) // bump → re-render canvas + panneaux
   const [docOpen, setDocOpen] = useState(false)
   const [srcPhoto, setSrcPhoto] = useState(null)
+  const [pendingPhoto, setPendingPhoto] = useState(null)
+  const [photoOpening, setPhotoOpening] = useState(false)
+  const [photoError, setPhotoError] = useState('')
+  const [comparisonPhoto, setComparisonPhoto] = useState(null)
   const [dossiers, setDossiers] = useState([])
   const [modal, setModal] = useState(null) // 'open' | 'export' | ...
   const [pickColor, setPickColor] = useState(null) // 'fg' | 'bg' | null — sélecteur détaillé
@@ -279,6 +287,23 @@ export default function Studio() {
     setCompare(null); setWbPick(false)
     fitView()
     bump()
+  }
+
+  const pickFromFilmstrip = async (photo, confirmed = false) => {
+    if (!photo || photoOpening || photo.id === srcPhoto?.id) return
+    if (!confirmed && docOpen && (editor.undoStack.length > 0 || !srcPhoto || ft || penPath || textInput)) {
+      setPendingPhoto(photo)
+      return
+    }
+    setPhotoOpening(true); setPhotoError('')
+    try {
+      const url = await photoUrl(photo.storage_path)
+      if (!url) throw new Error('Photo inaccessible')
+      await openPhoto(photo)
+      setFt(null); setPenPath(null); setMeasure(null); setStraighten(null); setShadeGuess(null)
+      setPendingPhoto(null)
+    } catch { setPhotoError('Impossible d’ouvrir cette photo. Le document actuel est conservé.') }
+    finally { setPhotoOpening(false) }
   }
 
   const openFile = async (e) => {
@@ -581,7 +606,7 @@ export default function Studio() {
           ctx.bezierCurveTo(...toS(c2[0], c2[1]), ...toS(c1[0], c1[1]), ...toS(p.x, p.y))
         } else ctx.lineTo(...toS(p.x, p.y))
       })
-      if (hover && pts.length) { const q = pts[pts.length - 1]; ctx.lineTo(...toS(hover[0], hover[1])) }
+      if (hover && pts.length) ctx.lineTo(...toS(hover[0], hover[1]))
       ctx.stroke()
     }
     if (penPath) {
@@ -680,7 +705,12 @@ export default function Studio() {
   }, [render])
 
   useEffect(() => { if (wsId) listDossiers(wsId, { limit: 100 }).then(setDossiers) }, [wsId])
-  useEffect(() => { listProtocolSteps().then(setSteps) }, [])
+  useEffect(() => {
+    let active = true
+    setSteps([])
+    if (wsId) listProtocols(wsId).then((protocols) => { if (active) setSteps(protocols.flatMap((p) => p.steps)) })
+    return () => { active = false }
+  }, [wsId])
 
   // Photo de référence : étape du protocole -> charge son image de référence
   const pickRefStep = async (id) => {
@@ -782,15 +812,41 @@ export default function Studio() {
   const [searchParams] = useSearchParams()
   useEffect(() => {
     const pid = searchParams.get('edit')
-    if (pid && !docOpen) getPhoto(pid).then((p) => p && openPhoto(p))
-  }, [searchParams])
+    if (!pid || docOpen || !wsId) return
+    let active = true
+    getPhoto(pid, wsId).then(async (photo) => {
+      if (!active) return
+      if (!photo) { setPhotoError('Photo introuvable dans ce cabinet.'); return }
+      try { await openPhoto(photo) } catch { setPhotoError('Impossible d’ouvrir cette photo.') }
+    })
+    return () => { active = false }
+  }, [searchParams, wsId])
+  const comparisonRoute = useRef(null)
+  useEffect(() => {
+    const id = searchParams.get('compare'), source = searchParams.get('edit')
+    const key = `${wsId}:${source}:${id}`
+    if (!id || !wsId || !srcPhoto || srcPhoto.id !== source || comparisonRoute.current === key || !dossiers.length) return
+    let active = true
+    getPhoto(id, wsId).then((photo) => {
+      if (!active) return
+      comparisonRoute.current = key
+      if (!photo || photo.id === srcPhoto.id || !photo.dossier_id || rootDossierId(dossiers, photo.dossier_id) !== rootDossierId(dossiers, srcPhoto.dossier_id)) {
+        setPhotoError('La comparaison nécessite deux photos différentes du même dossier patient.')
+        return
+      }
+      setComparisonPhoto(photo); setModal('montage')
+    })
+    return () => { active = false }
+  }, [searchParams, wsId, srcPhoto?.id, dossiers])
 
   // ---- Montage avant / après ---------------------------------------------------------
 
-  const openMontage = async (pA, pB, { layout, labels }, thenExport = false) => {
-    const [urlA, urlB] = await Promise.all([photoUrl(pA.storage_path), photoUrl(pB.storage_path)])
-    if (!urlA || !urlB) return
-    const [imgA, imgB] = await Promise.all([fetchImg(urlA), fetchImg(urlB)])
+  const openMontage = async (pA, pB, { layout, labels, alignedImages }, thenExport = false) => {
+    const [imgA, imgB] = alignedImages || await Promise.all([pA, pB].map(async (photo) => {
+      const url = await photoUrl(photo.storage_path)
+      if (!url) throw new Error('Photo inaccessible')
+      return fetchImg(url)
+    }))
     const cv = buildMontage(imgA, imgB, { layout, labels })
     editor.open(cv, 'montage-avant-apres.png')
     editor.isMontage = true
@@ -1708,7 +1764,6 @@ export default function Studio() {
 
   const mkCv = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c }
   const cssFiltered = (cv, f) => { const t = mkCv(cv.width, cv.height); const x = t.getContext('2d'); x.filter = f; x.drawImage(cv, 0, 0); cv.getContext('2d').drawImage(t, 0, 0); return cv }
-  const lutRgb = (lut) => (cv) => applyLUTs(cv, { rgb: lut })
   const FILTER_FNS = {
     gaussian: (cv, p) => gaussianBlur(cv, p.radius),
     motion: (cv, p) => motionBlur(cv, p.angle, p.dist),
@@ -2282,6 +2337,31 @@ export default function Studio() {
     <Flex h="100%" direction="column" bg={S.bg} color={S.fg} overflow="hidden">
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={openFile} />
       <MenuBar menus={menus} docName={docOpen ? editor.docName : ''} zoom={docOpen ? view.scale : null} />
+      {docOpen && <PatientContext photo={srcPhoto} dossier={dossiers.find((d) => d.id === srcPhoto?.dossier_id)}
+        onExport={() => setModal('export')} />}
+      {(photoError || photoOpening) && <Text px="3" py="1" fontSize="xs" color={S.fg} role="status">{photoOpening ? 'Ouverture de la photo…' : photoError}</Text>}
+      <HStack px="3" py="2" gap="2" flexWrap="wrap" bg={C.greenBg} borderBottom="2px solid" borderColor={C.greenBorder} flexShrink="0">
+        <Box px="3" py="1.5" borderRadius="md" bg={C.greenText} color={C.greenBg}>
+          <Text fontSize="xs" fontWeight="800">OUTILS DENTAIRES</Text>
+        </Box>
+        {[
+          ['Avant / après · 2 séances', () => { setComparisonPhoto(null); setModal('montage') }, false],
+          ['Planche clinique', () => setModal('sheet'), false],
+          ['Protocoles & références', () => setModal('protocolguide'), false],
+          ['Redresser le plan occlusal', () => setStraighten({ angle: 0, ruler: true, line: null }), !docOpen],
+          ['Photo au miroir', () => { editor.snapshot('Miroir H'); editor.flipH(); bump() }, !docOpen],
+          [smileGuide ? 'Masquer les guides sourire' : 'Guides sourire', () => setSmileGuide((v) => !v), !docOpen],
+          [compare != null ? 'Quitter original / retouche' : 'Original / retouche', () => setCompare((c) => c == null ? 0.5 : null), !docOpen],
+        ].map(([label, action, disabled]) => (
+          <Box as="button" key={label} disabled={disabled} onClick={action}
+            fontSize="xs" fontWeight="600" px="2.5" py="1.5" borderRadius="md" border="1px solid" borderColor={C.greenBorder}
+            bg={C.greenBg} color={C.greenText} cursor="pointer"
+            _hover={{ borderColor: C.greenText }} _focusVisible={{ outline: '2px solid', outlineColor: C.greenText, outlineOffset: '2px' }}
+            _disabled={{ opacity: 0.4, cursor: 'default' }}>
+            {label}
+          </Box>
+        ))}
+      </HStack>
       {docOpen && (
         <OptionsBar tool={tool} opts={opts} setOpts={setOpts}
           cropRect={cropRect} onApplyCrop={applyCrop} onCancelCrop={() => setCropRect(null)}
@@ -2430,6 +2510,7 @@ export default function Studio() {
             refImg, refOverlay,
             onToggleOverlay: () => setRefOverlay((v) => !v),
             onPickRef: () => setModal('refpick'),
+            onProtocolGuide: () => setModal('protocolguide'),
             onSheet: () => setModal('sheet'),
             fdiArm, onFdiArm: setFdiArm,
             smileGuide, onToggleSmileGuide: () => setSmileGuide((v) => !v),
@@ -2438,8 +2519,23 @@ export default function Studio() {
             pxPerMm: opts.pxPerMm,
           }} />}
       </Flex>
+      <PatientFilmstrip wsId={wsId} photo={srcPhoto} onPick={pickFromFilmstrip}
+        onCompare={(photo) => { setComparisonPhoto(photo); setModal('montage') }}
+        onPhotoChange={(photo) => setSrcPhoto((current) => current?.id === photo.id ? photo : current)} />
       <StatusBar editor={editor} zoom={view.scale} tool={tool} onZoom={(f) => zoomAt(f)} />
+      <ConfirmModal open={!!pendingPhoto} busy={photoOpening} onClose={() => setPendingPhoto(null)}
+        title="Changer de photo ?" cancelLabel="Rester sur cette photo" confirmLabel="Changer sans enregistrer"
+        message="Ce document peut contenir des modifications non enregistrées. Annulez pour les exporter ou les enregistrer avant de changer de photo."
+        onConfirm={() => pickFromFilmstrip(pendingPhoto, true)} />
 
+      <ProtocolGuideModal open={modal === 'protocolguide'} onClose={() => setModal(null)} wsId={wsId} sourcePhoto={srcPhoto} canOverlay={docOpen}
+        onPhotoChange={(photo) => setSrcPhoto((current) => current?.id === photo.id ? photo : current)}
+        onUseReference={async (photo) => {
+          const url = await photoUrl(photo.storage_path)
+          if (!url) throw new Error('Référence inaccessible')
+          const image = await fetchImg(url)
+          setRefImg(image); setRefOverlay(true); setModal(null)
+        }} />
       <OpenPhotoModal open={modal === 'open'} onClose={() => setModal(null)} wsId={wsId} onPick={openPhoto} />
       <NewDocModal open={modal === 'newdoc'} onClose={() => setModal(null)} onCreate={newDocument} />
       <CanvasSizeModal open={modal === 'canvassize'} onClose={() => setModal(null)}
@@ -2454,7 +2550,7 @@ export default function Studio() {
         label={fadeRef.current?.label} onApply={applyFade} />
       <OpenPhotoModal open={modal === 'calref'} onClose={() => setModal(null)} wsId={wsId} onPick={calibrateToRef} />
       <OpenPhotoModal open={modal === 'refpick'} onClose={() => setModal(null)} wsId={wsId} onPick={pickRefPhoto} />
-      <MontageModal open={modal === 'montage'} onClose={() => setModal(null)} wsId={wsId} onCreate={openMontage} />
+      <MontageModal open={modal === 'montage'} onClose={() => { setModal(null); setComparisonPhoto(null) }} wsId={wsId} onCreate={openMontage} sourcePhoto={srcPhoto} comparisonPhoto={comparisonPhoto} />
       <SheetModal open={modal === 'sheet'} onClose={() => setModal(null)} wsId={wsId} onCompose={composeSheet} />
       <ColorPickerModal open={!!pickColor} onClose={() => setPickColor(null)}
         color={pickColor ? opts[pickColor] : '#000000'}

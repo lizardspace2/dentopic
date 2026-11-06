@@ -5,12 +5,12 @@ import { useEffect, useState } from 'react'
 import { Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
   FiPlus, FiFolder, FiFolderPlus, FiEye, FiLink, FiEdit2, FiTrash2,
-  FiAlertTriangle, FiCheck, FiClock, FiImage, FiLayers, FiX, FiCopy,
-  FiExternalLink, FiUser,
+  FiAlertTriangle, FiCheck, FiImage, FiLayers, FiX, FiCopy,
+  FiExternalLink,
 } from 'react-icons/fi'
 import {
   Card, Tag, EmptyPane, SectionLabel, PageHeader, HelpButton,
-  PrimaryButton, SearchInput, IconTile, isTestName, Modal, Select, Field, Tip, ago,
+  PrimaryButton, SearchInput, isTestName, Modal, Select, Field, Tip, ago,
   ConfirmModal,
 } from '../components/ui'
 import { C } from '../theme'
@@ -20,13 +20,20 @@ import {
   listCollections, listDossiers, listPhotos, listMontages,
   createCollection, updateCollection, trashCollection,
   collectionItemCounts, listCollectionItems, addCollectionItem, removeCollectionItem,
-  shareCollection,
+  shareCollection, labelClinicalPhotos,
 } from '../api'
+import { CLINICAL_VIEWS, CLINICAL_STAGES, clinicalLabels } from '../clinical'
 import { SPECIALTIES, specColor } from './DossierPatient'
+import Phototheque from './Phototheque'
+import { expandDossierIds, matchesLibraryText } from '../phototheque'
 
 const COLORS = ['#4f46e5', '#4f8fe8', '#0ea5e9', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#ed8936', '#e53e3e', '#ed64a6', '#9f7aea', '#718096']
 
 export default function Collection() {
+  return <Phototheque CollectionsComponent={CollectionsManager} />
+}
+
+function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecialty = '', matchingCollectionIds, onCollectionsChange }) {
   const { workspace, session } = useApp()
   const wsId = workspace?.id
   const userId = session?.user?.id
@@ -35,17 +42,35 @@ export default function Collection() {
   const [counts, setCounts] = useState({})
   const [sel, setSel] = useState(null)          // collection affichée en DÉTAIL
   const [items, setItems] = useState([])
-  const [q, setQ] = useState('')
+  const q = globalQuery
   const [sort, setSort] = useState('recent')    // 'recent' | 'name'
   const [modal, setModal] = useState(null)      // { kind, col? }
   const [form, setForm] = useState(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const patientFilter = globalPatient
+  const [itemSort, setItemSort] = useState('recent')
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [selectedPhotos, setSelectedPhotos] = useState([])
+  const [viewFilter, setViewFilter] = useState('')
+  const [stageFilter, setStageFilter] = useState('')
+  const [batchView, setBatchView] = useState('')
+  const [batchStage, setBatchStage] = useState('')
+  const [labelMessage, setLabelMessage] = useState('')
+  const visibleItems = items.filter((it) => (!favoritesOnly || it.photo?.is_favorite)
+    && (!viewFilter || clinicalLabels(it.photo).view === viewFilter)
+    && (!stageFilter || clinicalLabels(it.photo).stage === stageFilter))
+    .sort((a, b) => {
+      const first = new Date(a.photo?.created_at || a.montage?.created_at || a.created_at)
+      const second = new Date(b.photo?.created_at || b.montage?.created_at || b.created_at)
+      return itemSort === 'oldest' ? first - second : second - first
+    })
 
   const reload = async () => {
     if (!wsId) return
     const [cs, ds] = await Promise.all([listCollections(wsId), listDossiers(wsId)])
     setCols(cs); setDossiers(ds)
+    onCollectionsChange?.(cs)
     setCounts(await collectionItemCounts(cs.map((c) => c.id)))
     if (sel) setSel(cs.find((c) => c.id === sel.id) || null)
   }
@@ -53,17 +78,46 @@ export default function Collection() {
 
   // panneau DÉTAIL : recharge les éléments à chaque sélection / modification
   useEffect(() => {
-    if (!sel) { setItems([]); return }
-    listCollectionItems(sel.id).then(setItems)
+    let active = true
+    setItems([]); setSelectedPhotos([]); setLabelMessage('')
+    if (!sel) return
+    listCollectionItems(sel.id).then((rows) => { if (active) setItems(rows) })
+    return () => { active = false }
   }, [sel?.id, counts])
+
+  useEffect(() => {
+    setSelectedPhotos([]); setViewFilter(''); setStageFilter('')
+    setBatchView(''); setBatchStage(''); setFavoritesOnly(false)
+  }, [sel?.id])
+
+  const applyLabels = async () => {
+    setBusy(true); setLabelMessage('')
+    try {
+      const result = await labelClinicalPhotos(wsId, selectedPhotos, {
+        view: batchView === 'clear' ? null : batchView || undefined,
+        stage: batchStage === 'clear' ? null : batchStage || undefined,
+      })
+      const byId = Object.fromEntries(result.updated.map((p) => [p.id, p]))
+      setItems((rows) => rows.map((it) => byId[it.photo_id]
+        ? { ...it, photo: { ...it.photo, edit_meta: byId[it.photo_id].edit_meta } } : it))
+      setSelectedPhotos((ids) => ids.filter((id) => !byId[id]))
+      setLabelMessage(`${result.updated.length} photo(s) classée(s).${result.failed ? ` ${result.failed} échec(s), réessayez.` : ''}`)
+    } catch {
+      setLabelMessage('Enregistrement impossible. Vos photos restent sélectionnées pour réessayer.')
+    } finally { setBusy(false) }
+  }
 
   const testCount = cols.filter((c) => isTestName(c.name)).length
 
+  const allowedDossiers = patientFilter ? expandDossierIds(dossiers, [patientFilter]) : null
   const list = cols
-    .filter((c) => !q
-      || c.name.toLowerCase().includes(q.toLowerCase())
-      || (c.description || '').toLowerCase().includes(q.toLowerCase())
-      || (dossiers.find((x) => x.id === c.dossier_id)?.patient_dossier_number || '').includes(q))
+    .filter((c) => !allowedDossiers || allowedDossiers.includes(c.dossier_id))
+    .filter((c) => !globalSpecialty || c.specialty === globalSpecialty)
+    .filter((c) => {
+      if (matchingCollectionIds) return matchingCollectionIds.includes(c.id)
+      const dossier = dossiers.find((d) => d.id === c.dossier_id)
+      return matchesLibraryText([c.name, c.description, dossier?.name, dossier?.patient_dossier_number, dossier?.description].join(' '), q)
+    })
     .sort((a, b) => sort === 'name'
       ? a.name.localeCompare(b.name, 'fr')
       : new Date(b.updated_at) - new Date(a.updated_at))
@@ -143,7 +197,7 @@ export default function Collection() {
   const dossierName = (id) => dossiers.find((x) => x.id === id)?.name
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%">
       <PageHeader
         icon={FiFolder} iconBg={C.amberBg} iconColor={C.amberText}
         title="Collections"
@@ -155,11 +209,25 @@ export default function Collection() {
         </Tip>
       </PageHeader>
 
-      <SimpleGrid columns={2} gap="6" alignItems="start" mt="2">
+      <Card p="4" mb="4">
+        <Text fontSize="sm" fontWeight="700" color={C.ink} mb="1">Organiser un cas clinique</Text>
+        <Text fontSize="xs" color={C.body} mb="3">Un patient, une étape de traitement, une collection. Choisissez un modèle puis ajoutez vos photos.</Text>
+        <HStack gap="2" flexWrap="wrap">
+          {['Bilan initial', 'Suivi de traitement', 'Fin de traitement', 'Transmission au laboratoire'].map((name) => (
+            <Button key={name} size="xs" variant="outline" onClick={() => {
+              setForm({ ...EMPTY, name, dossier_id: patientFilter,
+                description: name === 'Transmission au laboratoire'
+                  ? 'Vues rapprochées, références de teinte et instructions pour le laboratoire.'
+                  : 'Portrait · Sourire · Face intra-orale · Latérale droite / gauche · Occlusale maxillaire / mandibulaire · Secteur traité' })
+              setModal({ kind: 'edit', col: null })
+            }}>{name}</Button>
+          ))}
+        </HStack>
+      </Card>
+      <SimpleGrid columns={{ base: 1, lg: 2 }} gap="6" alignItems="start" mt="2">
         <Box>
           <SectionLabel mb="2">MES COLLECTIONS</SectionLabel>
-          <SearchInput placeholder="Nom ou N° dossier…" w="100%"
-            value={q} onChange={(e) => setQ(e.target.value)} />
+
           <HStack my="3" gap="2" color="gray.500">
             <Text fontSize="xs">Trier par</Text>
             <Box as="button" cursor="pointer" onClick={() => setSort('recent')}>
@@ -284,6 +352,53 @@ export default function Collection() {
                 )}
               </VStack>
 
+              <HStack mb="3" gap="2" flexWrap="wrap">
+                <Select aria-label="Ordre des photos" value={itemSort} onChange={(e) => setItemSort(e.target.value)}>
+                  <option value="recent">Plus récentes d’abord</option>
+                  <option value="oldest">Chronologie du traitement</option>
+                </Select>
+                <Button size="xs" variant="outline" aria-pressed={favoritesOnly}
+                  onClick={() => setFavoritesOnly((v) => !v)}>
+                  {favoritesOnly ? 'Afficher tout' : 'Photos favorites'}
+                </Button>
+                <Text fontSize="xs" color={C.body}>{visibleItems.length} affiché(s)</Text>
+              </HStack>
+              <HStack gap="2" mb="3" flexWrap="wrap">
+                {[[viewFilter, setViewFilter, CLINICAL_VIEWS, 'Toutes les vues'],
+                  [stageFilter, setStageFilter, CLINICAL_STAGES, 'Toutes les étapes']].map(([value, change, options, label]) => (
+                  <Select key={label} aria-label={label} value={value} onChange={(e) => { change(e.target.value); setSelectedPhotos([]) }}>
+                    <option value="">{label}</option>
+                    {options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}
+                  </Select>
+                ))}
+              </HStack>
+              <Box p="3" mb="3" bg={C.greenBg} border="1px solid" borderColor={C.greenBorder} borderRadius="md">
+                <Text fontSize="xs" fontWeight="700" color={C.greenText} mb="2">Classer les photos · Vue / Étape</Text>
+                <Button size="xs" variant="outline" disabled={busy || !visibleItems.some((it) => it.photo_id)}
+                  onClick={() => setSelectedPhotos([...new Set(visibleItems.filter((it) => it.photo_id).map((it) => it.photo_id))])}>
+                  Sélectionner les photos affichées
+                </Button>
+                {selectedPhotos.length > 0 && (
+                  <>
+                    <Text fontSize="xs" color={C.body} my="2">{selectedPhotos.length} photo(s) sélectionnée(s)</Text>
+                    <HStack gap="2" flexWrap="wrap">
+                      {[[batchView, setBatchView, CLINICAL_VIEWS, 'Vue'], [batchStage, setBatchStage, CLINICAL_STAGES, 'Étape']].map(([value, change, options, label]) => (
+                        <Select key={label} aria-label={`Attribuer ${label}`} value={value} disabled={busy} onChange={(e) => change(e.target.value)}>
+                          <option value="">{label} : ne pas modifier</option>
+                          {options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}
+                          <option value="clear">Retirer l’étiquette</option>
+                        </Select>
+                      ))}
+                      <PrimaryButton disabled={busy || (!batchView && !batchStage)} onClick={applyLabels}>Appliquer</PrimaryButton>
+                      <Button size="xs" variant="outline" disabled={busy} onClick={() => setSelectedPhotos([])}>Annuler</Button>
+                    </HStack>
+                  </>
+                )}
+                {labelMessage && <Text fontSize="xs" color={C.body} mt="2" role="status">{labelMessage}</Text>}
+              </Box>
+              {items.length > 0 && visibleItems.length === 0 && (
+                <Text fontSize="xs" color={C.body}>Aucun élément ne correspond aux filtres.</Text>
+              )}
               {/* éléments */}
               {items.length === 0 ? (
                 <Center py="8" flexDirection="column" gap="2" color="gray.400">
@@ -295,7 +410,7 @@ export default function Collection() {
                 </Center>
               ) : (
                 <SimpleGrid columns={3} gap="2">
-                  {items.map((it) => (
+                  {visibleItems.map((it) => (
                     <Box key={it.id} position="relative" borderRadius="md" overflow="hidden"
                       border="1px solid" borderColor={C.cardBorder} role="group">
                       {it.photo?.storage_path ? (
@@ -307,6 +422,20 @@ export default function Collection() {
                             {it.montage?.name || 'Montage'}
                           </Text>
                         </Center>
+                      )}
+                      {it.photo_id && (
+                        <Box position="absolute" top="1" left="1" bg={C.pageBg} borderRadius="sm" px="1" zIndex="1">
+                          <input type="checkbox" aria-label={`Sélectionner ${it.photo?.original_filename || 'la photo'}`}
+                            disabled={busy} checked={selectedPhotos.includes(it.photo_id)}
+                            onChange={(e) => setSelectedPhotos((ids) => e.target.checked
+                              ? [...new Set([...ids, it.photo_id])] : ids.filter((id) => id !== it.photo_id))} />
+                        </Box>
+                      )}
+                      {it.photo && (
+                        <HStack gap="1" flexWrap="wrap" p="1">
+                          {[[CLINICAL_VIEWS, clinicalLabels(it.photo).view], [CLINICAL_STAGES, clinicalLabels(it.photo).stage]].map(([options, value], index) =>
+                            value ? <Tag key={index} color="green">{options.find(([id]) => id === value)?.[1] || value}</Tag> : null)}
+                        </HStack>
                       )}
                       <HStack position="absolute" top="1" right="1" gap="1"
                         opacity="0" _groupHover={{ opacity: 1 }} transition="opacity .15s">
@@ -528,7 +657,7 @@ function AddItemsModal({ open, col, wsId, userId, existing = [], onClose, onDone
     .filter((x) => !q || (x.original_filename || x.name || '').toLowerCase().includes(q.toLowerCase()))
 
   const toggle = (id) => setPicked((s) => {
-    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n
+    const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n
   })
 
   const run = async () => {

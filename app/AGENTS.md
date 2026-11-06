@@ -111,6 +111,38 @@ export default function MaPage() {
 - Tester en local : `npm run dev` puis login avec le compte Supabase du projet.
 - `explore/verify-copy.js` (workspace parent) rejoue un parcours Playwright complet.
 
+## Classement clinique et comparaison
+
+- Les étiquettes photo Vue/Étape sont stockées dans `patient_photos.edit_meta.dental`
+  (`view`, `stage`), avec les valeurs définies dans `src/clinical.js`. Préserver les
+  autres clés de `edit_meta` lors de toute mise à jour. `labelClinicalPhotos` dans
+  `api.js` applique le classement en lot avec vérification workspace et erreurs partielles.
+- `pages/studio/SessionComparison.jsx` compare deux photos sans modifier les originaux.
+  Les repères sont exprimés dans un cadre de 900 × 600 ; `alignLandmarks` calcule
+  une similitude (rotation, translation, échelle uniforme), jamais une déformation.
+  Le montage aligné est une nouvelle image, les repères d’inspection ne sont pas persistés.
+- `ProtocolGuideModal.jsx` propose des guides prédéfinis dans `src/clinical.js` et lit
+  les protocoles du workspace. Les photos personnelles de référence sont associées
+  aux identifiants de vues dans `edit_meta.dental.referenceViews` (tableau), via
+  `saveClinicalReference`. Préserver ce tableau pendant les changements Vue/Étape.
+  Les modèles du Studio ne créent pas automatiquement de protocole d’acquisition.
+
+## Photothèque clinique (Collection)
+
+- `Collection.jsx` conserve le gestionnaire de collections manuelles et délègue
+  l’entrée à `Phototheque.jsx` (Photos / Patients / Collections). Les filtres sont
+  conservés dans l’URL ; les photos sont recherchées côté serveur par pages de 48
+  via `searchLibraryPhotos` dans `api.js`, avec annulation des requêtes périmées.
+- `loadLibraryContext` charge les métadonnées dossiers/patients/collections, pas les
+  photos du cabinet. `phototheque.js` gère les critères, accents et sous-dossiers.
+- `PatientTimelineModal.jsx` distingue les sessions de capture réelles des groupes
+  par date de prise de vue (date d’import si absente). La comparaison sélectionne
+  explicitement deux photos étiquetées de la même vue puis ouvre `/studio?edit=…&compare=…`.
+- Les recherches enregistrées sont locales à l’appareil et isolées par cabinet et
+  utilisateur : clé `dentopic.library-searches.<workspaceId>.<userId>`. Aucun partage
+  public ou album dynamique en base n’est créé par l’enregistrement d’une recherche.
+- Tests unitaires : `node --test src/phototheque.test.js` depuis `app/`.
+
 ## Déploiement Edge Functions (réseaux sociaux)
 
 `supabase/functions/` contient l'infra publication sociale (OAuth Meta /

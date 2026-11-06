@@ -14,7 +14,7 @@ import { TbMask } from 'react-icons/tb'
 import { Tip } from '../../components/ui'
 import { C, S, svar, getMode } from '../../theme'
 import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, FDI_TEETH, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
-import { ADJUST_KINDS, ADJUST_PARAMS, autoLevels, curveLUT, histogram } from './engine'
+import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_ADJUST, autoLevels, curveLUT, histogram } from './engine'
 
 const panelBg = S.card
 const panelBorder = S.border
@@ -989,19 +989,24 @@ export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
 
 // ---- Panneau droit : Réglages (groupés façon Lightroom) ----------------------------
 
-function Section({ title, right, children }) {
+function Section({ title, right, children, collapsible = false }) {
+  const [expanded, setExpanded] = useState(true)
   return (
     <Box borderBottom="1px solid" borderColor="var(--s-a50)" pb="2.5">
       <HStack justify="space-between" mb="1.5">
-        <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">{title}</Text>
+        {collapsible ? (
+          <Box as="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} color={fg}>
+            <HStack gap="1"><Box as={expanded ? FiChevronDown : FiChevronRight} /><Text fontSize="2xs" fontWeight="700">{title}</Text></HStack>
+          </Box>
+        ) : <Text fontSize="2xs" fontWeight="700" color={fg} textTransform="uppercase" letterSpacing="wider">{title}</Text>}
         {right}
       </HStack>
-      <VStack align="stretch" gap="1.5">{children}</VStack>
+      {(!collapsible || expanded) && <VStack align="stretch" gap="1.5">{children}</VStack>}
     </Box>
   )
 }
 
-function Slider({ d, value, onChange, onStart }) {
+function Slider({ d, value, onChange, onStart, disabled = false }) {
   const disp = d.fmt ? d.fmt(value) : `${value}${d.unit || ''}`
   return (
     <Tip label={d.tip || d.label} display="block">
@@ -1010,7 +1015,8 @@ function Slider({ d, value, onChange, onStart }) {
         <Text fontSize="2xs" color={fg} w="52px" textAlign="right">{disp}</Text>
       </HStack>
       <Input type="range" min={d.min} max={d.max} step={d.step || 1} h="16px"
-        value={value} onPointerDown={onStart}
+        value={value} disabled={disabled} aria-label={d.label} onPointerDown={onStart}
+        onKeyDown={(e) => { if (!e.repeat && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) onStart?.() }}
         onChange={(e) => onChange(+e.target.value)} />
     </Tip>
   )
@@ -1023,10 +1029,29 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
   const [userPresets, setUserPresets] = useState(loadUserPresets)
   const set = (k) => (v) => { editor.adjust[k] = v; onChange() }
   const snap = () => editor.snapshot()
+  const groupKeys = (group) => [...group.defs.map((d) => d.key), ...(group.wb ? ['wb'] : [])]
+  const hidden = (group) => groupKeys(group).some((key) => editor.adjustBypass[key])
+  const toggleGroup = (group) => {
+    editor.snapshot(`Visibilité ${group.title}`)
+    const value = !hidden(group)
+    for (const key of groupKeys(group)) editor.adjustBypass[key] = value
+    onChange()
+  }
+  const resetGroup = (group) => {
+    editor.snapshot(`Réinitialiser ${group.title}`)
+    for (const key of groupKeys(group)) {
+      delete editor.adjustBypass[key]
+      if (key === 'wb') editor.wb = null
+      else editor.adjust[key] = DEFAULT_ADJUST[key]
+    }
+    onChange()
+  }
 
   const applyPreset = (p) => {
     editor.snapshot()
-    editor.adjust = { ...editor.adjust, ...p.adjust }
+    editor.adjust = { ...DEFAULT_ADJUST, ...p.adjust }
+    editor.adjustBypass = {}
+    editor.adjustVisible = true
     onChange()
   }
   const savePreset = () => {
@@ -1107,12 +1132,20 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
       </Section>
 
       {ADJUST_GROUPS.map((g) => (
-        <Section key={g.title} title={g.title}
-          right={g.levels && (
-            <Tip label="Niveaux automatiques — noirs/blancs calés sur l'histogramme">
-              <Box as="button" fontSize="2xs" color={C.primary} cursor="pointer" onClick={autoLevels}>Auto</Box>
+        <Section key={g.title} title={g.title} collapsible
+          right={<HStack gap="2">
+            {g.levels && <Tip label="Niveaux automatiques — noirs/blancs calés sur l'histogramme">
+              <Box as="button" disabled={hidden(g)} fontSize="2xs" color={C.primary} cursor="pointer" onClick={autoLevels}>Auto</Box>
+            </Tip>}
+            <Tip label={`Afficher / masquer ${g.title}`}>
+              <Box as="button" aria-label={`Visibilité ${g.title}`} aria-pressed={!hidden(g)} color={hidden(g) ? muted : C.primary}
+                onClick={() => toggleGroup(g)}><Box as={hidden(g) ? FiEyeOff : FiEye} /></Box>
             </Tip>
-          )}>
+            <Tip label={`Réinitialiser ${g.title} uniquement`}>
+              <Box as="button" aria-label={`Réinitialiser ${g.title}`} color={muted} onClick={() => resetGroup(g)}><FiRefreshCw /></Box>
+            </Tip>
+          </HStack>}>
+          {hidden(g) && <Text fontSize="2xs" color={muted}>Effet masqué — valeurs conservées</Text>}
           {g.wb && (
             <HStack gap="2">
               <Tip label="Cliquez une zone neutre (grise) de la photo — corrige la dominante couleur">
@@ -1134,7 +1167,7 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
           )}
           {g.defs.map((d) => (
             <Slider key={d.key} d={d} value={editor.adjust[d.key]}
-              onChange={set(d.key)} onStart={snap} />
+              onChange={set(d.key)} onStart={snap} disabled={hidden(g)} />
           ))}
         </Section>
       ))}
@@ -1144,10 +1177,10 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
           bg="var(--s-a100)" color={muted} cursor="pointer" _hover={{ bg: 'var(--s-a200)' }}
           onClick={() => {
           editor.snapshot()
-          editor.adjust = { brightness: 100, contrast: 100, saturate: 100, hue: 0, blur: 0,
-            grayscale: 0, sepia: 0, invert: 0, inBlack: 0, gamma: 100, inWhite: 255,
-            outBlack: 0, outWhite: 255,
-            exposure: 0, temp: 0, tint: 0, sharp: 0 }
+          editor.adjust = { ...DEFAULT_ADJUST }
+          editor.adjustBypass = {}
+          editor.adjustVisible = true
+          editor.curves = { rgb: null, r: null, g: null, b: null }
           editor.wb = null
           onChange()
         }}>
@@ -1307,9 +1340,10 @@ export function CurvesPanel({ editor, version, onChange, target }) {
 const DBtn = ({ children, onClick, active, disabled, tip }) => (
   <Tip label={tip || ''} display="block">
     <Box as="button" px="2" py="1.5" fontSize="2xs" borderRadius="sm" cursor={disabled ? 'default' : 'pointer'}
-      bg={active ? '#f2c200' : 'var(--s-a100)'} color={active ? '#111827' : fg}
-      fontWeight={active ? '700' : '400'} opacity={disabled ? 0.45 : 1}
-      _hover={disabled ? {} : { bg: active ? '#f2c200' : 'var(--s-a200)' }}
+      bg={active ? C.greenText : C.greenBg} color={active ? C.greenBg : C.greenText}
+      border="1px solid" borderColor={active ? C.greenText : C.greenBorder}
+      fontWeight={active ? '700' : '600'} opacity={disabled ? 0.45 : 1}
+      _hover={disabled ? {} : { borderColor: C.greenText }}
       onClick={disabled ? undefined : onClick}>
       {children}
     </Box>
@@ -1323,7 +1357,7 @@ export function DentalPanel({ editor, version, onChange, dental }) {
     wbPick, onWbPick, onAutoWB, onCalRef,
     shade, onShade, srcPhoto,
     shadePick, onShadePick, shadeGuess, onApplyGuess, onDismissGuess, onAnalyzeSel, hasSel,
-    steps, refStep, onRefStep, refImg, refOverlay, onToggleOverlay, onPickRef,
+    steps, refStep, onRefStep, refImg, refOverlay, onToggleOverlay, onPickRef, onProtocolGuide,
     onSheet,
     fdiArm, onFdiArm, smileGuide, onToggleSmileGuide,
     measureLog, onClearMeasureLog, onRemoveMeasure,
@@ -1459,6 +1493,9 @@ export function DentalPanel({ editor, version, onChange, dental }) {
       {/* Photo de référence */}
       <Section title="Photo de référence">
         <VStack align="stretch" gap="1.5">
+          <DBtn tip="Modèles de cadrage, protocoles du cabinet et références personnelles" onClick={onProtocolGuide}>
+            Protocoles & références…
+          </DBtn>
           {(steps || []).length > 0 && (
             <Tip label="Vue de référence du protocole DentoPic">
               <Box as="select" w="100%" fontSize="2xs" bg={S.input} color={fg} borderRadius="sm"
@@ -2418,8 +2455,9 @@ function TabRow({ tabs, value, onChange }) {
       {tabs.map(([k, l, tip]) => (
         <Tip key={k} label={tip}>
           <Box px="2" py="1.5" fontSize="xs" cursor="pointer" borderRadius="md md 0 0"
-            color={value === k ? fg : muted} fontWeight={value === k ? '600' : '400'}
-            bg={value === k ? 'var(--s-a100)' : 'transparent'}
+            color={k === 'dental' ? C.greenText : value === k ? fg : muted} fontWeight={k === 'dental' ? '800' : value === k ? '600' : '400'}
+            bg={k === 'dental' ? C.greenBg : value === k ? 'var(--s-a100)' : 'transparent'}
+            borderBottom="2px solid" borderColor={k === 'dental' && value === k ? C.greenText : 'transparent'}
             onClick={() => onChange(k)}>
             {l}
           </Box>
@@ -2433,8 +2471,8 @@ function TabRow({ tabs, value, onChange }) {
 // milieu — Calques/Canaux/Histoire en bas.
 
 export function RightPanel({ editor, version, zoom, cursor, onChange, wbPick, onWbPick, comparing, onCompare, dental, onFx, onAdjust, onJump, view, stageSize, onNav, curveTarget, fgColor, bgColor, onColor, onPickColor }) {
-  const [topTab, setTopTab] = useState('props')
-  const [midTab, setMidTab] = useState('nav')
+  const [topTab, setTopTab] = useState('dental')
+  const [midTab, setMidTab] = useState('histo')
   const [botTab, setBotTab] = useState('layers')
   const isAdj = editor.active?.type === 'adjust'
   const isText = editor.active?.type === 'text'

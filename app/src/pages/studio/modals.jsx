@@ -2,12 +2,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiDownload, FiFileText, FiFolder, FiSave } from 'react-icons/fi'
-import { Card, Field, Modal, SearchInput, Select, Tag, Tip, isTestName } from '../../components/ui'
+import { Field, Modal, SearchInput, Select, Tip } from '../../components/ui'
 import { C, S } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
+import SessionComparison from './SessionComparison'
+import { rootDossierId } from '../../phototheque'
 import { BLEND_MODES, FILTER_DEFS, NEW_DOC_PRESETS, SHEET_SLOTS } from './constants'
-import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_FX, colorMask, hexToRgb, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
+import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_FX, colorMask, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
 
 // ---- Ouvrir : photo du workspace (ou import local géré par la page) -------------
 
@@ -187,7 +189,7 @@ const slotBox = {
   fontSize: 'xs', color: 'gray.400', overflow: 'hidden', position: 'relative',
 }
 
-export function MontageModal({ open, onClose, wsId, onCreate }) {
+export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, comparisonPhoto }) {
   const [photos, setPhotos] = useState([])
   const [avant, setAvant] = useState(null)
   const [apres, setApres] = useState(null)
@@ -195,15 +197,48 @@ export function MontageModal({ open, onClose, wsId, onCreate }) {
   const [labels, setLabels] = useState(true)
   const [busy, setBusy] = useState(false)
 
+  const [dossiers, setDossiers] = useState([])
+  const [dossierId, setDossierId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
   useEffect(() => {
-    if (open && wsId) listPhotos(wsId, { limit: 60 }).then(setPhotos)
-    if (open) { setAvant(null); setApres(null); setLayout('side'); setLabels(true) }
-  }, [open, wsId])
+    if (!open || !wsId) return
+    let active = true
+    setDossierId(sourcePhoto?.dossier_id || '')
+    setAvant(sourcePhoto || null)
+    setApres(comparisonPhoto && comparisonPhoto.id !== sourcePhoto?.id && comparisonPhoto.dossier_id === sourcePhoto?.dossier_id ? comparisonPhoto : null)
+    setLayout('side'); setLabels(true)
+    setLoading(true); setError('')
+    Promise.all([listPhotos(wsId, { limit: 500 }), listDossiers(wsId)])
+      .then(([ps, ds]) => {
+        if (!active) return
+        setPhotos(ps); setDossiers(ds)
+        if (comparisonPhoto && comparisonPhoto.id !== sourcePhoto?.id && comparisonPhoto.dossier_id
+          && rootDossierId(ds, comparisonPhoto.dossier_id) === rootDossierId(ds, sourcePhoto?.dossier_id)) setApres(comparisonPhoto)
+      })
+      .catch(() => { if (active) setError('Impossible de charger les photos. Réessayez.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [open, wsId, sourcePhoto, comparisonPhoto])
 
   const pick = (p) => {
     if (!avant) setAvant(p)
-    else if (!apres && p.id !== avant.id) setApres(p)
+    else if (!apres && p.id !== avant.id) {
+      if (avant.dossier_id && p.dossier_id && rootDossierId(dossiers, avant.dossier_id) !== rootDossierId(dossiers, p.dossier_id)) {
+        setError('Choisissez deux photos du même dossier patient.')
+        return
+      }
+      setError(''); setApres(p)
+    }
     else { setAvant(p); setApres(null) }
+  }
+
+  const create = async (thenExport) => {
+    setBusy(true); setError('')
+    try { await onCreate(avant, apres, { layout, labels }, thenExport) }
+    catch { setError('Impossible de créer le montage. Réessayez.') }
+    finally { setBusy(false) }
   }
 
   const Slot = ({ label, photo, onClear }) => (
@@ -228,12 +263,12 @@ export function MontageModal({ open, onClose, wsId, onCreate }) {
       footer={
         <>
           <Button size="sm" variant="outline" disabled={!avant || !apres} loading={busy}
-            onClick={async () => { setBusy(true); await onCreate(avant, apres, { layout, labels }, true); setBusy(false) }}>
+            onClick={() => create(true)}>
             Créer puis enregistrer…
           </Button>
           <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
             disabled={!avant || !apres} loading={busy}
-            onClick={async () => { setBusy(true); await onCreate(avant, apres, { layout, labels }); setBusy(false) }}>
+            onClick={() => create(false)}>
             Créer le montage
           </Button>
         </>
@@ -260,8 +295,25 @@ export function MontageModal({ open, onClose, wsId, onCreate }) {
             </HStack>
           </VStack>
         </HStack>
+        {avant && apres && <SessionComparison key={`${avant.id}:${apres.id}`} before={avant} after={apres}
+          onCreateAligned={(alignedImages) => onCreate(avant, apres, { layout, labels, alignedImages }, true)} />}
+        <Text fontSize="xs" color="gray.500">
+          Comparez le même patient, la même vue et des conditions de lumière proches. Le montage ne corrige pas un angle de prise de vue différent.
+        </Text>
+        <Select w="100%" aria-label="Patient à comparer" value={dossierId}
+          onChange={(e) => { setDossierId(e.target.value); setAvant(null); setApres(null) }}>
+          <option value="">Tous les dossiers</option>
+          {dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </Select>
+        <Button size="xs" variant="outline" disabled={!avant || !apres}
+          onClick={() => { setAvant(apres); setApres(avant) }}>Inverser avant / après</Button>
+        {loading && <Text fontSize="xs">Chargement des photos…</Text>}
+        {error && <Text fontSize="xs" role="alert">{error}</Text>}
+        {!loading && !error && !photos.some((p) => !dossierId || p.dossier_id === dossierId) && (
+          <Text fontSize="xs">Aucune photo dans ce dossier.</Text>
+        )}
         <SimpleGrid columns={{ base: 4, md: 6 }} gap="2" maxH="240px" overflowY="auto">
-          {photos.map((p) => {
+          {photos.filter((p) => !dossierId || p.dossier_id === dossierId).map((p) => {
             const sel = p.id === avant?.id ? 'AVANT' : p.id === apres?.id ? 'APRÈS' : null
             return (
               <Box key={p.id} cursor="pointer" position="relative" onClick={() => pick(p)}

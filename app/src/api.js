@@ -4,6 +4,7 @@
 // Toutes les listes excluent les éléments supprimés (deleted_at IS NULL).
 // ============================================================================
 import { supabase } from './supabase'
+import { dateBounds, expandDossierIds, matchesLibraryText, photoTextExpression } from './phototheque'
 
 const alive = (q) => q.is('deleted_at', null)
 
@@ -39,13 +40,53 @@ export function updatePatientPhoto(id, fields) {
     })
 }
 
-export function getPhoto(id) {
-  return supabase
-    .from('patient_photos')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle()
-    .then(({ data }) => data)
+export async function labelClinicalPhotos(wsId, photoIds, labels) {
+  const patch = Object.fromEntries(Object.entries(labels).filter(([key, value]) =>
+    ['view', 'stage'].includes(key) && value !== undefined))
+  if (!wsId || !photoIds.length || !Object.keys(patch).length) return { updated: [], failed: photoIds.length }
+  const { data, error } = await alive(supabase.from('patient_photos').select('id,edit_meta')
+    .eq('workspace_id', wsId).in('id', photoIds))
+  if (error) throw new Error('Impossible de lire les étiquettes des photos.')
+  const results = await Promise.all((data || []).map(async (photo) => {
+    const meta = photo.edit_meta || {}
+    const { data: saved, error: saveError } = await alive(supabase.from('patient_photos')
+      .update({ edit_meta: { ...meta, dental: { ...meta.dental, ...patch } } })
+      .eq('workspace_id', wsId).eq('id', photo.id))
+      .select('id,edit_meta').maybeSingle()
+    return saveError ? null : saved
+  }))
+  const updated = results.filter(Boolean)
+  return { updated, failed: photoIds.length - updated.length }
+}
+
+export async function listClinicalReferences(wsId) {
+  const { data, error } = await alive(supabase.from('patient_photos').select('*')
+    .eq('workspace_id', wsId).not('edit_meta->dental->referenceViews', 'is', null))
+    .order('created_at', { ascending: false }).limit(500)
+  if (error) throw new Error('Chargement des références impossible.')
+  return data || []
+}
+
+export async function saveClinicalReference(wsId, photoId, referenceView) {
+  if (!wsId || !photoId || typeof referenceView !== 'string' || !referenceView || referenceView.length > 120) {
+    throw new Error('Référence invalide.')
+  }
+  const { data: photo, error } = await alive(supabase.from('patient_photos').select('edit_meta')
+    .eq('workspace_id', wsId).eq('id', photoId)).single()
+  if (error || !photo) throw new Error('Photo inaccessible.')
+  const meta = photo.edit_meta || {}, dental = meta.dental || {}
+  const references = Array.isArray(dental.referenceViews) ? dental.referenceViews : []
+  const { data, error: saveError } = await alive(supabase.from('patient_photos')
+    .update({ edit_meta: { ...meta, dental: { ...dental, referenceViews: [...new Set([...references, referenceView])] } } })
+    .eq('workspace_id', wsId).eq('id', photoId)).select().single()
+  if (saveError) throw new Error('Enregistrement de la référence impossible.')
+  return data
+}
+
+export function getPhoto(id, wsId) {
+  let query = alive(supabase.from('patient_photos').select('*').eq('id', id))
+  if (wsId) query = query.eq('workspace_id', wsId)
+  return query.maybeSingle().then(({ data }) => data)
 }
 
 export function updateDossier(id, fields) {
@@ -66,12 +107,143 @@ export function listPhotosByDossier(dossierId, { limit = 300 } = {}) {
     .then(({ data }) => data || [])
 }
 
-export function listPhotos(wsId, { limit = 100, favoritesOnly = false } = {}) {
+export function listPhotos(wsId, { limit = 100, favoritesOnly = false, dossierId, throwOnError = false } = {}) {
   let q = alive(supabase.from('patient_photos').select('*').eq('workspace_id', wsId))
     .order('created_at', { ascending: false })
     .limit(limit)
   if (favoritesOnly) q = q.eq('is_favorite', true)
-  return q.then(({ data }) => data || [])
+  if (dossierId) q = q.eq('dossier_id', dossierId)
+  return q.then(({ data, error }) => {
+    if (error && throwOnError) throw new Error('Impossible de charger les photos.')
+    return data || []
+  })
+}
+
+export async function setPhotoFavorite(wsId, photoId, favorite) {
+  const { data, error } = await alive(supabase.from('patient_photos')
+    .update({ is_favorite: favorite }).eq('workspace_id', wsId).eq('id', photoId))
+    .select().single()
+  if (error) throw new Error('Impossible de modifier le favori.')
+  return data
+}
+
+async function readLibraryRows(build, signal) {
+  const rows = []
+  for (let offset = 0; ; offset += 500) {
+    let query = build().range(offset, offset + 499)
+    if (signal) query = query.abortSignal(signal)
+    const { data, error } = await query
+    if (error) throw new Error('Impossible de charger les données de la photothèque.')
+    rows.push(...(data || []))
+    if (!data || data.length < 500) return rows
+  }
+}
+
+export async function loadLibraryContext(wsId, signal) {
+  const [dossiers, patients, collections, trashed] = await Promise.all([
+    readLibraryRows(() => alive(supabase.from('dossiers').select('id,name,patient_dossier_number,description,specialties,parent_id,updated_at')
+      .eq('workspace_id', wsId)).order('id'), signal),
+    readLibraryRows(() => alive(supabase.from('patients').select('id,dossier_id,first_name,last_name')
+      .eq('workspace_id', wsId)).order('id'), signal),
+    readLibraryRows(() => alive(supabase.from('collections').select('id,name,description,dossier_id,specialty')
+      .eq('workspace_id', wsId)).order('id'), signal),
+    readLibraryRows(() => supabase.from('dossiers').select('id').eq('workspace_id', wsId)
+      .not('deleted_at', 'is', null).order('id'), signal),
+  ])
+  const names = new Map()
+  for (const p of patients) names.set(p.dossier_id, `${p.first_name || ''} ${p.last_name || ''}`)
+  const hiddenDossierIds = expandDossierIds(dossiers, trashed.map((d) => d.id))
+  return { dossiers: dossiers.filter((d) => !hiddenDossierIds.includes(d.id))
+    .map((d) => ({ ...d, patientNames: names.get(d.id) || '' })), collections, hiddenDossierIds }
+}
+
+export async function searchLibraryPhotos(wsId, filters, context, signal) {
+  const pageSize = 48, page = Math.max(0, Number(filters.page) || 0), end = (page + 1) * pageSize
+  const dossiers = context.dossiers
+  let allowed = null
+  if (filters.patient) allowed = expandDossierIds(dossiers, [filters.patient])
+  if (filters.specialty) {
+    const ids = expandDossierIds(dossiers, dossiers.filter((d) => (d.specialties || []).includes(filters.specialty)).map((d) => d.id))
+    allowed = allowed ? allowed.filter((id) => ids.includes(id)) : ids
+  }
+  if (allowed && !allowed.length) return { rows: [], count: 0, pageSize }
+  const matched = filters.q.trim() ? expandDossierIds(dossiers, dossiers.filter((d) =>
+    matchesLibraryText([d.name, d.patientNames, d.patient_dossier_number, d.description].join(' '), filters.q)).map((d) => d.id)) : []
+  const text = photoTextExpression(filters.q)
+  const sourceIds = allowed || matched
+  const parts = sourceIds.length ? Array.from({ length: Math.ceil(sourceIds.length / 80) }, (_, i) => sourceIds.slice(i * 80, (i + 1) * 80)) : [null]
+  const base = (columns = '*', head = false) => {
+    let query = alive(supabase.from('patient_photos').select(columns, { count: 'exact', head }).eq('workspace_id', wsId))
+    const hidden = context.hiddenDossierIds || []
+    for (let offset = 0; offset < hidden.length; offset += 80) {
+      query = query.or(`dossier_id.is.null,dossier_id.not.in.(${hidden.slice(offset, offset + 80).join(',')})`)
+    }
+    if (filters.quick === 'favorites') query = query.eq('is_favorite', true)
+    if (filters.quick === 'unassigned') query = query.or('dossier_id.is.null,edit_meta->dental->>view.is.null,edit_meta->dental->>stage.is.null')
+    if (filters.view) query = query.eq('edit_meta->dental->>view', filters.view)
+    if (filters.stage) query = query.eq('edit_meta->dental->>stage', filters.stage)
+    if (filters.session) query = query.eq('capture_session_id', filters.session)
+    if (filters.day) {
+      const bounds = dateBounds(filters.day)
+      query = query.is('capture_session_id', null).or(`and(taken_at.gte.${bounds.start},taken_at.lt.${bounds.end}),and(taken_at.is.null,created_at.gte.${bounds.start},created_at.lt.${bounds.end})`)
+    }
+    for (const [value, bound] of [[filters.from, 'gte'], [filters.to, 'lt']]) {
+      if (!value) continue
+      const bounds = dateBounds(value), date = bound === 'gte' ? bounds.start : bounds.end
+      query = query.or(`taken_at.${bound}.${date},and(taken_at.is.null,created_at.${bound}.${date})`)
+    }
+    return signal ? query.abortSignal(signal) : query
+  }
+  const results = await Promise.all(parts.map(async (ids) => {
+    const build = () => {
+      let query = base()
+      if (allowed && ids) query = query.in('dossier_id', ids)
+      if (text) {
+        const matching = ids ? ids.filter((id) => matched.includes(id)) : []
+        query = query.or([text, ...(matching.length ? [`dossier_id.in.(${matching.join(',')})`] : [])].join(','))
+      }
+      return query.order('created_at', { ascending: false }).order('id', { ascending: false })
+    }
+    const rows = []
+    let count = 0
+    const start = parts.length === 1 ? page * pageSize : 0
+    for (let offset = start; offset < end; offset += 500) {
+      const { data, count: total, error } = await build().range(offset, Math.min(offset + 499, end - 1))
+      if (error) throw new Error('Recherche impossible. Vérifiez les filtres ou réessayez.')
+      count = total || 0; rows.push(...(data || []))
+      if (!data?.length || data.length < Math.min(500, end - offset)) break
+    }
+    return { rows, count }
+  }))
+  let count = results.reduce((sum, result) => sum + result.count, 0)
+  if (!allowed && text && parts.length > 1) {
+    const { count: duplicates, error } = await base('id', true).or(text)
+    if (error) throw new Error('Comptage des résultats impossible.')
+    count -= (parts.length - 1) * (duplicates || 0)
+  }
+  const rows = [...new Map(results.flatMap((r) => r.rows).map((p) => [p.id, p])).values()]
+    .sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id))
+  return { rows: parts.length === 1 ? rows : rows.slice(page * pageSize, end), count, pageSize }
+}
+
+export async function fileUnassignedPhotos(wsId, photoIds, dossierId) {
+  const { data: dossier, error: dossierError } = await alive(supabase.from('dossiers').select('id')
+    .eq('workspace_id', wsId).eq('id', dossierId)).single()
+  if (dossierError || !dossier) throw new Error('Dossier inaccessible.')
+  const { data: patients, error: patientError } = await alive(supabase.from('patients').select('id')
+    .eq('workspace_id', wsId).eq('dossier_id', dossierId)).limit(1)
+  if (patientError) throw new Error('Fiche patient inaccessible.')
+  const { data, error } = await alive(supabase.from('patient_photos')
+    .update({ dossier_id: dossierId, patient_id: patients?.[0]?.id || null })
+    .eq('workspace_id', wsId).is('dossier_id', null).in('id', photoIds)).select('id')
+  if (error) throw new Error('Classement dans le dossier impossible.')
+  return data || []
+}
+
+export function listPatientTimeline(wsId, dossierIds, signal) {
+  return readLibraryRows(() => alive(supabase.from('patient_photos')
+    .select('id,dossier_id,storage_path,original_filename,taken_at,created_at,capture_session_id,edit_meta')
+    .eq('workspace_id', wsId).in('dossier_id', dossierIds)).order('created_at', { ascending: false }).order('id'), signal)
 }
 
 export function countPhotos(wsId, { since, unsortedOnly = false } = {}) {
@@ -831,14 +1003,17 @@ export async function publishDuePosts(wsId) {
 // expected_photo_class est contraint CHECK : portrait|smile|intraoral|
 // occlusal|radiograph|document.
 
-export function listProtocols(wsId) {
+export function listProtocols(wsId, { throwOnError = false } = {}) {
   return supabase
     .from('protocols')
     .select('*,steps:protocol_steps(*)')
     .eq('workspace_id', wsId)
     .order('created_at', { ascending: true })
     .then(({ data, error }) => {
-      if (error) { console.warn('listProtocols:', error.message); return [] }
+      if (error) {
+        if (throwOnError) throw new Error('Chargement des protocoles impossible.')
+        console.warn('listProtocols:', error.message); return []
+      }
       return (data || []).map((p) => ({
         ...p,
         steps: (p.steps || []).sort((a, b) => a.position - b.position),

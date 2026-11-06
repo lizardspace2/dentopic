@@ -376,6 +376,7 @@ export class Editor {
   activeId = null
   selLayerIds = new Set() // multi-sélection du panneau Calques (Ctrl+clic)
   adjustVisible = true
+  adjustBypass = {}
   adjust = { ...DEFAULT_ADJUST }
   w = 0
   h = 0
@@ -404,6 +405,7 @@ export class Editor {
     this.redoStack = []
     this.adjust = { ...DEFAULT_ADJUST }
     this.adjustVisible = true
+    this.adjustBypass = {}
     this.sel = null
     this.curves = { rgb: null, r: null, g: null, b: null }
     this.wb = null
@@ -1723,13 +1725,17 @@ export class Editor {
   compositeFiltered() {
     if (this._cf) return this._cf
     const src = this.composite()
-    const a = this.adjust, cv0 = this.curves
+    if (!this.adjustVisible) { this._cf = src; return src }
+    const a = { ...this.adjust }, cv0 = this.curves
+    for (const key of Object.keys(this.adjustBypass)) {
+      if (this.adjustBypass[key] && key in DEFAULT_ADJUST) a[key] = DEFAULT_ADJUST[key]
+    }
+    const wb = this.adjustBypass.wb ? null : this.wb
     const hasCurves = cv0.rgb || cv0.r || cv0.g || cv0.b
     const hasLevels = a.inBlack > 0 || a.inWhite < 255 || a.gamma !== 100 || a.outBlack > 0 || a.outWhite < 255
     const hasExp = a.exposure !== 0
-    const hasWB = a.temp !== 0 || a.tint !== 0 || (this.wb && (this.wb.r !== 1 || this.wb.g !== 1 || this.wb.b !== 1))
+    const hasWB = a.temp !== 0 || a.tint !== 0 || (wb && (wb.r !== 1 || wb.g !== 1 || wb.b !== 1))
     const hasPx = hasCurves || hasLevels || hasExp || hasWB
-    if (!this.adjustVisible && !hasPx && !a.sharp) { this._cf = src; return src }
 
     const cv = mkCanvas(this.w, this.h)
     const ctx = cv.getContext('2d')
@@ -1751,7 +1757,7 @@ export class Editor {
       // LUTs par canal : temp/teinte -> gains pipette BB -> courbe de canal
       const t = a.temp * 0.4, ti = a.tint * 0.4
       const chan = (key, add) => {
-        const mul = this.wb ? this.wb[key] : 1
+        const mul = wb ? wb[key] : 1
         let l = null
         if (add || mul !== 1) l = chanLUT(mul, add)
         if (cv0[key]) l = l ? composeLUT(l, curveLUT(cv0[key])) : curveLUT(cv0[key])
@@ -2384,7 +2390,7 @@ export class Editor {
   _dump() {
     return {
       w: this.w, h: this.h, adjust: this.adjust,
-      adjustVisible: this.adjustVisible, activeId: this.activeId,
+      adjustVisible: this.adjustVisible, adjustBypass: this.adjustBypass, activeId: this.activeId,
       wb: this.wb, curves: this.curves,
       layers: this.layers.map((l) => this._dumpLayer(l)),
       paths: this.paths || [],
@@ -2414,6 +2420,7 @@ export class Editor {
     const d = JSON.parse(json)
     this.w = d.w; this.h = d.h
     this.adjust = d.adjust; this.adjustVisible = d.adjustVisible
+    this.adjustBypass = d.adjustBypass || {}
     this.activeId = d.activeId
     this.wb = d.wb || null
     this.curves = d.curves || { rgb: null, r: null, g: null, b: null }
