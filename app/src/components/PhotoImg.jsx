@@ -14,7 +14,7 @@ export default function PhotoImg({ storagePath, ratio = '4/3', iconSize = '24px'
       {...rest}
     >
       {url ? (
-        <Image src={url} w="100%" h="100%" objectFit="cover" loading="lazy" />
+        <Image src={url} w="100%" h="100%" objectFit="cover" loading="lazy" draggable={false} />
       ) : (
         <Center w="100%" h="100%" color="gray.400">
           <Box as={FiImage} fontSize={iconSize} />

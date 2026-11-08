@@ -45,6 +45,45 @@ export function usePhotoDrop(onMove) {
   }
 }
 
+// Hook : transforme un élément en zone de dépôt de FICHIERS venant de
+// l'ordinateur (glisser depuis l'explorateur Windows / le bureau).
+// `onFiles(files)` reçoit les fichiers image déposés.
+export function useFileDrop(onFiles) {
+  const [over, setOver] = useState(false)
+  const hasFiles = (e) => e.dataTransfer.types.includes('Files')
+  return {
+    over,
+    handlers: {
+      onDragOver: (e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault(); e.stopPropagation(); setOver(true)
+      },
+      onDragLeave: () => setOver(false),
+      onDrop: (e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault(); e.stopPropagation(); setOver(false)
+        const files = Array.from(e.dataTransfer.files || []).filter((f) => f.type.startsWith('image/'))
+        if (files.length) onFiles?.(files)
+      },
+    },
+  }
+}
+
+// Combine les deux types de dépôt (photos internes + fichiers OS) sur une cible.
+function useCombinedDrop(onMove, onFiles) {
+  const photo = usePhotoDrop(onMove)
+  const file = useFileDrop(onFiles)
+  const active = !!(onMove || onFiles)
+  return {
+    over: photo.over || file.over,
+    handlers: active ? {
+      onDragOver: (e) => { photo.handlers.onDragOver(e); file.handlers.onDragOver(e) },
+      onDragLeave: (e) => { photo.handlers.onDragLeave(e); file.handlers.onDragLeave(e) },
+      onDrop: (e) => { photo.handlers.onDrop(e); file.handlers.onDrop(e) },
+    } : {},
+  }
+}
+
 // ---- Helpers hiérarchie -----------------------------------------------------
 
 export function dossierChildren(dossiers, parentId) {
@@ -63,10 +102,12 @@ export function dossierPath(dossiers, id) {
 
 // ---- Arborescence latérale --------------------------------------------------
 
-function TreeNode({ ds, dossiers, depth, currentId, onNavigate, onMove, pathIds }) {
+function TreeNode({ ds, dossiers, depth, currentId, onNavigate, onMove, onFileDrop, pathIds }) {
   const kids = dossierChildren(dossiers, ds.id)
   const [open, setOpen] = useState(pathIds?.includes(ds.id) ?? depth === 0)
-  const { over, handlers } = usePhotoDrop(onMove ? (ids) => onMove(ids, ds.id) : null)
+  const { over, handlers } = useCombinedDrop(
+    onMove ? (ids) => onMove(ids, ds.id) : null,
+    onFileDrop ? (files) => onFileDrop(files, ds.id) : null)
   const active = currentId === ds.id
   return (
     <Box>
@@ -76,7 +117,7 @@ function TreeNode({ ds, dossiers, depth, currentId, onNavigate, onMove, pathIds 
         borderRadius="md"
         _hover={{ bg: C.softBlue }}
         onClick={() => onNavigate(ds.id)}
-        {...(onMove ? handlers : {})}
+        {...handlers}
       >
         <Box as="button" w="14px" flexShrink={0} color="gray.400" fontSize="xs"
           visibility={kids.length ? 'visible' : 'hidden'}
@@ -91,14 +132,15 @@ function TreeNode({ ds, dossiers, depth, currentId, onNavigate, onMove, pathIds 
       </HStack>
       {open && kids.map((k) => (
         <TreeNode key={k.id} ds={k} dossiers={dossiers} depth={depth + 1}
-          currentId={currentId} onNavigate={onNavigate} onMove={onMove} pathIds={pathIds} />
+          currentId={currentId} onNavigate={onNavigate} onMove={onMove}
+          onFileDrop={onFileDrop} pathIds={pathIds} />
       ))}
     </Box>
   )
 }
 
 // Panneau latéral : « tous » + arbre des dossiers (dépliants, zones de dépôt).
-export function DossierTree({ dossiers, currentId, onNavigate, onMove, allLabel = 'Tous les dossiers', title = 'Dossiers' }) {
+export function DossierTree({ dossiers, currentId, onNavigate, onMove, onFileDrop, allLabel = 'Tous les dossiers', title = 'Dossiers' }) {
   const roots = dossierChildren(dossiers, null)
   const pathIds = dossierPath(dossiers, currentId).map((d) => d.id)
   const allActive = !currentId
@@ -119,7 +161,8 @@ export function DossierTree({ dossiers, currentId, onNavigate, onMove, allLabel 
         </HStack>
         {roots.map((d) => (
           <TreeNode key={d.id} ds={d} dossiers={dossiers} depth={0}
-            currentId={currentId} onNavigate={onNavigate} onMove={onMove} pathIds={pathIds} />
+            currentId={currentId} onNavigate={onNavigate} onMove={onMove}
+            onFileDrop={onFileDrop} pathIds={pathIds} />
         ))}
         {!roots.length && <Text fontSize="xs" color="gray.400" px="3" py="2">Aucun dossier.</Text>}
       </Box>
@@ -129,15 +172,17 @@ export function DossierTree({ dossiers, currentId, onNavigate, onMove, allLabel 
 
 // ---- Tuile dossier (façon icône de dossier Windows) -------------------------
 
-export function FolderTile({ dossier, onOpen, onMove }) {
-  const { over, handlers } = usePhotoDrop(onMove ? (ids) => onMove(ids, dossier.id) : null)
+export function FolderTile({ dossier, onOpen, onMove, onFileDrop }) {
+  const { over, handlers } = useCombinedDrop(
+    onMove ? (ids) => onMove(ids, dossier.id) : null,
+    onFileDrop ? (files) => onFileDrop(files, dossier.id) : null)
   return (
     <Box as="button" textAlign="center" px="3" py="3" borderRadius="lg" w="110px"
       border="1.5px solid" borderColor={over ? C.primary : 'transparent'}
       bg={over ? C.softBlue : 'transparent'}
       _hover={{ bg: C.softBlue, borderColor: C.primary }}
       onClick={() => onOpen(dossier.id)}
-      {...(onMove ? handlers : {})}
+      {...handlers}
     >
       <Box as={FiFolder} fontSize="34px" color={C.primary} mx="auto" />
       <Text fontSize="2xs" fontWeight="600" color={C.ink} mt="1" isTruncated>{dossier.name}</Text>

@@ -6,8 +6,8 @@ import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, 
 import PhotoImg from '../components/PhotoImg'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
-import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos, classifyPhoto, movePhotosToDossier } from '../api'
-import { DossierTree, ContextMenu, startPhotoDrag } from '../components/Explorer'
+import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos, classifyPhoto, movePhotosToDossier, importPhotos } from '../api'
+import { DossierTree, ContextMenu, startPhotoDrag, useFileDrop } from '../components/Explorer'
 import { CLINICAL_VIEWS, CLINICAL_STAGES, clinicalLabels } from '../clinical'
 import { LIBRARY_DEFAULTS, expandDossierIds, matchesLibraryText, readLibraryFilters, rootDossierId } from '../phototheque'
 import { C } from '../theme'
@@ -162,6 +162,18 @@ export default function Phototheque({ CollectionsComponent }) {
     catch { toast.error('Favori non enregistré. Réessayez.') }
     finally { setBusy(false) }
   }
+  // dépôt de fichiers depuis l'ordinateur (explorateur Windows → dossier)
+  const importInto = async (files, dossierId) => {
+    const to = (context?.dossiers || []).find((d) => d.id === dossierId)
+    setBusy(true)
+    try {
+      await importPhotos(wsId, files, dossierId)
+      toast.success(`${files.length} photo(s) importée(s) dans « ${to?.name || 'Sans dossier'} ».`)
+      setRefresh((v) => v + 1)
+    } catch { toast.error('Import impossible. Réessayez.') }
+    finally { setBusy(false) }
+  }
+  const fileDrop = useFileDrop((files) => importInto(files, filters.patient || null))
   // glisser-déposer : photos lâchées sur un dossier de l'arborescence
   const movePhotos = async (ids, dossierId) => {
     const to = (context?.dossiers || []).find((d) => d.id === dossierId)
@@ -285,8 +297,18 @@ export default function Phototheque({ CollectionsComponent }) {
         <DossierTree dossiers={context.dossiers} currentId={filters.patient || null}
           allLabel="Toutes les photos" title="Dossiers"
           onNavigate={(id) => change({ patient: id || '', session: '', day: '' })}
-          onMove={movePhotos} />
-        <Box flex="1" minW="0">
+          onMove={movePhotos} onFileDrop={importInto} />
+        <Box flex="1" minW="0" position="relative" borderRadius="lg"
+          outline={fileDrop.over ? `2px dashed ${C.primary}` : 'none'} outlineOffset="-2px"
+          {...fileDrop.handlers}>
+          {fileDrop.over && (
+            <Box position="absolute" inset="0" zIndex="10" bg="blackAlpha.50" borderRadius="lg"
+              display="flex" alignItems="center" justifyContent="center" pointerEvents="none">
+              <Text fontSize="sm" fontWeight="600" color={C.primary}>
+                Déposez pour importer {filters.patient ? `dans « ${patientName(filters.patient)} »` : 'sans dossier'}
+              </Text>
+            </Box>
+          )}
         <HStack mb="3" gap="2" flexWrap="wrap">
           <Text fontSize="sm" fontWeight="700" color={C.ink}>{count == null ? 'Recherche…' : `${count} photo(s)`}</Text>
           {selected.length > 0 && <Text fontSize="2xs" color={C.muted}>— Ctrl+clic : ajouter, Shift+clic : plage, clic droit : menu</Text>}

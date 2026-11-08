@@ -27,7 +27,7 @@ import {
   updatePatient, listTrashDossiers, restoreDossier, movePhotosToDossier,
 } from '../api'
 import {
-  DossierTree, FolderTile, FolderBreadcrumb, startPhotoDrag, dossierChildren,
+  DossierTree, FolderTile, FolderBreadcrumb, startPhotoDrag, dossierChildren, useFileDrop,
 } from '../components/Explorer'
 import { photoUrl } from '../media'
 import { buildContactSheet, fetchImg } from './studio/engine'
@@ -232,6 +232,16 @@ function DossierGrid() {
     }
   }
 
+  // dépôt de fichiers OS sur un dossier de l'arbre (comme l'explorateur Windows)
+  const importInto = async (files, dossierId) => {
+    const to = (d?.dossiers || []).find((x) => x.id === dossierId)
+    try {
+      await importPhotos(wsId, files, dossierId)
+      toast.success(`${files.length} photo(s) importée(s) dans « ${to?.name || 'le dossier'} ».`)
+      reload()
+    } catch { toast.error('Import impossible. Réessayez.') }
+  }
+
   const list = (d?.dossiers || [])
     .filter((ds) =>
       (!q || ds.name.toLowerCase().includes(q.toLowerCase())
@@ -317,7 +327,8 @@ function DossierGrid() {
 
       <HStack align="start" gap="4">
         <DossierTree dossiers={d?.dossiers || []} currentId={null}
-          onNavigate={(id) => { if (id) nav(`/dossier-patient/dossier/${id}`) }} />
+          onNavigate={(id) => { if (id) nav(`/dossier-patient/dossier/${id}`) }}
+          onFileDrop={importInto} />
         <Box flex="1" minW="0">
       <SimpleGrid columns={{ base: 1, md: 3 }} gap="5">
         {list.map((ds) => {
@@ -730,6 +741,17 @@ function DossierDetail({ id }) {
   }
   const openFolder = (fid) => nav(fid ? `/dossier-patient/dossier/${fid}` : '/dossier-patient')
 
+  // dépôt de fichiers depuis l'ordinateur (explorateur Windows → dossier)
+  const importInto = async (files, dossierId) => {
+    const to = allDossiers.find((x) => x.id === dossierId)
+    try {
+      await importPhotos(wsId, files, dossierId)
+      toast.success(`${files.length} photo(s) importée(s) dans « ${to?.name || dossier?.name || 'le dossier'} ».`)
+      reload()
+    } catch { toast.error('Import impossible. Réessayez.') }
+  }
+  const fileDrop = useFileDrop((files) => importInto(files, id))
+
   const onImportFiles = async (e) => {
     const files = Array.from(e.target.files || [])
     e.target.value = ''
@@ -764,8 +786,16 @@ function DossierDetail({ id }) {
 
       <HStack align="start" gap="4">
         <DossierTree dossiers={allDossiers} currentId={id}
-          onNavigate={openFolder} onMove={movePhotos} />
-        <Box flex="1" minW="0">
+          onNavigate={openFolder} onMove={movePhotos} onFileDrop={importInto} />
+        <Box flex="1" minW="0" position="relative" borderRadius="lg"
+          outline={fileDrop.over ? `2px dashed ${C.primary}` : 'none'} outlineOffset="-2px"
+          {...fileDrop.handlers}>
+          {fileDrop.over && (
+            <Box position="absolute" inset="0" zIndex="10" bg="blackAlpha.50" borderRadius="lg"
+              display="flex" alignItems="center" justifyContent="center" pointerEvents="none">
+              <Text fontSize="sm" fontWeight="600" color={C.primary}>Déposez pour importer dans « {dossier?.name} »</Text>
+            </Box>
+          )}
 
       <Box mb="3">
         <FolderBreadcrumb dossiers={allDossiers} currentId={id}
