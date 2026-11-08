@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiDownload, FiFileText, FiFolder, FiSave } from 'react-icons/fi'
-import { Field, Modal, SearchInput, Select, Tip } from '../../components/ui'
+import { Field, Modal, SearchInput, Select, Tip, toast } from '../../components/ui'
 import { C, S } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
 import { listDossiers, listPhotos } from '../../api'
@@ -87,6 +87,8 @@ export function ExportModal({ open, onClose, editor, docName, dossiers, onExport
     const ok = await onSave(dossierId || null)
     setBusy(false)
     setSaved(ok)
+    if (ok) toast.success('Image enregistrée dans DentoPic.')
+    else toast.error('Enregistrement impossible — réessayez.')
   }
   const lossy = format !== 'png'
   const ext = format === 'jpeg' ? 'JPG' : format.toUpperCase()

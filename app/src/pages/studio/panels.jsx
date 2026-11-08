@@ -11,7 +11,7 @@ import {
 } from 'react-icons/fi'
 import { LuContrast, LuHistory, LuPaintBucket, LuRedo2, LuUndo2 } from 'react-icons/lu'
 import { TbMask } from 'react-icons/tb'
-import { Tip } from '../../components/ui'
+import { PromptModal, Tip } from '../../components/ui'
 import { C, S, svar, getMode } from '../../theme'
 import { ADJUST_GROUPS, BLEND_MODES, CURVE_CHANNELS, FDI_TEETH, PRESETS, SWATCHES, TOOLS, VITA_SHADES } from './constants'
 import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_ADJUST, autoLevels, curveLUT, histogram } from './engine'
@@ -1054,9 +1054,9 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
     editor.adjustVisible = true
     onChange()
   }
-  const savePreset = () => {
-    const name = window.prompt('Nom du préréglage ?', 'Mon réglage')
-    if (!name) return
+  const [presetOpen, setPresetOpen] = useState(false)
+  const savePreset = () => setPresetOpen(true)
+  const doSavePreset = (name) => {
     const a = editor.adjust
     const keep = ['exposure', 'brightness', 'contrast', 'saturate', 'temp', 'tint',
       'inBlack', 'gamma', 'inWhite', 'outBlack', 'outWhite', 'sharp', 'hue', 'grayscale', 'sepia']
@@ -1187,6 +1187,10 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
           Réinitialiser tous les réglages
         </Box>
       </Tip>
+      <PromptModal open={presetOpen} onClose={() => setPresetOpen(false)}
+        title="Enregistrer le préréglage" subtitle="Réglages actuels du panneau Ajustements"
+        label="Nom" defaultValue="Mon réglage" confirmLabel="Enregistrer"
+        onSubmit={doSavePreset} />
     </VStack>
   )
 }

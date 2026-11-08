@@ -4,11 +4,11 @@
 // un membre (confirmations obligatoires via ConfirmModal).
 import { useEffect, useState } from 'react'
 import { Box, Button, Center, HStack, Input, Text, VStack } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
 import {
-  FiArrowLeft, FiUsers, FiUserPlus, FiTrash2, FiShield, FiClock, FiMail,
+  FiUsers, FiUserPlus, FiTrash2, FiShield, FiClock, FiMail,
   FiCheck, FiAlertCircle, FiRefreshCw,
 } from 'react-icons/fi'
+import { ReglageNav } from '../components/ReglageNav'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
   Tip, ConfirmModal, ago,
@@ -91,9 +91,7 @@ export default function ReglageMembres() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage">
-        <Button size="sm" variant="ghost" color="gray.500" mb="2"><FiArrowLeft /> Réglages</Button>
-      </Link>
+      <ReglageNav />
       <PageHeader
         icon={FiUsers} title="Membres de l'équipe"
         subtitle="Gérez les accès de votre équipe au cabinet"

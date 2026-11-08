@@ -13,6 +13,7 @@ import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, SearchInput,
   Select, ago, isTestName, Modal, Field, Tip, IconTile, ConfirmModal,
+  MenuDropdown, MenuItem, toast,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -113,16 +114,18 @@ export default function Presentations() {
   }
   const trash = async (p) => {
     setBusy(true); await trashPresentation(p.id)
-    setBusy(false); setModal(null); setMenuFor(null); reload()
+    setBusy(false); setModal(null); setMenuFor(null)
+    toast.info('Présentation mise à la corbeille.'); reload()
   }
   const duplicate = async (p) => {
     setBusy(true); setMenuFor(null)
     await duplicatePresentation(p)
-    setBusy(false); reload()
+    setBusy(false); toast.success('Présentation dupliquée.'); reload()
   }
   const archive = async (p, archived = true) => {
     setMenuFor(null)
     await updatePresentation(p.id, { status: archived ? 'archived' : 'draft' })
+    toast.success(archived ? 'Présentation archivée.' : 'Présentation restaurée.')
     reload()
   }
   const cleanTests = async () => {
@@ -138,7 +141,7 @@ export default function Presentations() {
   const shareUrl = (p) => `${window.location.origin}/partage-presentation/${p.share_token}`
   const copyLink = (p) => {
     navigator.clipboard?.writeText(shareUrl(p))
-      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); toast.success('Lien copié dans le presse-papiers.') })
   }
 
   // ---- rendu -----------------------------------------------------------------
@@ -276,12 +279,7 @@ export default function Presentations() {
                       <IconBtn I={FiMoreVertical} label="Plus d'actions"
                         onClick={() => setMenuFor(menuFor === p.id ? null : p.id)} />
                     </Tip>
-                    {menuFor === p.id && (
-                      <VStack
-                        position="absolute" bottom="100%" right="0" mb="1" align="stretch" gap="0"
-                        bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="md"
-                        minW="210px" py="1" boxShadow="lg" zIndex="20"
-                      >
+                    <MenuDropdown open={menuFor === p.id} onClose={() => setMenuFor(null)} minW="210px">
                         <MenuItem icon={FiEye} label="Voir les diapositives"
                           onClick={() => { setMenuFor(null); setModal({ kind: 'detail', pres: p }) }} />
                         <MenuItem icon={FiEdit2} label="Modifier (nom, patient, statut)…"
@@ -299,8 +297,7 @@ export default function Presentations() {
                         )}
                         <MenuItem icon={FiTrash2} label="Mettre à la corbeille" danger
                           onClick={() => { setMenuFor(null); setModal({ kind: 'trash', pres: p }) }} />
-                      </VStack>
-                    )}
+                    </MenuDropdown>
                   </Box>
                 </HStack>
               </HStack>
@@ -361,7 +358,6 @@ export default function Presentations() {
           <Select w="100%" value={form?.status || 'draft'}
             onChange={(e) => setForm({ ...form, status: e.target.value })}>
             <option value="draft">Brouillon</option>
-            <option value="finalized">Finalisé</option>
             <option value="archived">Archivé</option>
           </Select>
         </Field>
@@ -642,12 +638,4 @@ function IconBtn({ I, label, onClick }) {
   )
 }
 
-function MenuItem({ icon: I, label, danger, onClick }) {
-  return (
-    <HStack px="3" py="2" gap="2" fontSize="xs" cursor="pointer"
-      color={danger ? 'red.500' : C.ink} _hover={{ bg: C.softBlue }}
-      onClick={onClick}>
-      <Box as={I} /> <Text>{label}</Text>
-    </HStack>
-  )
-}
+

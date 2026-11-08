@@ -3,13 +3,13 @@
 // confirmations obligatoires (ConfirmModal) sur les suppressions.
 import { useEffect, useState } from 'react'
 import {
-  Box, Button, Center, HStack, Input, Text, Textarea, VStack,
+  Box, Center, HStack, Input, Text, Textarea, VStack,
 } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
 import {
-  FiArrowLeft, FiFileText, FiPlus, FiTrash2, FiEdit2, FiCheck,
+  FiFileText, FiPlus, FiTrash2, FiEdit2, FiCheck,
   FiChevronUp, FiChevronDown, FiStar, FiCamera, FiAlertCircle,
 } from 'react-icons/fi'
+import { ReglageNav } from '../components/ReglageNav'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
   Tip, ConfirmModal,
@@ -97,9 +97,7 @@ export default function ReglageProtocoles() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage">
-        <Button size="sm" variant="ghost" color="gray.500" mb="2"><FiArrowLeft /> Réglages</Button>
-      </Link>
+      <ReglageNav />
       <PageHeader
         icon={FiFileText} title="Protocoles"
         subtitle="Guides de prise de vue standardisés — utilisés dans l'acquisition"

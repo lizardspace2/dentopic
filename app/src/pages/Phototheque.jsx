@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, Button, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
 import { FiFolder, FiStar } from 'react-icons/fi'
-import { Card, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag } from '../components/ui'
+import { Card, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
@@ -33,7 +33,6 @@ export default function Phototheque({ CollectionsComponent }) {
   const [collectionId, setCollectionId] = useState('')
   const [fileDossier, setFileDossier] = useState('')
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
   const [patient, setPatient] = useState(null)
   const [saved, setSaved] = useState([])
   const [saveOpen, setSaveOpen] = useState(false)
@@ -79,7 +78,7 @@ export default function Phototheque({ CollectionsComponent }) {
     return () => { clearTimeout(timer); controller.abort() }
   }, [wsId, context, filters, refresh])
 
-  useEffect(() => { setSelected([]); setMessage('') }, [filters, wsId])
+  useEffect(() => { setSelected([]) }, [filters, wsId])
   useEffect(() => {
     setSaved([]); setSavedError('')
     if (!storageKey) return
@@ -112,7 +111,7 @@ export default function Phototheque({ CollectionsComponent }) {
   ].filter(([, value]) => value)
 
   const applyBatch = async () => {
-    setBusy(true); setMessage('')
+    setBusy(true)
     try {
       const result = await labelClinicalPhotos(wsId, selected, {
         view: batch.view === 'clear' ? null : batch.view || undefined,
@@ -120,38 +119,40 @@ export default function Phototheque({ CollectionsComponent }) {
       })
       const updated = new Set(result.updated.map((p) => p.id))
       setSelected((ids) => ids.filter((id) => !updated.has(id)))
-      setMessage(`${updated.size} photo(s) classée(s).${result.failed ? ` ${result.failed} échec(s) : réessayez.` : ''}`)
+      if (result.failed) toast.error(`${updated.size} photo(s) classée(s) — ${result.failed} échec(s), réessayez.`)
+      else toast.success(`${updated.size} photo(s) classée(s).`)
       setRefresh((v) => v + 1)
-    } catch { setMessage('Enregistrement impossible. La sélection est conservée pour réessayer.') }
+    } catch { toast.error('Enregistrement impossible. La sélection est conservée pour réessayer.') }
     finally { setBusy(false) }
   }
   const addSelection = async () => {
     if (!collectionId) return
-    setBusy(true); setMessage('')
+    setBusy(true)
     try {
       const result = await Promise.all(selected.map(async (id) => ({ id, saved: await addCollectionItem(collectionId, { photo_id: id }, userId) })))
       const added = new Set(result.filter((r) => r.saved).map((r) => r.id))
       setSelected((ids) => ids.filter((id) => !added.has(id)))
-      setMessage(`${added.size} photo(s) ajoutée(s), sans duplication des originaux.${added.size < result.length ? ' Certaines photos sont déjà présentes ou n’ont pas pu être ajoutées.' : ''}`)
-    } catch { setMessage('Ajout interrompu. Vérifiez la collection avant de réessayer.') }
+      if (added.size < result.length) toast.error(`${added.size} photo(s) ajoutée(s) — certaines étaient déjà présentes.`)
+      else toast.success(`${added.size} photo(s) ajoutée(s), sans duplication des originaux.`)
+    } catch { toast.error('Ajout interrompu. Vérifiez la collection avant de réessayer.') }
     finally { setBusy(false) }
   }
   const fileSelection = async () => {
     if (!fileDossier || !selected.length) return
-    setBusy(true); setMessage('')
+    setBusy(true)
     try {
       const updated = await fileUnassignedPhotos(wsId, selected, fileDossier)
       const ids = new Set(updated.map((p) => p.id))
       setSelected((old) => old.filter((id) => !ids.has(id)))
-      setMessage(`${ids.size} photo(s) rangée(s). Les photos déjà attribuées à un patient n’ont pas été déplacées.`)
+      toast.success(`${ids.size} photo(s) rangée(s).`)
       setRefresh((v) => v + 1)
-    } catch { setMessage('Classement impossible. La sélection est conservée.') }
+    } catch { toast.error('Classement impossible. La sélection est conservée.') }
     finally { setBusy(false) }
   }
   const favorite = async (photo) => {
-    setBusy(true); setMessage('')
+    setBusy(true)
     try { await setPhotoFavorite(wsId, photo.id, !photo.is_favorite); setRefresh((v) => v + 1) }
-    catch { setMessage('Favori non enregistré. Réessayez.') }
+    catch { toast.error('Favori non enregistré. Réessayez.') }
     finally { setBusy(false) }
   }
   const storeSaved = (next) => {
@@ -253,7 +254,7 @@ export default function Phototheque({ CollectionsComponent }) {
             <Button size="xs" variant="outline" disabled={busy || !fileDossier} onClick={fileSelection}>Ranger</Button>
           </HStack>
         </Card>}
-        {message && <Text role="status" fontSize="xs" mb="3">{message}</Text>}
+
         {loading && <Text fontSize="sm">Recherche en cours…</Text>}
         {error && <Card p="4"><Text role="alert">{error}</Text><Button size="xs" onClick={() => setRefresh((v) => v + 1)}>Réessayer</Button></Card>}
         {!loading && !error && !rows.length && <Card p="5"><Text fontSize="sm">Aucune photo pour ces critères.</Text><Button size="xs" mt="2" onClick={reset}>Effacer les filtres</Button></Card>}

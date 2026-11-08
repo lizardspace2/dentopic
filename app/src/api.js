@@ -98,6 +98,23 @@ export function trashDossier(id) {
   return updateDossier(id, { deleted_at: new Date().toISOString() })
 }
 
+/** Liste les dossiers mis à la corbeille (restauration possible). */
+export function listTrashDossiers(wsId) {
+  return supabase
+    .from('dossiers')
+    .select('*')
+    .eq('workspace_id', wsId)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+    .limit(50)
+    .then(({ data }) => data || [])
+}
+
+/** Restaure un dossier depuis la corbeille. */
+export function restoreDossier(id) {
+  return updateDossier(id, { deleted_at: null })
+}
+
 // ---- Photos -----------------------------------------------------------------
 
 export function listPhotosByDossier(dossierId, { limit = 300 } = {}) {
@@ -107,12 +124,14 @@ export function listPhotosByDossier(dossierId, { limit = 300 } = {}) {
     .then(({ data }) => data || [])
 }
 
-export function listPhotos(wsId, { limit = 100, favoritesOnly = false, dossierId, throwOnError = false } = {}) {
+export function listPhotos(wsId, { limit = 100, favoritesOnly = false, dossierId, unassignedOnly = false, throwOnError = false } = {}) {
   let q = alive(supabase.from('patient_photos').select('*').eq('workspace_id', wsId))
     .order('created_at', { ascending: false })
     .limit(limit)
   if (favoritesOnly) q = q.eq('is_favorite', true)
   if (dossierId) q = q.eq('dossier_id', dossierId)
+  // même définition que le filtre « À classer » de la photothèque
+  if (unassignedOnly) q = q.or('dossier_id.is.null,edit_meta->dental->>view.is.null,edit_meta->dental->>stage.is.null')
   return q.then(({ data, error }) => {
     if (error && throwOnError) throw new Error('Impossible de charger les photos.')
     return data || []
@@ -246,7 +265,7 @@ export function listPatientTimeline(wsId, dossierIds, signal) {
     .eq('workspace_id', wsId).in('dossier_id', dossierIds)).order('created_at', { ascending: false }).order('id'), signal)
 }
 
-export function countPhotos(wsId, { since, unsortedOnly = false } = {}) {
+export function countPhotos(wsId, { since, unsortedOnly = false, unassignedOnly = false } = {}) {
   let q = supabase
     .from('patient_photos')
     .select('id', { count: 'exact', head: true })
@@ -254,6 +273,7 @@ export function countPhotos(wsId, { since, unsortedOnly = false } = {}) {
     .is('deleted_at', null)
   if (since) q = q.gte('created_at', since)
   if (unsortedOnly) q = q.is('dossier_id', null)
+  if (unassignedOnly) q = q.or('dossier_id.is.null,edit_meta->dental->>view.is.null,edit_meta->dental->>stage.is.null')
   return q.then(({ count }) => count || 0)
 }
 
@@ -572,7 +592,7 @@ export function createCaptureDevice(wsId, { name, manufacturer = '', model = '',
       manufacturer,
       model,
       connection_type: conn,
-      room_id: roomId,
+      room_id: roomId || null, // '' violerait la contrainte uuid côté Postgres
       status,
       metadata: meta,
     })
@@ -851,9 +871,12 @@ export function updateProfile(userId, fields) {
 
 /** Crée une entrée montage (avant/après studio) — status draft par défaut */
 export async function createMontage(wsId, fields) {
+  // La contrainte montages_image_count_check plafonne image_count à 9 :
+  // une planche contact de 10+ photos échouerait sinon silencieusement.
+  const image_count = Math.min(fields.image_count ?? 2, 9)
   const { data, error } = await supabase
     .from('montages')
-    .insert({ workspace_id: wsId, image_count: 2, status: 'draft', ...fields })
+    .insert({ workspace_id: wsId, status: 'draft', ...fields, image_count })
     .select()
     .single()
   if (error) { console.warn('createMontage:', error.message); return null }

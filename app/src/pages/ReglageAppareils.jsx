@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
 import {
-  FiArrowLeft, FiMapPin, FiMonitor, FiPlus, FiTrash2, FiWifi, FiEdit2,
+  FiMapPin, FiMonitor, FiPlus, FiTrash2, FiWifi, FiEdit2,
 } from 'react-icons/fi'
 import { Card, Tag, IconTile, PrimaryButton, Tip, Field, ConfirmModal } from '../components/ui'
+import { ReglageNav } from '../components/ReglageNav'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
 import {
@@ -76,11 +76,7 @@ export default function ReglageAppareils() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage" style={{ textDecoration: 'none' }}>
-        <HStack gap="2" color="gray.500" mb="6">
-          <FiArrowLeft /> <Text fontSize="sm">Retour aux réglages</Text>
-        </HStack>
-      </Link>
+      <ReglageNav />
       <HStack justify="space-between" mb="6">
         <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
           Appareils

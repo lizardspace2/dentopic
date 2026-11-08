@@ -21,3 +21,7 @@ explore/auth-state.json
 # OS
 Thumbs.db
 .DS_Store
+
+# Captures de test + identifiants locaux
+explore/*-shots/
+explore/test-creds.json

@@ -1,9 +1,9 @@
 // Primitives UI partagées — tout motif visuel répété dans les pages vit ici.
 // Palette : ../theme.js (objet C)
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, Button, Center, Flex, HStack, Input, Text } from '@chakra-ui/react'
-import { FiAlertTriangle, FiHelpCircle, FiSearch, FiX } from 'react-icons/fi'
+import { Box, Button, Center, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
+import { FiAlertTriangle, FiCheckCircle, FiHelpCircle, FiInfo, FiSearch, FiX } from 'react-icons/fi'
 import { C } from '../theme'
 
 // ---- Badges ----------------------------------------------------------------
@@ -187,6 +187,12 @@ export function Field({ label, children, ...rest }) {
 // ---- Modal (popup centré, toutes les interactions restent sur la route) ---------
 
 export function Modal({ open, onClose, title, subtitle, children, width = '480px', footer }) {
+  useEffect(() => {
+    if (!open) return
+    const key = (e) => { if (e.key === 'Escape') onClose?.() }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [open, onClose])
   if (!open) return null
   return (
     <Box
@@ -247,6 +253,147 @@ export function ConfirmModal({
         <Text fontSize="sm" color={C.body}>{message}</Text>
       </HStack>
     </Modal>
+  )
+}
+
+// ---- Saisie d'une valeur (remplace window.prompt) -----------------------------
+// `onSubmit(value)` — renvoyer false pour garder la popup ouverte (validation).
+// Le composant interne est remonté à chaque ouverture : defaultValue se réinitialise.
+
+export function PromptModal({ open, ...rest }) {
+  if (!open) return null
+  return <PromptForm {...rest} />
+}
+
+function PromptForm({
+  onClose, onSubmit, title, subtitle,
+  label = 'Valeur', defaultValue = '', placeholder, hint,
+  type = 'text', min, max, step,
+  confirmLabel = 'Valider', cancelLabel = 'Annuler',
+}) {
+  const [value, setValue] = useState(String(defaultValue ?? ''))
+  const [busy, setBusy] = useState(false)
+  const submit = async () => {
+    const v = value.trim()
+    if (!v || busy) return
+    setBusy(true)
+    try {
+      const ok = await onSubmit?.(v)
+      if (ok !== false) onClose()
+    } finally { setBusy(false) }
+  }
+  return (
+    <Modal open onClose={onClose} title={title} subtitle={subtitle} width="420px"
+      footer={<>
+        <span />
+        <HStack gap="2">
+          <Button variant="outline" size="sm" onClick={onClose}>{cancelLabel}</Button>
+          <PrimaryButton onClick={submit} disabled={busy || !value.trim()}>
+            {busy ? '…' : confirmLabel}
+          </PrimaryButton>
+        </HStack>
+      </>}>
+      <Box as="form" onSubmit={(e) => { e.preventDefault(); submit() }}>
+        <Field label={label}>
+          <Input autoFocus type={type} min={min} max={max} step={step} value={value}
+            placeholder={placeholder} onFocus={(e) => e.target.select()}
+            onChange={(e) => setValue(e.target.value)} />
+        </Field>
+        {hint && <Text fontSize="2xs" color="gray.500" mt="1.5">{hint}</Text>}
+      </Box>
+    </Modal>
+  )
+}
+
+// ---- Menu contextuel (bouton ⋯ des cartes) -------------------------------------
+// À rendre dans un <Box position="relative"> qui contient aussi le bouton
+// d'ouverture : le clic extérieur et Échap ferment le menu via `onClose`.
+// S'ouvre vers le haut (les cartes sont en bas de page).
+
+export function MenuDropdown({ open, onClose, children, minW = '200px' }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!open) return
+    const down = (e) => {
+      const root = ref.current?.parentElement
+      if (root && !root.contains(e.target)) onClose?.()
+    }
+    const key = (e) => { if (e.key === 'Escape') onClose?.() }
+    window.addEventListener('pointerdown', down)
+    window.addEventListener('keydown', key)
+    return () => { window.removeEventListener('pointerdown', down); window.removeEventListener('keydown', key) }
+  }, [open, onClose])
+  if (!open) return null
+  return (
+    <VStack ref={ref} position="absolute" bottom="100%" right="0" mb="1" align="stretch" gap="0"
+      bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="md"
+      minW={minW} py="1" boxShadow="lg" zIndex="20">
+      {children}
+    </VStack>
+  )
+}
+
+export function MenuItem({ icon: I, label, danger, onClick }) {
+  return (
+    <HStack px="3" py="2" gap="2" fontSize="xs" cursor="pointer"
+      color={danger ? 'red.500' : C.ink} _hover={{ bg: C.softBlue }}
+      onClick={onClick}>
+      <Box as={I} /> <Text>{label}</Text>
+    </HStack>
+  )
+}
+
+// ---- Notifications toast --------------------------------------------------------
+// `toast('Fait.')` / `toast.success('…')` / `toast.error('…')` / `toast.info('…')`
+// appelable depuis n'importe quel handler — pas de provider :
+// <ToastHost/> est monté une fois dans AppShell et écoute le bus.
+
+let toastSeq = 0
+const toastBus = new Set()
+
+export function toast(message, type = 'success') {
+  const t = { id: ++toastSeq, message: String(message), type }
+  toastBus.forEach((fn) => fn(t))
+  return t.id
+}
+toast.success = (m) => toast(m, 'success')
+toast.error = (m) => toast(m, 'error')
+toast.info = (m) => toast(m, 'info')
+
+const TOAST_TONE = {
+  success: { icon: FiCheckCircle, color: 'green.500' },
+  error: { icon: FiAlertTriangle, color: 'red.500' },
+  info: { icon: FiInfo, color: C.primary },
+}
+
+export function ToastHost() {
+  const [items, setItems] = useState([])
+  useEffect(() => {
+    const push = (t) => {
+      setItems((l) => [...l, t].slice(-4)) // 4 max — les plus anciens disparaissent
+      setTimeout(() => setItems((l) => l.filter((x) => x.id !== t.id)), 4000)
+    }
+    toastBus.add(push)
+    return () => toastBus.delete(push)
+  }, [])
+  if (!items.length) return null
+  return (
+    <VStack position="fixed" bottom="5" right="5" zIndex="100" align="stretch" gap="2" pointerEvents="none">
+      {items.map((t) => {
+        const tone = TOAST_TONE[t.type] || TOAST_TONE.info
+        return (
+          <HStack key={t.id} pointerEvents="auto" cursor="pointer"
+            bg="white" border="1px solid" borderColor={C.cardBorder}
+            borderLeftWidth="3px" borderLeftColor={tone.color} borderRadius="md" boxShadow="lg"
+            px="3" py="2.5" gap="2.5" minW="240px" maxW="360px"
+            onClick={() => setItems((l) => l.filter((x) => x.id !== t.id))}>
+            <Box as={tone.icon} color={tone.color} fontSize="sm" flexShrink={0} />
+            <Text fontSize="xs" color={C.ink} flex="1">{t.message}</Text>
+            <Box as={FiX} color="gray.400" fontSize="xs" flexShrink={0} />
+          </HStack>
+        )
+      })}
+    </VStack>
   )
 }
 

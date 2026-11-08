@@ -5,11 +5,11 @@ import { useEffect, useState } from 'react'
 import {
   Box, Button, Center, HStack, SimpleGrid, Text, VStack,
 } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
 import {
-  FiArrowLeft, FiCheck, FiUsers, FiUser, FiShare2, FiShield, FiStar,
+  FiCheck, FiUsers, FiUser, FiShare2, FiShield, FiStar,
 } from 'react-icons/fi'
 import { FaCrown } from 'react-icons/fa'
+import { ReglageNav } from '../components/ReglageNav'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, SectionLabel,
 } from '../components/ui'
@@ -57,9 +57,7 @@ export default function ReglagePro() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage">
-        <Button size="sm" variant="ghost" color="gray.500" mb="2"><FiArrowLeft /> Réglages</Button>
-      </Link>
+      <ReglageNav />
       <PageHeader
         icon={FaCrown} iconBg="amber.100" iconColor="amber.500"
         title="Passer Pro" subtitle="Débloquez toutes les fonctionnalités de DentoPic"

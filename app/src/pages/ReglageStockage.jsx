@@ -2,14 +2,14 @@
 // Usage réel = somme des octets patient_photos ; limites via workspace_plans.
 import { useEffect, useState } from 'react'
 import {
-  Box, Button, Center, HStack, SimpleGrid, Text, VStack,
+  Box, Center, HStack, SimpleGrid, Text, VStack,
 } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
 import {
-  FiArrowLeft, FiHardDrive, FiUsers, FiShare2, FiFolder, FiCheck,
+  FiHardDrive, FiUsers, FiShare2, FiFolder, FiCheck,
   FiAlertTriangle, FiImage, FiClock,
 } from 'react-icons/fi'
 import { FaCrown } from 'react-icons/fa'
+import { ReglageNav } from '../components/ReglageNav'
 import {
   Card, Tag, PageHeader, HelpButton, SectionLabel, ago,
 } from '../components/ui'
@@ -51,9 +51,7 @@ export default function ReglageStockage() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage">
-        <Button size="sm" variant="ghost" color="gray.500" mb="2"><FiArrowLeft /> Réglages</Button>
-      </Link>
+      <ReglageNav />
       <PageHeader
         icon={FiHardDrive} title="Usage du stockage"
         subtitle="Consultez votre plan et votre consommation réelle"

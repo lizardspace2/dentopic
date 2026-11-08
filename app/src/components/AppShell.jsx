@@ -7,7 +7,7 @@ import {
   FiHelpCircle, FiEye, FiMoon, FiSun, FiCommand,
 } from 'react-icons/fi'
 import Logo from './Logo'
-import { Tip } from './ui'
+import { Tip, ToastHost } from './ui'
 import { C, getMode, applyMode } from '../theme'
 import { useApp } from '../context/AppContext'
 
@@ -145,6 +145,7 @@ export default function AppShell() {
           <Outlet />
         </Box>
       </Flex>
+      <ToastHost />
     </Flex>
   )
 }

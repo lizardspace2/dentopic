@@ -2,19 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Box, Button, Center, HStack, SimpleGrid, Text } from '@chakra-ui/react'
 import { Link } from 'react-router-dom'
 import {
-  FiFolder, FiCamera, FiLayers, FiUsers, FiMonitor, FiInfo, FiX, FiFileText,
+  FiFolder, FiCamera, FiLayers, FiUsers, FiMonitor, FiFileText, FiCheckCircle,
   FiAlertTriangle, FiClock, FiTrendingUp, FiStar, FiImage, FiFilm, FiChevronRight,
-  FiCheck, FiRefreshCw,
 } from 'react-icons/fi'
-import { HiOutlineSparkles } from 'react-icons/hi2'
-import { Card, SectionLabel, Tag, HelpButton, PrimaryButton } from '../components/ui'
+import { Card, Tag, HelpButton, PrimaryButton } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
 import { useApp } from '../context/AppContext'
 import {
   countPhotos, listDossiers, listMontages, listPresentations, listPhotos,
   listCaptureSessions, listCaptureDevices, listVideoProjects,
-  slideCountByPresentation, predictionsByPhoto, photoStatsByDossier,
+  slideCountByPresentation, photoStatsByDossier,
   listActiveSessions,
 } from '../api'
 
@@ -33,35 +31,32 @@ export default function Dashboard() {
   const wsId = workspace?.id
   const [d, setD] = useState(null)
 
-  useEffect(() => {
+  const load = async () => {
     if (!wsId) return
-    let on = true
-    ;(async () => {
-      const weekAgo = new Date(Date.now() - WEEK).toISOString()
-      const [weekCount, dossiers, montages, presentations, recentPhotos, sessions,
-        devices, unsorted, videos, slideCounts, favPhotos, byDossier, activeSessions] =
-        await Promise.all([
-          countPhotos(wsId, { since: weekAgo }),
-          listDossiers(wsId, { limit: 30 }),
-          listMontages(wsId),
-          listPresentations(wsId),
-          listPhotos(wsId, { limit: 10 }),
-          listCaptureSessions(wsId),
-          listCaptureDevices(wsId),
-          countPhotos(wsId, { unsortedOnly: true }),
-          listVideoProjects(wsId),
-          slideCountByPresentation(),
-          listPhotos(wsId, { favoritesOnly: true, limit: 8 }),
-          photoStatsByDossier(wsId),
-          listActiveSessions(wsId),
-        ])
-      const preds = await predictionsByPhoto(recentPhotos.map((p) => p.id))
-      if (!on) return
-      setD({ weekCount, dossiers, montages, presentations, recentPhotos, sessions,
-        devices, unsorted, videos, slideCounts, favPhotos, byDossier, preds, activeSessions })
-    })()
-    return () => { on = false }
-  }, [wsId])
+    const weekAgo = new Date(Date.now() - WEEK).toISOString()
+    const [totalPhotos, weekCount, dossiers, montages, presentations, sessions,
+      devices, unsorted, unassignedPhotos, videos, slideCounts, favPhotos, byDossier, activeSessions] =
+      await Promise.all([
+        countPhotos(wsId),
+        countPhotos(wsId, { since: weekAgo }),
+        listDossiers(wsId),
+        listMontages(wsId),
+        listPresentations(wsId),
+        listCaptureSessions(wsId),
+        listCaptureDevices(wsId),
+        countPhotos(wsId, { unassignedOnly: true }),
+        listPhotos(wsId, { unassignedOnly: true, limit: 6 }),
+        listVideoProjects(wsId),
+        slideCountByPresentation(),
+        listPhotos(wsId, { favoritesOnly: true, limit: 8 }),
+        photoStatsByDossier(wsId),
+        listActiveSessions(wsId),
+      ])
+    setD({ totalPhotos, weekCount, dossiers, montages, presentations, sessions,
+      devices, unsorted, unassignedPhotos, videos, slideCounts, favPhotos, byDossier, activeSessions })
+  }
+
+  useEffect(() => { load() }, [wsId])
 
   const derived = useMemo(() => {
     if (!d) return null
@@ -74,21 +69,21 @@ export default function Dashboard() {
 
     const tasks = []
     const push = (icon, tone, text, to) => tasks.push({ icon, tone, text, to })
-    if (d.unsorted) push(FiImage, 'amber', `${d.unsorted} photo(s) non triée(s)`, '/dossier-patient')
     if (drafts) push(FiLayers, 'blue', `${drafts} montage(s) en brouillon`, '/studio')
     if (noExportVideos) push(FiFilm, 'blue', `${noExportVideos} vidéo(s) non exportée(s)`, '/studio/montage-video')
     if (noSlidePres) push(FiMonitor, 'blue', `${noSlidePres} présentation(s) sans diapositive — à compléter`, '/presentations')
-    offline.forEach(() => push(FiAlertTriangle, 'amber', "Bridge de capture hors ligne — vérifier l'appareil", '/reglage/appareils'))
+    if (offline.length) push(FiAlertTriangle, 'amber', `${offline.length} appareil(s) hors ligne — vérifier dans Réglages`, '/reglage/appareils')
     emptyDossiers.slice(0, 4).forEach((ds) =>
       push(FiFolder, 'blue', `Dossier « ${ds.name} » sans photo — lancer l'acquisition`, `/dossier-patient/dossier/${ds.id}`))
     active.slice(0, 2).forEach((s) =>
       push(FiClock, 'blue', `Session de capture du ${new Date(s.started_at).toLocaleDateString('fr-FR')} encore active`, `/acquisition/capture/${s.id}`))
 
-    return { tasks, resume: { dossier: d.dossiers[0], montage: d.montages[0], presentation: d.presentations[0] } }
+    return { tasks, drafts, noSlidePres, emptyCount: emptyDossiers.length }
   }, [d])
 
   const hour = new Date().getHours()
   const greet = hour < 18 ? 'Bonjour' : 'Bonsoir'
+  const toSort = (d?.unassignedPhotos || []).slice(0, 6)
 
   return (
     <Box w="100%" px="6" py="6">
@@ -105,33 +100,28 @@ export default function Dashboard() {
         Tableau de bord
       </Text>
 
-      <HStack bg={C.greenBg} border="1px solid" borderColor={C.greenBorder} borderRadius="md"
-        px="3" py="2" mb="5" gap="2">
-        <Box as={FiInfo} color="#16a34a" />
-        <Text fontSize="sm" color={C.greenText} fontWeight="500">
-          Déjà {d?.weekCount ?? '…'} photo(s) cette semaine
-        </Text>
-        <Box flex="1" />
-        <Box as={FiX} color="#16a34a" fontSize="sm" />
-      </HStack>
-
-      <Card p="5" mb="5">
-        <HStack gap="2" mb="3">
-          <Box as={FiClock} color="gray.400" fontSize="sm" />
-          <SectionLabel>REPRENDRE OÙ VOUS EN ÉTIEZ</SectionLabel>
-        </HStack>
-        <SimpleGrid columns={3} gap="3">
-          {derived?.resume?.dossier && (
-            <ResumeChip kind="DOSSIER" name={derived.resume.dossier.name} to={`/dossier-patient/dossier/${derived.resume.dossier.id}`} />
-          )}
-          {derived?.resume?.montage && (
-            <ResumeChip kind="MONTAGE" name={derived.resume.montage.name} to={`/studio?edit=${derived.resume.montage.id}`} />
-          )}
-          {derived?.resume?.presentation && (
-            <ResumeChip kind="PRÉSENTATION" name={derived.resume.presentation.name} to={`/presentations/${derived.resume.presentation.id}`} />
-          )}
-        </SimpleGrid>
-      </Card>
+      <SimpleGrid columns={{ base: 2, md: 5 }} gap="4" mb="5">
+        <StatCard icon={FiImage} label="Photos" value={d?.totalPhotos ?? '…'}
+          sub={d ? `+${d.weekCount} cette semaine` : null}
+          to="/collection?tab=photos" />
+        <StatCard icon={FiFolder} label="Dossiers" value={d?.dossiers.length ?? '…'}
+          sub={derived?.emptyCount ? `${derived.emptyCount} sans photo` : null}
+          tone={derived?.emptyCount ? 'amber' : undefined}
+          to="/dossier-patient" />
+        <StatCard icon={FiLayers} label="Montages" value={d?.montages.length ?? '…'}
+          sub={derived?.drafts ? `${derived.drafts} brouillon(s)` : null}
+          tone={derived?.drafts ? 'amber' : undefined}
+          to="/studio" />
+        <StatCard icon={FiMonitor} label="Présentations" value={d?.presentations.length ?? '…'}
+          sub={derived?.noSlidePres ? `${derived.noSlidePres} sans diapo` : null}
+          tone={derived?.noSlidePres ? 'amber' : undefined}
+          to="/presentations" />
+        <StatCard icon={d?.unsorted ? FiAlertTriangle : FiCheckCircle} label="À classer"
+          value={d?.unsorted ?? '…'}
+          sub={d ? (d.unsorted ? 'photo(s) à compléter' : 'photothèque à jour') : null}
+          tone={d?.unsorted ? 'amber' : 'green'}
+          to="/collection?tab=photos&quick=unassigned" />
+      </SimpleGrid>
 
       <Card p="5" mb="5">
         <HStack gap="2" mb="3">
@@ -153,35 +143,31 @@ export default function Dashboard() {
       </Card>
 
       <Card p="5" mb="5">
-        <HStack justify="space-between" mb="1">
-          <HStack gap="2">
-            <Box as={HiOutlineSparkles} color={C.primary} fontSize="sm" />
-            <Text fontSize="sm" fontWeight="600" color={C.ink}>Vérification IA</Text>
-          </HStack>
-          <Button variant="outline" size="xs" borderRadius="md" color="gray.600">
-            <FiRefreshCw /> Relancer l'analyse
-          </Button>
+        <HStack gap="2" mb="1">
+          <Box as={FiImage} color={C.primary} fontSize="sm" />
+          <Text fontSize="sm" fontWeight="600" color={C.ink}>Photos à classer</Text>
+          <Box flex="1" />
+          {d?.unsorted > 0 && <Tag color="amber">{d.unsorted} à classer</Tag>}
         </HStack>
-        <Text fontSize="xs" color="gray.500" mb="4">
-          Photos récentes en attente de classification automatique
-        </Text>
-        <SimpleGrid columns={3} gap="4">
-          {(d?.recentPhotos || []).slice(0, 6).map((p) => {
-            const pred = d.preds[p.id]
-            return (
-              <Box key={p.id}>
-                <PhotoImg storagePath={p.edited_path || p.storage_path} ratio="16/10">
-                  <Box position="absolute" top="2" right="2">
-                    {pred ? <Tag color="green"><FiCheck /></Tag> : <Tag color="amber">IA</Tag>}
-                  </Box>
-                </PhotoImg>
-                <Text fontSize="2xs" color="gray.500" mt="1" isTruncated>
-                  {p.original_filename || p.storage_path?.split('/').pop()}
-                </Text>
-              </Box>
-            )
-          })}
-        </SimpleGrid>
+        {d?.unsorted ? (
+          <>
+            <Text fontSize="xs" color="gray.500" mb="4">
+              Patient, vue ou étape manquant — sélectionnez-les dans la photothèque puis attribuez en lot.
+            </Text>
+            <SimpleGrid columns={6} gap="3" mb="4">
+              {toSort.map((p) => (
+                <PhotoImg key={p.id} storagePath={p.edited_path || p.storage_path} ratio="1/1" />
+              ))}
+            </SimpleGrid>
+            <Link to="/collection?tab=photos&quick=unassigned">
+              <Button variant="outline" size="sm">Trier dans la photothèque <FiChevronRight /></Button>
+            </Link>
+          </>
+        ) : (
+          <Text fontSize="xs" color="gray.500">
+            Photothèque à jour — toutes les photos ont un patient, une vue et une étape.
+          </Text>
+        )}
       </Card>
 
       <SimpleGrid columns={3} gap="4" mb="5">
@@ -232,16 +218,19 @@ export default function Dashboard() {
   )
 }
 
-function ResumeChip({ kind, name, to }) {
+function StatCard({ icon, label, value, sub, to, tone }) {
+  const color = tone === 'amber' ? C.amberText : tone === 'green' ? C.greenText : C.primary
   return (
     <Link to={to} style={{ textDecoration: 'none' }}>
-      <HStack border="1px solid" borderColor={C.cardBorder} borderRadius="lg" px="3" py="2.5" gap="3" _hover={{ bg: 'gray.50' }}>
-        <Box flex="1" minW="0">
-          <SectionLabel fontSize="2xs">{kind}</SectionLabel>
-          <Text fontSize="sm" fontWeight="500" color={C.ink} isTruncated>{name}</Text>
-        </Box>
-        <Box as={FiChevronRight} color="gray.400" />
-      </HStack>
+      <Card p="4" h="100%" _hover={{ borderColor: 'blue.300' }}>
+        <HStack gap="1.5" mb="1.5">
+          <Box as={icon} color={color} fontSize="sm" />
+          <Text fontSize="2xs" color="gray.500" fontWeight="600" letterSpacing="0.05em"
+            textTransform="uppercase">{label}</Text>
+        </HStack>
+        <Text fontSize="2xl" fontWeight="700" color={C.ink} lineHeight="1.1">{value}</Text>
+        <Text fontSize="2xs" color={tone ? color : 'gray.400'} mt="1" minH="3">{sub || ' '}</Text>
+      </Card>
     </Link>
   )
 }

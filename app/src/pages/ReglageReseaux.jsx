@@ -6,14 +6,14 @@ import { useEffect, useState } from 'react'
 import {
   Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack,
 } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
 import {
-  FiArrowLeft, FiShare2, FiPlus, FiTrash2, FiCheck, FiClock,
+  FiShare2, FiPlus, FiTrash2, FiCheck, FiClock,
   FiCalendar, FiAlertCircle, FiEye, FiEdit2, FiKey,
 } from 'react-icons/fi'
+import { ReglageNav } from '../components/ReglageNav'
 import {
   Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
-  Tip, ConfirmModal, SectionLabel, ago,
+  Tip, ConfirmModal, SectionLabel, ago, toast,
 } from '../components/ui'
 import { C } from '../theme'
 import SocialIcon from '../components/SocialIcon'
@@ -47,9 +47,7 @@ export default function ReglageReseaux() {
   const [slots, setSlots] = useState([])
   const [slotForm, setSlotForm] = useState({ day: 0, time: '09:00' })
   const [aggKey, setAggKey] = useState('')
-  const [aggSaved, setAggSaved] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [connect, setConnect] = useState(false)
   const [form, setForm] = useState({ provider: 'instagram', handle: '' })
   const [rmAcc, setRmAcc] = useState(null)
@@ -75,12 +73,13 @@ export default function ReglageReseaux() {
     if (!form.handle.trim()) return
     setBusy(true)
     await connectSocialAccount(wsId, { provider: form.provider, handle: form.handle.trim().replace(/^@/, '') })
-    setBusy(false); setForm({ provider: 'instagram', handle: '' }); setConnect(false); reload()
+    setBusy(false); setForm({ provider: 'instagram', handle: '' }); setConnect(false)
+    toast.success(`Compte ${form.provider} connecté.`); reload()
   }
   const doDisconnect = async () => {
     setBusy(true)
     await disconnectSocialAccount(rmAcc.id)
-    setBusy(false); setRmAcc(null); reload()
+    setBusy(false); setRmAcc(null); toast.info('Compte déconnecté.'); reload()
   }
   const openView = async (a) => {
     setViewAcc(a); setViewPosts(0)
@@ -93,33 +92,36 @@ export default function ReglageReseaux() {
       provider: editAcc.provider,
       handle: editAcc.handle.trim().replace(/^@/, ''),
     })
-    setBusy(false); setEditAcc(null); reload()
+    setBusy(false); setEditAcc(null); toast.success('Compte mis à jour.'); reload()
   }
 
   const addSlot = () => {
     if (slots.some((s) => s.day === slotForm.day && s.time === slotForm.time)) return
     setSlots([...slots, { ...slotForm }].sort((a, b) => a.day - b.day || a.time.localeCompare(b.time)))
-    setSaved(false)
   }
   const saveSlots = async () => {
     setBusy(true)
     const ok = await saveWorkspaceSetting(wsId, 'social_schedule', slots)
-    setBusy(false); if (ok) setSaved(true)
+    setBusy(false)
+    if (ok) toast.success('Créneaux enregistrés.')
+    else toast.error('Enregistrement impossible — réessayez.')
   }
 
   const saveAggKey = async () => {
     setBusy(true)
     const ok = await saveWorkspaceSetting(wsId, 'social_agg_key', aggKey.trim() || null)
-    setBusy(false); if (ok) setAggSaved(true)
+    setBusy(false)
+    if (ok) toast.success(aggKey.trim()
+      ? 'Clé enregistrée — vos prochaines connexions/publications l’utiliseront.'
+      : 'Clé retirée — retour à la clé plateforme.')
+    else toast.error('Enregistrement impossible — réessayez.')
   }
 
   const fmtWhen = (d) => d ? new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage">
-        <Button size="sm" variant="ghost" color="gray.500" mb="2"><FiArrowLeft /> Réglages</Button>
-      </Link>
+      <ReglageNav />
       <PageHeader
         icon={FiShare2} title="Réseaux sociaux"
         subtitle="Comptes connectés et programmation des publications"
@@ -227,15 +229,9 @@ export default function ReglageReseaux() {
               <FiPlus /> Ajouter
             </Button>
             <PrimaryButton icon={FiCheck} onClick={saveSlots} disabled={busy}>
-              {saved ? 'Enregistré ✓' : 'Enregistrer'}
+              Enregistrer
             </PrimaryButton>
           </HStack>
-          {saved && (
-            <HStack mt="2" gap="1">
-              <Box as={FiCheck} color={C.greenText} fontSize="xs" />
-              <Text fontSize="2xs" color={C.greenText}>Créneaux enregistrés.</Text>
-            </HStack>
-          )}
         </Card>
 
         {/* ---- clé API agrégateur (BYOK) ---- */}
@@ -251,19 +247,11 @@ export default function ReglageReseaux() {
           <HStack gap="2">
             <Input type="password" fontSize="sm" flex="1" placeholder="Clé API Upload-Post…"
               value={aggKey} aria-label="Clé API agrégateur"
-              onChange={(e) => { setAggKey(e.target.value); setAggSaved(false) }} />
+              onChange={(e) => setAggKey(e.target.value)} />
             <PrimaryButton icon={FiCheck} onClick={saveAggKey} disabled={busy}>
-              {aggSaved ? 'Enregistré ✓' : 'Enregistrer'}
+              Enregistrer
             </PrimaryButton>
           </HStack>
-          {aggSaved && (
-            <HStack mt="2" gap="1">
-              <Box as={FiCheck} color={C.greenText} fontSize="xs" />
-              <Text fontSize="2xs" color={C.greenText}>
-                {aggKey.trim() ? 'Clé enregistrée — vos prochaines connexions/publications l’utiliseront.' : 'Clé retirée — retour à la clé plateforme.'}
-              </Text>
-            </HStack>
-          )}
           <Text fontSize="2xs" color="gray.400" mt="2">
             Stockée dans les paramètres du workspace, jamais exposée au navigateur après enregistrement.
           </Text>

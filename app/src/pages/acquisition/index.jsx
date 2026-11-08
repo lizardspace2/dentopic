@@ -577,7 +577,10 @@ export default function Acquisition() {
               <FiClock style={{ display: 'inline', marginRight: 4 }} />ouverte {ago(active.started_at)}
             </Text>
             <Tip label="Voir les photos qui arrivent en direct">
-              <Button variant="outline" size="xs" borderRadius="md"><FiCamera /> Suivre la capture</Button>
+              <Button variant="outline" size="xs" borderRadius="md"
+                onClick={() => navigate(active.dossier_id ? `/dossier-patient/dossier/${active.dossier_id}` : '/dossier-patient')}>
+                <FiCamera /> Suivre la capture
+              </Button>
             </Tip>
             <Tip label="Ferme la réception dans ce dossier">
               <Button variant="outline" size="xs" borderRadius="md"

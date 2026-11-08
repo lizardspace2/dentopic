@@ -11,7 +11,7 @@ import {
 import {
   Card, Tag, EmptyPane, SectionLabel, PageHeader, HelpButton,
   PrimaryButton, SearchInput, isTestName, Modal, Select, Field, Tip, ago,
-  ConfirmModal,
+  ConfirmModal, toast,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -152,7 +152,7 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
     setBusy(true)
     await trashCollection(col.id)
     if (sel?.id === col.id) setSel(null)
-    setBusy(false); setModal(null); reload()
+    setBusy(false); setModal(null); toast.info('Collection mise à la corbeille.'); reload()
   }
 
   const cleanTests = async () => {
@@ -170,7 +170,7 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
   const shareUrl = (col) => `${window.location.origin}/partage/${col.share_token}`
   const copy = (col) => {
     navigator.clipboard?.writeText(shareUrl(col))
-      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); toast.success('Lien copié dans le presse-papiers.') })
   }
 
   const removeItem = async () => {

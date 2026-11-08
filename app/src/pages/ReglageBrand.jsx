@@ -5,15 +5,15 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack,
 } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
 import {
-  FiArrowLeft, FiImage, FiUpload, FiTrash2, FiCheck, FiRotateCcw,
+  FiImage, FiUpload, FiTrash2, FiCheck, FiRotateCcw,
   FiType, FiDroplet, FiFileText, FiAlertCircle,
 } from 'react-icons/fi'
 import { FaMagic } from 'react-icons/fa'
+import { ReglageNav } from '../components/ReglageNav'
 import {
   Card, PageHeader, HelpButton, PrimaryButton, Select, Field, SectionLabel,
-  Tip, ConfirmModal,
+  Tip, ConfirmModal, toast,
 } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import { C } from '../theme'
@@ -48,7 +48,6 @@ export default function ReglageBrand() {
   const [brand, setBrand] = useState(DEFAULT_BRAND)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [saved, setSaved] = useState(false)
   const [rmLogo, setRmLogo] = useState(false)
   const [uploadErr, setUploadErr] = useState(null)
 
@@ -60,7 +59,7 @@ export default function ReglageBrand() {
     })
   }, [wsId])
 
-  const set = (k, v) => { setBrand((b) => ({ ...b, [k]: v })); setSaved(false) }
+  const set = (k, v) => setBrand((b) => ({ ...b, [k]: v }))
 
   const pickLogo = async (e) => {
     const file = e.target.files?.[0]
@@ -82,19 +81,18 @@ export default function ReglageBrand() {
     setBusy(true)
     const ok = await saveWorkspaceBrand(wsId, b)
     setBusy(false)
-    if (ok) { setBrand(b); setSaved(true) }
+    if (ok) { setBrand(b); toast.success('Identité visuelle enregistrée.') }
+    else toast.error('Enregistrement impossible — réessayez.')
   }
 
-  const reset = () => { setBrand(DEFAULT_BRAND); setSaved(false) }
+  const reset = () => setBrand(DEFAULT_BRAND)
 
   const b = brand
   const previewName = b.cabinet_name || workspace?.name || 'Mon cabinet'
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage">
-        <Button size="sm" variant="ghost" color="gray.500" mb="2"><FiArrowLeft /> Réglages</Button>
-      </Link>
+      <ReglageNav />
       <PageHeader
         icon={FaMagic} title="Brand Système"
         subtitle="Logo, signature, couleurs et polices de votre cabinet"
@@ -102,16 +100,9 @@ export default function ReglageBrand() {
         <HelpButton />
         <Button variant="outline" size="sm" onClick={reset}><FiRotateCcw /> Rétablir</Button>
         <PrimaryButton icon={FiCheck} onClick={() => save()} disabled={busy || !loaded}>
-          {busy ? 'Enregistrement…' : saved ? 'Enregistré ✓' : 'Enregistrer'}
+          {busy ? 'Enregistrement…' : 'Enregistrer'}
         </PrimaryButton>
       </PageHeader>
-
-      {saved && (
-        <HStack mb="4" px="3" py="2" borderRadius="md" bg={C.greenBg} gap="2" maxW="400px">
-          <Box as={FiCheck} color={C.greenText} fontSize="sm" />
-          <Text fontSize="xs" color={C.greenText}>Identité visuelle enregistrée.</Text>
-        </HStack>
-      )}
 
       <SimpleGrid columns={{ base: 1, xl: 2 }} gap="5" mt="4">
         <VStack align="stretch" gap="5">

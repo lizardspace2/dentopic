@@ -13,7 +13,8 @@ import {
 } from 'react-icons/fi'
 import {
   Card, Tag, ProgressBar, PageHeader, HelpButton, PrimaryButton,
-  SearchInput, Select, Modal, ago, isTestName, Tip, ConfirmModal,
+  SearchInput, Select, Modal, ago, isTestName, Tip, ConfirmModal, PromptModal,
+  MenuDropdown, MenuItem, toast,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -23,7 +24,7 @@ import {
   listActiveSessions, photoStatsByDossier, createDossier, createPatient,
   getPatient, importPhotos, saveEditedPhoto, createMontage,
   updateDossier, trashDossier, listPhotosByDossier, listMontagesByDossier,
-  updatePatient,
+  updatePatient, listTrashDossiers, restoreDossier,
 } from '../api'
 import { photoUrl } from '../media'
 import { buildContactSheet, fetchImg } from './studio/engine'
@@ -81,6 +82,7 @@ function DossierGrid() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
   const [menuFor, setMenuFor] = useState(null)
+  const [trashList, setTrashList] = useState([]) // dossiers à la corbeille
   const [hover, setHover] = useState(null) // dossier id survolé
   const [patients, setPatients] = useState({}) // cache fiche patient par dossier
   const importTarget = useRef(null) // dossier id de l'import
@@ -117,10 +119,22 @@ function DossierGrid() {
   }
   useEffect(() => { reload() }, [wsId])
 
+  const openTrash = async () => {
+    setTrashList(await listTrashDossiers(wsId))
+    setModal({ kind: 'bin' })
+  }
+
+  const restore = async (ds) => {
+    await restoreDossier(ds.id)
+    setTrashList((l) => l.filter((x) => x.id !== ds.id))
+    toast.success(`« ${ds.name} » restauré.`); reload()
+  }
+
   const create = async (n) => {
     if (!n?.trim()) return
     const ds = await createDossier(wsId, n.trim())
     setName(''); setModal(null)
+    toast.success(`Dossier « ${n.trim()} » créé.`)
     await reload()
     if (ds?.id) nav(`/dossier-patient/dossier/${ds.id}`)
   }
@@ -144,6 +158,7 @@ function DossierGrid() {
     }
     setBusy(false)
     setForm(EMPTY_FORM); setModal(null)
+    toast.success(`Dossier « ${label} » créé.`)
     await reload()
     if (ds?.id) nav(`/dossier-patient/dossier/${ds.id}`)
   }
@@ -151,14 +166,14 @@ function DossierGrid() {
   const rename = async () => {
     if (!name.trim() || !modal?.id) return
     await updateDossier(modal.id, { name: name.trim() })
-    setName(''); setModal(null); reload()
+    setName(''); setModal(null); toast.success('Dossier renommé.'); reload()
   }
 
   const trash = async () => {
     if (!modal?.ds) return
     setBusy(true)
     await trashDossier(modal.ds.id)
-    setBusy(false); setModal(null); reload()
+    setBusy(false); setModal(null); toast.info('Dossier mis à la corbeille.'); reload()
   }
 
   // « Modifier la fiche » : charge la fiche patient liée puis ouvre le modal d'édition
@@ -194,7 +209,8 @@ function DossierGrid() {
     else if (fields.last_name || fields.first_name || fields.birth_date) {
       await createPatient(wsId, f.id, fields)
     }
-    setBusy(false); setModal(null); setEditForm(null); reload()
+    setBusy(false); setModal(null); setEditForm(null)
+    toast.success('Fiche enregistrée.'); reload()
   }
 
   // Sous-dossier : même table, parent_id pointe vers le dossier courant
@@ -209,7 +225,7 @@ function DossierGrid() {
     e.target.value = ''
     if (files.length && importTarget.current) {
       await importPhotos(wsId, files, importTarget.current)
-      reload()
+      toast.success(`${files.length} photo(s) importée(s).`); reload()
     }
   }
 
@@ -230,7 +246,7 @@ function DossierGrid() {
       <PageHeader title="Dossier patient" subtitle="Gérez les dossiers sans informations personnelles.">
         <HelpButton />
         <Tip label="Dossiers mis à la corbeille — restauration possible">
-          <Button variant="outline" size="sm" borderRadius="md" color="gray.600">
+          <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={openTrash}>
             <FiTrash2 /> Corbeille <Tag color="gray">{d?.trash ?? 0}</Tag>
           </Button>
         </Tip>
@@ -395,12 +411,7 @@ function DossierGrid() {
                       <FiMoreHorizontal />
                     </Button>
                   </Tip>
-                  {menuFor === ds.id && (
-                    <VStack
-                      position="absolute" bottom="100%" right="0" mb="1" align="stretch" gap="0"
-                      bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="md"
-                      minW="200px" py="1" boxShadow="lg" zIndex="20"
-                    >
+                  <MenuDropdown open={menuFor === ds.id} onClose={() => setMenuFor(null)}>
                       <MenuItem icon={FiEye} label="Ouvrir le dossier"
                         onClick={() => { setMenuFor(null); nav(`/dossier-patient/dossier/${ds.id}`) }} />
                       <MenuItem icon={FiUser} label="Modifier la fiche patient…"
@@ -411,8 +422,7 @@ function DossierGrid() {
                         onClick={() => { setMenuFor(null); setName(ds.name); setModal({ kind: 'rename', id: ds.id }) }} />
                       <MenuItem icon={FiTrash2} label="Mettre à la corbeille" danger
                         onClick={() => { setMenuFor(null); setModal({ kind: 'trash', ds }) }} />
-                    </VStack>
-                  )}
+                  </MenuDropdown>
                 </Box>
               </HStack>
             </Card>
@@ -574,6 +584,26 @@ function DossierGrid() {
           </HStack>
         </VStack>
       </Modal>
+
+      {/* Corbeille : dossiers supprimés + restauration */}
+      <Modal open={modal?.kind === 'bin'} onClose={() => setModal(null)} width="480px"
+        title="Corbeille" subtitle="Dossiers supprimés — restaurez-les en un clic">
+        <VStack align="stretch" gap="1.5" maxH="320px" overflowY="auto">
+          {trashList.map((ds) => (
+            <HStack key={ds.id} px="3" py="2" borderRadius="lg" border="1px solid" borderColor="gray.200" gap="3">
+              <Box as={FiFolder} color="gray.400" />
+              <Box flex="1" minW="0">
+                <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>{ds.name}</Text>
+                <Text fontSize="2xs" color="gray.500">Supprimé {ago(ds.deleted_at)}</Text>
+              </Box>
+              <Button variant="outline" size="xs" borderRadius="md" onClick={() => restore(ds)}>Restaurer</Button>
+            </HStack>
+          ))}
+          {!trashList.length && (
+            <Text fontSize="sm" color="gray.500" textAlign="center" py="6">La corbeille est vide.</Text>
+          )}
+        </VStack>
+      </Modal>
     </Box>
   )
 }
@@ -643,16 +673,6 @@ function PatientHover({ ds, pat, onView, onEdit }) {
   )
 }
 
-function MenuItem({ icon: I, label, danger, onClick }) {
-  return (
-    <HStack px="3" py="2" gap="2" fontSize="xs" cursor="pointer"
-      color={danger ? 'red.500' : C.ink} _hover={{ bg: C.softBlue }}
-      onClick={onClick}>
-      <Box as={I} /> <Text>{label}</Text>
-    </HStack>
-  )
-}
-
 // ============================================================================
 // Vue détail d'un dossier — photos, montages, sous-dossiers
 // ============================================================================
@@ -669,6 +689,7 @@ function DossierDetail({ id }) {
   const [missing, setMissing] = useState(false)
   const [sheet, setSheet] = useState(false) // modal planche contact
   const [confirmTrash, setConfirmTrash] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef(null)
 
@@ -690,18 +711,19 @@ function DossierDetail({ id }) {
   const onImportFiles = async (e) => {
     const files = Array.from(e.target.files || [])
     e.target.value = ''
-    if (files.length) { await importPhotos(wsId, files, id); reload() }
+    if (files.length) { await importPhotos(wsId, files, id); toast.success(`${files.length} photo(s) importée(s).`); reload() }
   }
 
-  const rename = async () => {
-    const n = window.prompt('Nouveau nom du dossier :', dossier?.name)
-    if (n?.trim()) { await updateDossier(id, { name: n.trim() }); reload() }
+  const rename = async (n) => {
+    await updateDossier(id, { name: n })
+    toast.success('Dossier renommé.'); reload()
   }
 
   const trash = async () => {
     setBusy(true)
     await trashDossier(id)
     setConfirmTrash(false)
+    toast.info('Dossier mis à la corbeille.')
     nav('/dossier-patient')
   }
 
@@ -742,7 +764,7 @@ function DossierDetail({ id }) {
           onClick={() => setSheet(true)}>
           <FiGrid /> Planche contact
         </Button>
-        <Button size="sm" variant="outline" onClick={rename}><FiEdit2 /> Renommer</Button>
+        <Button size="sm" variant="outline" onClick={() => setRenameOpen(true)}><FiEdit2 /> Renommer</Button>
         <Button size="sm" variant="outline" color="red.500" onClick={() => setConfirmTrash(true)}><FiTrash2 /></Button>
       </HStack>
 
@@ -843,6 +865,11 @@ function DossierDetail({ id }) {
 
       <PlancheModal open={sheet} onClose={() => setSheet(false)}
         wsId={wsId} dossier={dossier} photos={photos} onDone={reload} />
+
+      <PromptModal open={renameOpen} onClose={() => setRenameOpen(false)}
+        title="Renommer le dossier" subtitle={dossier?.name}
+        label="Nouveau nom" defaultValue={dossier?.name} confirmLabel="Renommer"
+        onSubmit={rename} />
 
       <ConfirmModal open={confirmTrash} onClose={() => setConfirmTrash(false)}
         onConfirm={trash} busy={busy}

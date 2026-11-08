@@ -17,7 +17,7 @@ import {
   updatePatientPhoto,
 } from '../../api'
 import { photoUrl } from '../../media'
-import { ConfirmModal } from '../../components/ui'
+import { ConfirmModal, PromptModal } from '../../components/ui'
 import PatientFilmstrip, { PatientContext } from './PatientFilmstrip'
 import ProtocolGuideModal from './ProtocolGuideModal'
 import { rootDossierId } from '../../phototheque'
@@ -94,6 +94,7 @@ export default function Studio() {
   const [comparisonPhoto, setComparisonPhoto] = useState(null)
   const [dossiers, setDossiers] = useState([])
   const [modal, setModal] = useState(null) // 'open' | 'export' | ...
+  const [promptCfg, setPromptCfg] = useState(null) // saisie unique — remplace window.prompt
   const [pickColor, setPickColor] = useState(null) // 'fg' | 'bg' | null — sélecteur détaillé
   const [fxKey, setFxKey] = useState(null) // effet présélectionné dans Style de calque
   const [cropRect, setCropRect] = useState(null)
@@ -2034,18 +2035,19 @@ export default function Studio() {
       { label: `${editor.selInverted ? '✓ ' : ''}Inverser`, shortcut: 'Ctrl+Maj+I', disabled: !docOpen || (!editor.sel && !editor.selPoly),
         onClick: () => { editor.invertSelection(); bump() } },
       '-',
-      { label: `Plume…${opts.selFeather ? ` (${opts.selFeather} px)` : ''}`, disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => {
-        const v = +window.prompt('Rayon de contour progressif (px) :', String(opts.selFeather || 0))
-        if (!isNaN(v)) setOpts((o) => ({ ...o, selFeather: Math.max(0, v) }))
-      } },
-      { label: 'Étendre…', disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => {
-        const v = +window.prompt('Étendre de (px) :', '8')
-        if (v > 0) { editor.snapshot('Étendre'); editor.resizeSelection(v); bump() }
-      } },
-      { label: 'Contracter…', disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => {
-        const v = +window.prompt('Contracter de (px) :', '8')
-        if (v > 0) { editor.snapshot('Contracter'); editor.resizeSelection(-v); bump() }
-      } },
+      { label: `Plume…${opts.selFeather ? ` (${opts.selFeather} px)` : ''}`, disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => setPromptCfg({
+        title: 'Contour progressif', label: 'Rayon (px)', type: 'number', min: 0, step: 1,
+        defaultValue: String(opts.selFeather || 0), hint: '0 px = contour net',
+        onSubmit: (v) => { const n = +v; if (isNaN(n) || n < 0) return false; setOpts((o) => ({ ...o, selFeather: n })) },
+      }) },
+      { label: 'Étendre…', disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => setPromptCfg({
+        title: 'Étendre la sélection', label: 'Étendre de (px)', type: 'number', min: 1, step: 1, defaultValue: '8',
+        onSubmit: (v) => { const n = +v; if (!(n > 0)) return false; editor.snapshot('Étendre'); editor.resizeSelection(n); bump() },
+      }) },
+      { label: 'Contracter…', disabled: !docOpen || (!editor.sel && !editor.selPoly), onClick: () => setPromptCfg({
+        title: 'Contracter la sélection', label: 'Contracter de (px)', type: 'number', min: 1, step: 1, defaultValue: '8',
+        onSubmit: (v) => { const n = +v; if (!(n > 0)) return false; editor.snapshot('Contracter'); editor.resizeSelection(-n); bump() },
+      }) },
       '-',
       { label: 'Plage de couleurs…', disabled: !docOpen, onClick: () => setModal('colorrange') },
       { label: 'Sélection et masque…', shortcut: 'Ctrl+Alt+R', disabled: !docOpen || (!editor.sel && !editor.selPoly),
@@ -2081,10 +2083,11 @@ export default function Studio() {
       { label: 'Recadrer sur la sélection', disabled: !docOpen || !editor.sel, onClick: () => { editor.snapshot('Recadrer'); editor.cropToSelection(); bump(); fitView() } },
       { label: 'Rogner les pixels transparents', disabled: !docOpen, onClick: () => { editor.snapshot('Rogner'); editor.trim(); bump(); fitView() } },
       { label: 'Tout faire apparaître', disabled: !docOpen, onClick: () => { editor.snapshot('Tout faire apparaître'); editor.revealAll(); bump(); fitView() } },
-      { label: 'Taille de l\'image…', disabled: !docOpen, onClick: () => {
-        const v = +window.prompt(`Taille actuelle : ${editor.w} × ${editor.h} px — nouveau pourcentage :`, '50')
-        if (v > 0) { editor.snapshot('Redimensionner'); editor.resizeDoc(v / 100); bump(); fitView() }
-      } },
+      { label: 'Taille de l\'image…', disabled: !docOpen, onClick: () => setPromptCfg({
+        title: 'Taille de l\'image', subtitle: `${editor.w} × ${editor.h} px`,
+        label: 'Nouvelle taille (%)', type: 'number', min: 1, step: 1, defaultValue: '50',
+        onSubmit: (v) => { const n = +v; if (!(n > 0)) return false; editor.snapshot('Redimensionner'); editor.resizeDoc(n / 100); bump(); fitView() },
+      }) },
       { label: 'Taille de la zone de travail…', disabled: !docOpen, onClick: () => setModal('canvassize') },
       '-',
       { label: 'Aplatir l\'image', disabled: !docOpen, onClick: () => { editor.snapshot('Aplatir'); editor.flatten(); bump() } },
@@ -2240,6 +2243,8 @@ export default function Studio() {
       // on laisse les champs texte gérer leurs touches (Ctrl+A = sélectionner le texte…)
       // mais les range/color/checkbox n'ont pas besoin du clavier → raccourcis actifs
       if (e.target.matches('input:not([type]),input[type=text],input[type=search],input[type=number],textarea,select,[contenteditable]')) return
+      // une modale est ouverte : les raccourcis canevas se taisent (Échap ferme la modale)
+      if (modal || promptCfg || pickColor || filterKey || pendingPhoto) return
       const k = e.key.toLowerCase()
       // transformation manuelle active : Entrée valide, Échap annule (avant tout)
       if (ft && !e.ctrlKey && !e.metaKey) {
@@ -2329,7 +2334,7 @@ export default function Studio() {
     }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [editor, bump, docOpen, ft, penPath]) // ft/penPath : Entrée/Échap voient l'état courant
+  }, [editor, bump, docOpen, ft, penPath, modal, promptCfg, pickColor, filterKey, pendingPhoto]) // ft/penPath : Entrée/Échap voient l'état courant
 
   // ---- Rendu --------------------------------------------------------------------------------
 
@@ -2587,6 +2592,7 @@ export default function Studio() {
       <SelectMaskModal open={modal === 'selmask'} onClose={() => setModal(null)}
         editor={editor} onChange={bump}
         onApply={(fe) => { setOpts((o) => ({ ...o, selFeather: fe })); bump() }} />
+      <PromptModal {...promptCfg} open={!!promptCfg} onClose={() => setPromptCfg(null)} />
     </Flex>
   )
 }

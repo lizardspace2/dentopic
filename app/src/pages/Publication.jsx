@@ -10,7 +10,7 @@ import {
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
-  Tip, Tag, ago, ConfirmModal,
+  Tip, Tag, ago, ConfirmModal, toast,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -104,7 +104,6 @@ export default function Publication() {
   const [posts, setPosts] = useState([])
   const [slots, setSlots] = useState([])
   const [notify, setNotify] = useState(false)
-  const [notice, setNotice] = useState(null)
   const [cursor, setCursor] = useState(() => new Date())
   const [kindFilter, setKindFilter] = useState('all')
   const [modal, setModal] = useState(null) // 'connect' | 'draft'
@@ -121,10 +120,8 @@ export default function Publication() {
     setSlots(settings.social_schedule || [])
     setNotify(settings.social_notify === true)
     if (settings.social_notify && (pub.published || pub.failed)) {
-      setNotice([
-        pub.published ? `${pub.published} publication(s) publiée(s)` : null,
-        pub.failed ? `${pub.failed} publication(s) en échec` : null,
-      ].filter(Boolean).join(' · '))
+      if (pub.published) toast.success(`${pub.published} publication(s) publiée(s).`)
+      if (pub.failed) toast.error(`${pub.failed} publication(s) en échec.`)
     }
   }
   useEffect(() => { reload() }, [wsId]) // eslint-disable-line
@@ -134,9 +131,8 @@ export default function Publication() {
     const ok = q.get('meta_connected')
     if (!ok) return
     const n = +(q.get('n') || 0)
-    setNotice(ok === '1'
-      ? `${n} compte(s) connecté(s) via Facebook${n > 1 ? 's' : ''}`
-      : 'La connexion Facebook a échoué ou a été annulée.')
+    if (ok === '1') toast.success(`${n} compte(s) connecté(s) via Facebook.`)
+    else toast.error('La connexion Facebook a échoué ou a été annulée.')
     navigate('/publication', { replace: true })
   }, [location.search]) // eslint-disable-line
   useEffect(() => {
@@ -198,14 +194,6 @@ export default function Publication() {
           </Button>
         </Tip>
       </PageHeader>
-      {notice && (
-        <HStack bg={C.softBlue} border="1px solid" borderColor={C.softBlueBorder}
-          borderRadius="md" px="3" py="2" mb="4" gap="2">
-          <Box as={FiSend} color={C.primary} fontSize="sm" />
-          <Text fontSize="xs" color={C.ink} flex="1">{notice}</Text>
-          <Box as="button" color="gray.400" fontSize="xs" onClick={() => setNotice(null)}>✕</Box>
-        </HStack>
-      )}
       <HStack gap="2" mb="5" justify="flex-end">
         <Tip label="Composer un avant/après prêt à publier depuis un montage">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.500" onClick={() => openDraft()}>

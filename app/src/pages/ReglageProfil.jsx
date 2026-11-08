@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Box, Center, Circle, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
-import { Link } from 'react-router-dom'
-import { FiArrowLeft, FiUser } from 'react-icons/fi'
-import { Field, Select, PrimaryButton } from '../components/ui'
+import { FiUser } from 'react-icons/fi'
+import { Field, Select, PrimaryButton, toast } from '../components/ui'
+import { ReglageNav } from '../components/ReglageNav'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
 import { updateProfile } from '../api'
@@ -14,7 +14,6 @@ const PROFESSIONS = ['Chirurgien-dentister', 'Orthodontiste', 'Assistant dentair
 export default function ReglageProfil() {
   const { profile, session } = useApp()
   const [f, setF] = useState({})
-  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     if (profile) setF({ ...profile })
@@ -34,17 +33,12 @@ export default function ReglageProfil() {
       postal_address: f.postal_address,
       vat_number: f.vat_number,
     })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2500)
+    toast.success('Profil enregistré.')
   }
 
   return (
     <Box w="100%" px="6" py="6">
-      <Link to="/reglage" style={{ textDecoration: 'none' }}>
-        <HStack gap="2" color="gray.500" mb="6">
-          <FiArrowLeft /> <Text fontSize="sm">Retour aux réglages</Text>
-        </HStack>
-      </Link>
+      <ReglageNav />
       <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink} mb="8">Profil</Text>
 
       <Center mb="2">
@@ -76,7 +70,6 @@ export default function ReglageProfil() {
 
       <HStack>
         <PrimaryButton onClick={save}>Enregistrer</PrimaryButton>
-        {saved && <Text fontSize="xs" color="green.600">Enregistré.</Text>}
       </HStack>
     </Box>
   )

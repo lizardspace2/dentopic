@@ -10,7 +10,7 @@ import {
   FiHardDrive, FiMonitor, FiPlus, FiRefreshCw, FiSmartphone, FiUpload, FiVideo, FiWifi,
 } from 'react-icons/fi'
 import {
-  Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, isTestName,
+  Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, isTestName, toast,
 } from '../../components/ui'
 import { C } from '../../theme'
 import {
@@ -202,7 +202,8 @@ export function MobileModal({ open, onClose, target, onStart }) {
   useEffect(() => { if (open) setToken(crypto.randomUUID()) }, [open])
   const url = token ? `${window.location.origin}/capture/${token}` : ''
   const copy = () => {
-    navigator.clipboard?.writeText(url).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) })
+    navigator.clipboard?.writeText(url)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); toast.success('Lien de capture copié.') })
   }
   return (
     <Modal open={open} onClose={onClose}
