@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, Button, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
-import { FiFolder, FiStar } from 'react-icons/fi'
+import { FiExternalLink, FiFolder, FiGrid, FiList, FiStar, FiTag } from 'react-icons/fi'
 import { Card, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
-import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos } from '../api'
+import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos, classifyPhoto, movePhotosToDossier } from '../api'
+import { DossierTree, ContextMenu, startPhotoDrag } from '../components/Explorer'
 import { CLINICAL_VIEWS, CLINICAL_STAGES, clinicalLabels } from '../clinical'
 import { LIBRARY_DEFAULTS, expandDossierIds, matchesLibraryText, readLibraryFilters, rootDossierId } from '../phototheque'
 import { C } from '../theme'
@@ -38,6 +39,12 @@ export default function Phototheque({ CollectionsComponent }) {
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
   const [savedError, setSavedError] = useState('')
+  const [classify, setClassify] = useState(null)
+  const [menu, setMenu] = useState(null) // menu contextuel clic droit {x, y, photo}
+  const [moveForm, setMoveForm] = useState(null) // déplacement vers un dossier {ids, dossierId}
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('dentopic.library-view') || 'grid')
+  const lastIdx = useRef(-1)
+  useEffect(() => { localStorage.setItem('dentopic.library-view', viewMode) }, [viewMode])
   const storageKey = wsId && userId ? `dentopic.library-searches.${wsId}.${userId}` : null
   const change = (patch) => setParams((old) => {
     const next = new URLSearchParams(old)
@@ -155,6 +162,52 @@ export default function Phototheque({ CollectionsComponent }) {
     catch { toast.error('Favori non enregistré. Réessayez.') }
     finally { setBusy(false) }
   }
+  // glisser-déposer : photos lâchées sur un dossier de l'arborescence
+  const movePhotos = async (ids, dossierId) => {
+    const to = (context?.dossiers || []).find((d) => d.id === dossierId)
+    setBusy(true)
+    try {
+      await movePhotosToDossier(wsId, ids, dossierId)
+      setSelected((old) => old.filter((id) => !ids.includes(id)))
+      toast.success(`${ids.length} photo(s) déplacée(s) vers « ${to?.name || 'Sans dossier'} ».`)
+      setRefresh((v) => v + 1)
+    } catch { toast.error('Déplacement impossible. Réessayez.') }
+    finally { setBusy(false) }
+  }
+  // sélection façon explorateur : clic = seule, Ctrl+clic = bascule, Shift+clic = plage
+  const photoClick = (e, p, idx) => {
+    if (e.shiftKey && lastIdx.current >= 0) {
+      const a = Math.min(lastIdx.current, idx), b = Math.max(lastIdx.current, idx)
+      setSelected((old) => [...new Set([...old, ...rows.slice(a, b + 1).map((x) => x.id)])])
+    } else if (e.ctrlKey || e.metaKey) {
+      setSelected((old) => old.includes(p.id) ? old.filter((x) => x !== p.id) : [...old, p.id])
+      lastIdx.current = idx
+    } else {
+      setSelected([p.id]); lastIdx.current = idx
+    }
+  }
+  // clic droit : sélectionne la photo si hors sélection, puis ouvre le menu contextuel
+  const openMenu = (e, p, idx) => {
+    e.preventDefault()
+    if (!selected.includes(p.id)) { setSelected([p.id]); lastIdx.current = idx }
+    setMenu({ x: e.clientX, y: e.clientY, photo: p })
+  }
+  const openClassify = (photo) => setClassify({
+    photo, dossierId: photo.dossier_id || '',
+    view: clinicalLabels(photo).view || '', stage: clinicalLabels(photo).stage || '',
+  })
+  const saveClassify = async () => {
+    if (!classify) return
+    setBusy(true)
+    try {
+      await classifyPhoto(wsId, classify.photo.id, { dossierId: classify.dossierId, view: classify.view, stage: classify.stage })
+      setSelected((ids) => ids.filter((id) => id !== classify.photo.id))
+      setClassify(null)
+      toast.success('Photo classée.')
+      setRefresh((v) => v + 1)
+    } catch { toast.error('Classement impossible. Réessayez.') }
+    finally { setBusy(false) }
+  }
   const storeSaved = (next) => {
     if (!storageKey) return false
     try { localStorage.setItem(storageKey, JSON.stringify(next)); setSaved(next); setSavedError(''); return true }
@@ -200,7 +253,7 @@ export default function Phototheque({ CollectionsComponent }) {
               <Button key={quick} size="xs" variant={filters.quick === quick ? 'solid' : 'outline'} aria-pressed={filters.quick === quick}
                 onClick={() => change({ quick })}>{label}</Button>
             ))}
-            <Text fontSize="2xs" color={C.body}>À classer : patient, vue ou étape manquant.</Text>
+            <Text fontSize="2xs" color={C.body}>À classer : patient, vue ou étape manquant — bouton « Classer » sur chaque photo, ou cochez-en plusieurs pour classer en lot.</Text>
           </HStack>
           <SimpleGrid columns={{ base: 1, md: 4 }} gap="2" mt="3">
             {[["view", "Toutes les vues", CLINICAL_VIEWS], ["stage", "Toutes les étapes", CLINICAL_STAGES]].map(([key, label, options]) => (
@@ -228,9 +281,23 @@ export default function Phototheque({ CollectionsComponent }) {
       {contextError && <Card p="4"><Text role="alert">{contextError}</Text><Button size="xs" onClick={() => setContextRetry((v) => v + 1)}>Réessayer</Button></Card>}
       {!context && !contextError && <Text fontSize="sm">Chargement de la photothèque…</Text>}
       {context && filters.tab === 'photos' && <>
+      <HStack align="start" gap="4">
+        <DossierTree dossiers={context.dossiers} currentId={filters.patient || null}
+          allLabel="Toutes les photos" title="Dossiers"
+          onNavigate={(id) => change({ patient: id || '', session: '', day: '' })}
+          onMove={movePhotos} />
+        <Box flex="1" minW="0">
         <HStack mb="3" gap="2" flexWrap="wrap">
           <Text fontSize="sm" fontWeight="700" color={C.ink}>{count == null ? 'Recherche…' : `${count} photo(s)`}</Text>
+          {selected.length > 0 && <Text fontSize="2xs" color={C.muted}>— Ctrl+clic : ajouter, Shift+clic : plage, clic droit : menu</Text>}
           <Box flex="1" />
+          <HStack gap="0" border="1px solid" borderColor={C.cardBorder} borderRadius="md" overflow="hidden">
+            {[['grid', FiGrid, 'Vue vignettes'], ['list', FiList, 'Vue liste (détails)']].map(([mode, Icon, label]) => (
+              <Box key={mode} as="button" px="2" py="1" aria-label={label} aria-pressed={viewMode === mode}
+                bg={viewMode === mode ? C.softBlue : 'white'} color={viewMode === mode ? C.primary : 'gray.400'}
+                onClick={() => setViewMode(mode)}><Icon /></Box>
+            ))}
+          </HStack>
           <Button size="xs" variant="outline" disabled={loading || busy || !rows.length} onClick={() => setSelected(rows.map((p) => p.id))}>Sélectionner cette page</Button>
           {selected.length > 0 && <Button size="xs" variant="plain" disabled={busy} onClick={() => setSelected([])}>Désélectionner</Button>}
         </HStack>
@@ -258,39 +325,93 @@ export default function Phototheque({ CollectionsComponent }) {
         {loading && <Text fontSize="sm">Recherche en cours…</Text>}
         {error && <Card p="4"><Text role="alert">{error}</Text><Button size="xs" onClick={() => setRefresh((v) => v + 1)}>Réessayer</Button></Card>}
         {!loading && !error && !rows.length && <Card p="5"><Text fontSize="sm">Aucune photo pour ces critères.</Text><Button size="xs" mt="2" onClick={reset}>Effacer les filtres</Button></Card>}
-        <SimpleGrid columns={{ base: 2, md: 4, xl: 6 }} gap="3">
-          {rows.map((p) => <Card key={p.id} overflow="hidden">
+        {viewMode === 'grid' ? (
+        <SimpleGrid columns={{ base: 2, md: 4, xl: 6 }} gap="3"
+          onClick={(e) => { if (e.target === e.currentTarget) setSelected([]) }}>
+          {rows.map((p, idx) => { const cl = clinicalLabels(p); return <Card key={p.id} overflow="hidden" draggable
+            onDragStart={(e) => startPhotoDrag(e, selected.includes(p.id) ? selected : [p.id])}
+            onClick={(e) => photoClick(e, p, idx)}
+            onContextMenu={(e) => openMenu(e, p, idx)}
+            boxShadow={selected.includes(p.id) ? `0 0 0 2px ${C.primary}` : 'none'}>
             <Box position="relative">
-              <Box as="button" display="block" w="100%" aria-label={`Ouvrir ${p.original_filename || 'la photo'} dans le Studio`} onClick={() => nav(`/studio?edit=${p.id}`)}>
+              <Box as="button" display="block" w="100%" aria-label={`Ouvrir ${p.original_filename || 'la photo'} dans le Studio`} onClick={(e) => { e.stopPropagation(); nav(`/studio?edit=${p.id}`) }}>
                 <PhotoImg storagePath={p.storage_path} ratio="4/3" borderRadius="0" />
               </Box>
-              <Box position="absolute" top="1" left="1" bg={C.pageBg} px="1" borderRadius="sm">
+              <Box position="absolute" top="1" left="1" bg={C.pageBg} px="1" borderRadius="sm" onClick={(e) => e.stopPropagation()}>
                 <input type="checkbox" aria-label={`Sélectionner ${p.original_filename || 'la photo'}`} checked={selected.includes(p.id)} disabled={busy}
                   onChange={(e) => setSelected((ids) => e.target.checked ? [...new Set([...ids, p.id])] : ids.filter((id) => id !== p.id))} />
               </Box>
               <Box as="button" position="absolute" top="1" right="1" bg={C.pageBg} borderRadius="sm" p="1" color={p.is_favorite ? C.greenText : C.muted}
-                aria-label={p.is_favorite ? 'Retirer des favorites' : 'Ajouter aux favorites'} aria-pressed={!!p.is_favorite} disabled={busy} onClick={() => favorite(p)}>
+                aria-label={p.is_favorite ? 'Retirer des favorites' : 'Ajouter aux favorites'} aria-pressed={!!p.is_favorite} disabled={busy}
+                onClick={(e) => { e.stopPropagation(); favorite(p) }}>
                 <FiStar fill={p.is_favorite ? 'currentColor' : 'none'} />
               </Box>
             </Box>
             <Box p="2">
-              <Box as="button" textAlign="left" disabled={!p.dossier_id} onClick={() => setPatient(patientDossier(p.dossier_id))}>
+              <Box as="button" textAlign="left" disabled={!p.dossier_id} onClick={(e) => { e.stopPropagation(); setPatient(patientDossier(p.dossier_id)) }}>
                 <Text fontSize="xs" fontWeight="700" color={C.ink} truncate>{patientName(p.dossier_id)}</Text>
               </Box>
               <Text fontSize="2xs" color={C.body} truncate>{p.original_filename || 'Photo'}</Text>
               <Text fontSize="2xs" color={C.muted}>{new Date(p.taken_at || p.created_at).toLocaleDateString('fr-FR')}</Text>
               <HStack gap="1" mt="1" flexWrap="wrap">
-                {clinicalLabels(p).view && <Tag color="green">{labelFor(CLINICAL_VIEWS, clinicalLabels(p).view)}</Tag>}
-                {clinicalLabels(p).stage && <Tag>{labelFor(CLINICAL_STAGES, clinicalLabels(p).stage)}</Tag>}
+                {(!p.dossier_id || !cl.view || !cl.stage) && <Tag color="amber">À classer</Tag>}
+                {cl.view && <Tag color="green">{labelFor(CLINICAL_VIEWS, cl.view)}</Tag>}
+                {cl.stage && <Tag>{labelFor(CLINICAL_STAGES, cl.stage)}</Tag>}
               </HStack>
+              <Button size="xs" variant="outline" w="100%" mt="2" disabled={busy}
+                onClick={(e) => { e.stopPropagation(); openClassify(p) }}>
+                <FiTag /> Classer la photo
+              </Button>
             </Box>
-          </Card>)}
+          </Card>})}
         </SimpleGrid>
+        ) : (
+        <Card p="0" overflow="hidden">
+          <HStack px="3" py="2" gap="3" borderBottom="1px solid" borderColor={C.cardBorder}>
+            <Box w="44px" flexShrink={0} />
+            <Text flex="1.6" fontSize="2xs" fontWeight="700" color="gray.500">FICHIER</Text>
+            <Text flex="1" fontSize="2xs" fontWeight="700" color="gray.500">DOSSIER</Text>
+            <Text w="90px" fontSize="2xs" fontWeight="700" color="gray.500">DATE</Text>
+            <Text w="190px" fontSize="2xs" fontWeight="700" color="gray.500">ÉTIQUETTES</Text>
+            <Box w="110px" flexShrink={0} />
+          </HStack>
+          {rows.map((p, idx) => { const cl = clinicalLabels(p); return (
+            <HStack key={p.id} px="3" py="1.5" gap="3" cursor="default" draggable
+              bg={selected.includes(p.id) ? C.softBlue : 'transparent'}
+              _hover={{ bg: C.softBlue }}
+              onClick={(e) => photoClick(e, p, idx)}
+              onContextMenu={(e) => openMenu(e, p, idx)}
+              onDragStart={(e) => startPhotoDrag(e, selected.includes(p.id) ? selected : [p.id])}
+              borderTop={idx ? '1px solid' : 'none'} borderColor={C.cardBorder}>
+              <Box w="44px" flexShrink={0}><PhotoImg storagePath={p.storage_path} ratio="1/1" /></Box>
+              <Text flex="1.6" fontSize="xs" color={C.ink} isTruncated>{p.original_filename || 'Photo'}</Text>
+              <Text flex="1" fontSize="xs" color={C.body} isTruncated>{patientName(p.dossier_id)}</Text>
+              <Text w="90px" fontSize="2xs" color={C.muted}>{new Date(p.taken_at || p.created_at).toLocaleDateString('fr-FR')}</Text>
+              <HStack w="190px" gap="1" flexWrap="wrap">
+                {(!p.dossier_id || !cl.view || !cl.stage) && <Tag color="amber">À classer</Tag>}
+                {cl.view && <Tag color="green">{labelFor(CLINICAL_VIEWS, cl.view)}</Tag>}
+                {cl.stage && <Tag>{labelFor(CLINICAL_STAGES, cl.stage)}</Tag>}
+              </HStack>
+              <HStack w="110px" gap="1" flexShrink={0} justify="end">
+                <Box as="button" p="1" color={p.is_favorite ? C.greenText : 'gray.300'} disabled={busy}
+                  aria-label={p.is_favorite ? 'Retirer des favorites' : 'Ajouter aux favorites'}
+                  onClick={(e) => { e.stopPropagation(); favorite(p) }}>
+                  <FiStar fill={p.is_favorite ? 'currentColor' : 'none'} />
+                </Box>
+                <Button size="xs" variant="outline" disabled={busy}
+                  onClick={(e) => { e.stopPropagation(); openClassify(p) }}>Classer</Button>
+              </HStack>
+            </HStack>
+          )})}
+        </Card>
+        )}
         <HStack justify="center" my="4" gap="3">
           <Button size="sm" variant="outline" disabled={page === 0 || loading} onClick={() => change({ page: String(page - 1) })}>Précédente</Button>
           <Text fontSize="xs" color={C.body}>Page {page + 1}{count != null ? ` / ${Math.max(1, Math.ceil(count / pageSize))}` : ''}</Text>
           <Button size="sm" variant="outline" disabled={loading || count == null || (page + 1) * pageSize >= count} onClick={() => change({ page: String(page + 1) })}>Suivante</Button>
         </HStack>
+        </Box>
+      </HStack>
       </>}
       {context && filters.tab === 'patients' && <><SimpleGrid columns={{ base: 1, md: 3 }} gap="3">
         {patients.slice(page * pageSize, (page + 1) * pageSize).map((d) => <Card key={d.id} p="4">
@@ -314,6 +435,73 @@ export default function Phototheque({ CollectionsComponent }) {
       <PatientTimelineModal patient={patient} wsId={wsId} dossiers={dossiers} onClose={() => setPatient(null)}
         onShowGroup={(group) => { change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: patient.id, session: group.session, day: group.session ? '' : group.day }); setPatient(null) }}
         onCompare={(before, after) => nav(`/studio?edit=${before.id}&compare=${after.id}`)} />
+      <Modal open={!!classify} onClose={() => setClassify(null)} title="Classer la photo"
+        subtitle={classify?.photo.original_filename || ''} width="440px"
+        footer={<>
+          <Box />
+          <HStack gap="2">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setClassify(null)}>Annuler</Button>
+            <PrimaryButton disabled={busy} onClick={saveClassify}>Enregistrer</PrimaryButton>
+          </HStack>
+        </>}>
+        {classify && <>
+          <Box w="120px" mb="4">
+            <PhotoImg storagePath={classify.photo.storage_path} ratio="4/3" />
+          </Box>
+          <Field label="Patient / dossier">
+            <Select w="100%" value={classify.dossierId} aria-label="Dossier de destination"
+              onChange={(e) => setClassify((c) => ({ ...c, dossierId: e.target.value }))}>
+              <option value="">Sans dossier</option>
+              {dossiers.filter((d) => !d.parent_id).map((d) => <option key={d.id} value={d.id}>{d.name}{d.patient_dossier_number ? ` · ${d.patient_dossier_number}` : ''}</option>)}
+            </Select>
+          </Field>
+          <Field label="Vue clinique" mt="3">
+            <Select w="100%" value={classify.view} aria-label="Vue clinique"
+              onChange={(e) => setClassify((c) => ({ ...c, view: e.target.value }))}>
+              <option value="">Non définie</option>
+              {CLINICAL_VIEWS.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Étape clinique" mt="3">
+            <Select w="100%" value={classify.stage} aria-label="Étape clinique"
+              onChange={(e) => setClassify((c) => ({ ...c, stage: e.target.value }))}>
+              <option value="">Non définie</option>
+              {CLINICAL_STAGES.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </Select>
+          </Field>
+          <Text fontSize="2xs" color={C.muted} mt="3">
+            Une photo est classée quand elle a un patient, une vue et une étape. Pour plusieurs photos : cochez-les puis utilisez la barre d’actions en haut.
+          </Text>
+        </>}
+      </Modal>
+      <ContextMenu menu={menu} onClose={() => setMenu(null)} items={menu ? [
+        { icon: FiExternalLink, label: 'Ouvrir dans le Studio', onClick: () => nav(`/studio?edit=${menu.photo.id}`) },
+        { icon: FiTag, label: 'Classer la photo…', onClick: () => openClassify(menu.photo) },
+        { icon: FiStar, label: menu.photo.is_favorite ? 'Retirer des favorites' : 'Ajouter aux favorites', onClick: () => favorite(menu.photo) },
+        '-',
+        { icon: FiFolder, label: selected.length > 1 ? `Déplacer ${selected.length} photos vers un dossier…` : 'Déplacer vers un dossier…',
+          onClick: () => setMoveForm({ ids: selected.length ? [...selected] : [menu.photo.id], dossierId: '' }) },
+      ] : []} />
+      <Modal open={!!moveForm} onClose={() => setMoveForm(null)} title="Déplacer vers un dossier"
+        subtitle={moveForm ? `${moveForm.ids.length} photo(s) — le dossier de destination s'applique à toutes` : ''} width="420px"
+        footer={<>
+          <Box />
+          <HStack gap="2">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => setMoveForm(null)}>Annuler</Button>
+            <PrimaryButton disabled={busy || !moveForm?.dossierId}
+              onClick={async () => { const f = moveForm; setMoveForm(null); await movePhotos(f.ids, f.dossierId) }}>Déplacer</PrimaryButton>
+          </HStack>
+        </>}>
+        {moveForm && (
+          <Field label="Dossier de destination">
+            <Select w="100%" value={moveForm.dossierId} aria-label="Dossier de destination"
+              onChange={(e) => setMoveForm((f) => ({ ...f, dossierId: e.target.value }))}>
+              <option value="">Choisir un dossier…</option>
+              {dossiers.filter((d) => !d.parent_id).map((d) => <option key={d.id} value={d.id}>{d.name}{d.patient_dossier_number ? ` · ${d.patient_dossier_number}` : ''}</option>)}
+            </Select>
+          </Field>
+        )}
+      </Modal>
       <Modal open={saveOpen} onClose={() => setSaveOpen(false)} title="Enregistrer cette recherche" width="420px"
         footer={<PrimaryButton disabled={!saveName.trim() || !storageKey} onClick={saveSearch}>Enregistrer</PrimaryButton>}>
         <Field label="Nom"><Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Ex. Sourires · fins de traitement" /></Field>

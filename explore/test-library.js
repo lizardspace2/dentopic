@@ -47,10 +47,16 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
   await page.click('button[type="submit"]');
   await page.waitForTimeout(5000);
 
+  // helper : compteur « N photo(s) » affiché (tolérant aux données accumulées)
+  const photoCount = async () => {
+    const t = await page.locator('text=/\\d+ photo\\(s\\)/').first().textContent().catch(() => '0');
+    return parseInt(t.match(/\d+/)[0]);
+  };
+
   // ---- Photothèque : liste -----------------------------------------------------
   await page.goto(BASE + '/collection', { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(2500);
-  ok('Photothèque : compteur « 10 photo(s) »', await page.locator('text=10 photo(s)').count() > 0);
+  ok('Photothèque : compteur ≥ 10 photo(s)', (await photoCount()) >= 10);
 
   // vignettes chargées via URLs signées
   await page.waitForTimeout(2500);
@@ -62,11 +68,11 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
   // ---- Filtres rapides -----------------------------------------------------------
   await page.locator('button', { hasText: /^Favorites$/ }).click();
   await page.waitForTimeout(1500);
-  ok('Favorites → 2 photo(s)', await page.locator('text=2 photo(s)').count() > 0);
+  ok('Favorites → ≥ 2 photo(s)', (await photoCount()) >= 2);
   await shot(page, 'l02-favorites');
   await page.locator('button', { hasText: /^À classer$/ }).click();
   await page.waitForTimeout(1500);
-  ok('À classer → 2 photo(s)', await page.locator('text=2 photo(s)').count() > 0);
+  ok('À classer → ≥ 2 photo(s)', (await photoCount()) >= 2);
   await shot(page, 'l03-unassigned');
   await page.locator('button', { hasText: 'Tout effacer' }).click();
   await page.waitForTimeout(1500);
@@ -74,14 +80,14 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
   // ---- Filtre par vue -----------------------------------------------------------
   await page.locator('select[aria-label="Toutes les vues"]').selectOption('smile');
   await page.waitForTimeout(1500);
-  ok('filtre vue « Sourire » → 2 photo(s)', await page.locator('text=2 photo(s)').count() > 0);
+  ok('filtre vue « Sourire » → ≥ 2 photo(s)', (await photoCount()) >= 2);
   await page.locator('select[aria-label="Toutes les vues"]').selectOption('');
   await page.waitForTimeout(1200);
 
   // ---- Recherche texte -------------------------------------------------------------
   await page.locator('input[placeholder*="Patient"]').fill('dupont');
   await page.waitForTimeout(1800);
-  ok('recherche « dupont » → 6 photo(s)', await page.locator('text=6 photo(s)').count() > 0);
+  ok('recherche « dupont » → ≥ 6 photo(s)', (await photoCount()) >= 6);
   await shot(page, 'l04-search-dupont');
   await page.locator('input[placeholder*="Patient"]').fill('');
   await page.waitForTimeout(1500);
@@ -100,6 +106,15 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
   await shot(page, 'l06-timeline');
 
   // vue « Sourire » (défaut) présente dans les 2 séances du seed → candidats des 2 côtés
+  // on choisit explicitement les séances du seed (d'autres séances s'accumulent au fil des tests)
+  const pickSession = async (side, day) => {
+    const sel = page.locator(`select[aria-label="Séance ${side}"]`)
+    const val = await sel.locator('option', { hasText: day }).first().getAttribute('value')
+    if (val) await sel.selectOption(val)
+    await page.waitForTimeout(600)
+  }
+  await pickSession('avant', '2025-03-10')
+  await pickSession('après', '2025-04-20')
   await page.waitForTimeout(1000);
   const candA = page.locator('button[aria-label^="Choisir"][aria-label*="avant"]').first();
   const candB = page.locator('button[aria-label^="Choisir"][aria-label*="après"]').first();

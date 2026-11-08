@@ -25,3 +25,7 @@ Thumbs.db
 # Captures de test + identifiants locaux
 explore/*-shots/
 explore/test-creds.json
+
+# Captures temporaires
+explore/.shots-tmp/
+explore/tab-shots/

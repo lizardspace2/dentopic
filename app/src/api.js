@@ -245,6 +245,56 @@ export async function searchLibraryPhotos(wsId, filters, context, signal) {
   return { rows: parts.length === 1 ? rows : rows.slice(page * pageSize, end), count, pageSize }
 }
 
+// Classe une seule photo : dossier patient (+ fiche liée), vue et étape cliniques.
+// dossierId '' / null détache la photo ; view/stage '' / null retire l'étiquette.
+export async function classifyPhoto(wsId, photoId, { dossierId, view, stage }) {
+  const patch = {}
+  if (dossierId !== undefined) {
+    patch.dossier_id = dossierId || null
+    if (dossierId) {
+      const { data: patients } = await alive(supabase.from('patients').select('id')
+        .eq('workspace_id', wsId).eq('dossier_id', dossierId).limit(1))
+      patch.patient_id = patients?.[0]?.id || null
+    } else {
+      patch.patient_id = null
+    }
+  }
+  if (view !== undefined || stage !== undefined) {
+    const { data: photo, error } = await alive(supabase.from('patient_photos').select('edit_meta')
+      .eq('workspace_id', wsId).eq('id', photoId).single())
+    if (error || !photo) throw new Error('Photo introuvable.')
+    const meta = photo.edit_meta || {}
+    const dental = { ...meta.dental }
+    if (view !== undefined) dental.view = view || null
+    if (stage !== undefined) dental.stage = stage || null
+    patch.edit_meta = { ...meta, dental }
+  }
+  const { error } = await alive(supabase.from('patient_photos').update(patch)
+    .eq('workspace_id', wsId).eq('id', photoId))
+  if (error) throw new Error('Classement de la photo impossible.')
+}
+
+// Déplace des photos vers un dossier (glisser-déposer explorateur).
+// dossierId null = détacher la photo (retour « sans dossier »).
+export async function movePhotosToDossier(wsId, photoIds, dossierId) {
+  if (!photoIds?.length) return []
+  let patientId = null
+  if (dossierId) {
+    const { data: dossier, error: dossierError } = await alive(supabase.from('dossiers').select('id')
+      .eq('workspace_id', wsId).eq('id', dossierId)).single()
+    if (dossierError || !dossier) throw new Error('Dossier inaccessible.')
+    const { data: patients, error: patientError } = await alive(supabase.from('patients').select('id')
+      .eq('workspace_id', wsId).eq('dossier_id', dossierId).limit(1))
+    if (patientError) throw new Error('Fiche patient inaccessible.')
+    patientId = patients?.[0]?.id || null
+  }
+  const { data, error } = await alive(supabase.from('patient_photos')
+    .update({ dossier_id: dossierId, patient_id: patientId })
+    .eq('workspace_id', wsId).in('id', photoIds)).select('id')
+  if (error) throw new Error('Déplacement des photos impossible.')
+  return data || []
+}
+
 export async function fileUnassignedPhotos(wsId, photoIds, dossierId) {
   const { data: dossier, error: dossierError } = await alive(supabase.from('dossiers').select('id')
     .eq('workspace_id', wsId).eq('id', dossierId)).single()

@@ -60,8 +60,8 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   await page.goto(BASE + '/', { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(2500);
   ok('Accueil : titre Tableau de bord', await page.locator('text=Tableau de bord').count() > 0);
-  ok('Accueil : bandeau photos de la semaine', await page.locator('text=/photo\\(s\\) cette semaine/').count() > 0);
-  ok('Accueil : section Vérification IA', await page.locator('text=Vérification IA').count() > 0);
+  ok('Accueil : KPI photos de la semaine', await page.locator('text=/cette semaine/').count() > 0);
+  ok('Accueil : carte Photos à classer', await page.locator('text=Photos à classer').count() > 0);
   ok('Accueil : section Photos favorites', await page.locator('text=Photos favorites').count() > 0);
   ok('Accueil : 2 vignettes favorites rendues', await page.locator('img').evaluateAll((els) => els.filter((i) => i.naturalWidth > 0).length) >= 2);
   await shot(page, 'p01-accueil');
@@ -75,13 +75,13 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
     ok('Accueil : « Relancer l\'analyse » relance le chargement', busy > 0 || errorsAt() === 0);
   }
 
-  // Tâches « À traiter » : photos non triées (2 non assignées dans le seed)
-  const taskUnsorted = page.locator('text=/non triée/').first();
-  if (await taskUnsorted.count()) {
-    await taskUnsorted.click(); await page.waitForTimeout(1500);
-    ok('Accueil : tâche « non triées » → /dossier-patient', page.url().includes('/dossier-patient'), page.url());
+  // Carte « Photos à classer » : CTA → photothèque filtrée (2 non assignées dans le seed)
+  const ctaTrier = page.locator('button:has-text("Trier dans la photothèque")');
+  if (await ctaTrier.count()) {
+    await ctaTrier.click(); await page.waitForTimeout(2000);
+    ok('Accueil : CTA trier → /collection filtré', page.url().includes('/collection') && page.url().includes('unassigned'), page.url());
     await page.goBack(); await page.waitForTimeout(1500);
-  } else ok('Accueil : tâche photos non triées présente', false);
+  } else ok('Accueil : CTA trier présent', false);
 
   // Cartes d'action — chaque lien mène à la bonne route
   const actions = [
@@ -286,7 +286,7 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   // recherche
   await page.locator('input[placeholder*="Rechercher par n°"]').fill('dupont');
   await page.waitForTimeout(800);
-  ok('Dossiers : recherche « dupont » → 1 carte', await page.locator('text=TEST Dupont Martin').count() === 1 && await page.locator('text=TEST Durand Claire').count() === 0);
+  ok('Dossiers : recherche « dupont » → 1 carte', await page.locator('text=TEST Dupont Martin').count() === 2 && await page.locator('text=TEST Durand Claire').count() === 1);
   await page.locator('input[placeholder*="Rechercher par n°"]').fill('');
   await page.waitForTimeout(600);
 
@@ -400,13 +400,15 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   ok('Détail : clic photo → Studio', page.url().includes('/studio'), page.url());
   await page.goBack(); await page.waitForTimeout(2000);
 
-  // Renommer le dossier (window.prompt → dialog) puis restaurer le nom d'origine
-  dialogAnswer = `TEST Renommé ${R}`;
-  await page.locator('button:has-text("Renommer")').first().click(); await page.waitForTimeout(1500);
-  ok('Renommer (prompt) : nom mis à jour', await page.locator(`text=TEST Renommé ${R}`).count() > 0);
-  dialogAnswer = 'TEST Dupont Martin';
-  await page.locator('button:has-text("Renommer")').first().click(); await page.waitForTimeout(1500);
-  ok('Renommer (prompt) : nom restauré', await page.locator('text=TEST Dupont Martin').count() > 0);
+  // Renommer le dossier (PromptModal : input autofocus + Entrée) puis restaurer le nom d'origine
+  await page.locator('button:has-text("Renommer")').first().click(); await page.waitForTimeout(800);
+  await page.keyboard.type(`TEST Renommé ${R}`);
+  await page.keyboard.press('Enter'); await page.waitForTimeout(1500);
+  ok('Renommer (modale) : nom mis à jour', await page.locator(`text=TEST Renommé ${R}`).count() > 0);
+  await page.locator('button:has-text("Renommer")').first().click(); await page.waitForTimeout(800);
+  await page.keyboard.type('TEST Dupont Martin');
+  await page.keyboard.press('Enter'); await page.waitForTimeout(1500);
+  ok('Renommer (modale) : nom restauré', await page.locator('text=TEST Dupont Martin').count() > 0);
 
   // Corbeille sur le dossier jetable « TEST Express V2 »
   await backToList();

@@ -24,8 +24,11 @@ import {
   listActiveSessions, photoStatsByDossier, createDossier, createPatient,
   getPatient, importPhotos, saveEditedPhoto, createMontage,
   updateDossier, trashDossier, listPhotosByDossier, listMontagesByDossier,
-  updatePatient, listTrashDossiers, restoreDossier,
+  updatePatient, listTrashDossiers, restoreDossier, movePhotosToDossier,
 } from '../api'
+import {
+  DossierTree, FolderTile, FolderBreadcrumb, startPhotoDrag, dossierChildren,
+} from '../components/Explorer'
 import { photoUrl } from '../media'
 import { buildContactSheet, fetchImg } from './studio/engine'
 
@@ -312,6 +315,10 @@ function DossierGrid() {
         </Box>
       </Tip>
 
+      <HStack align="start" gap="4">
+        <DossierTree dossiers={d?.dossiers || []} currentId={null}
+          onNavigate={(id) => { if (id) nav(`/dossier-patient/dossier/${id}`) }} />
+        <Box flex="1" minW="0">
       <SimpleGrid columns={{ base: 1, md: 3 }} gap="5">
         {list.map((ds) => {
           const p = d?.byDossier[ds.id]
@@ -434,6 +441,8 @@ function DossierGrid() {
           Aucun dossier{q ? ` ne correspond à « ${q} »` : ''}.
         </Text>
       )}
+        </Box>
+      </HStack>
 
       {/* corbeille dossier — confirmation obligatoire */}
       <ConfirmModal open={modal?.kind === 'trash'} onClose={() => setModal(null)}
@@ -682,6 +691,7 @@ function DossierDetail({ id }) {
   const wsId = workspace?.id
   const nav = useNavigate()
   const [dossier, setDossier] = useState(null)
+  const [allDossiers, setAllDossiers] = useState([])
   const [patient, setPatient] = useState(null)
   const [photos, setPhotos] = useState([])
   const [montages, setMontages] = useState([])
@@ -700,13 +710,25 @@ function DossierDetail({ id }) {
     ])
     const ds = all.find((x) => x.id === id)
     setDossier(ds || null)
+    setAllDossiers(all)
     setMissing(!ds)
     setPatient(pat)
     setPhotos(ph)
     setMontages(mo)
-    setSubs(all.filter((x) => x.parent_id === id))
+    setSubs(dossierChildren(all, id))
   }
   useEffect(() => { reload() }, [wsId, id])
+
+  // glisser-déposer : ids lâchés sur un dossier (arbre ou tuile sous-dossier)
+  const movePhotos = async (ids, dossierId) => {
+    const to = allDossiers.find((x) => x.id === dossierId)
+    try {
+      await movePhotosToDossier(wsId, ids, dossierId)
+      toast.success(`${ids.length} photo(s) déplacée(s) vers « ${to?.name || 'Sans dossier'} ».`)
+      reload()
+    } catch { toast.error('Déplacement impossible. Réessayez.') }
+  }
+  const openFolder = (fid) => nav(fid ? `/dossier-patient/dossier/${fid}` : '/dossier-patient')
 
   const onImportFiles = async (e) => {
     const files = Array.from(e.target.files || [])
@@ -740,10 +762,17 @@ function DossierDetail({ id }) {
     <Box w="100%" px="6" py="6">
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={onImportFiles} />
 
+      <HStack align="start" gap="4">
+        <DossierTree dossiers={allDossiers} currentId={id}
+          onNavigate={openFolder} onMove={movePhotos} />
+        <Box flex="1" minW="0">
+
+      <Box mb="3">
+        <FolderBreadcrumb dossiers={allDossiers} currentId={id}
+          rootLabel="Dossiers" onNavigate={openFolder} />
+      </Box>
+
       <HStack mb="4" gap="3" flexWrap="wrap">
-        <Link to="/dossier-patient">
-          <Button size="sm" variant="ghost" color="gray.500"><FiArrowLeft /> Dossiers</Button>
-        </Link>
         <Text fontSize="lg" fontWeight="700" color={C.ink}>{dossier?.name || '…'}</Text>
         {isTestName(dossier?.name) && <Tag color="purple">Test</Tag>}
         {(dossier?.specialties || []).map((s) => (
@@ -797,22 +826,16 @@ function DossierDetail({ id }) {
 
       {subs.length > 0 && (
         <>
-          <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">SOUS-DOSSIERS</Text>
-          <HStack gap="2" mb="5" flexWrap="wrap">
+          <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">SOUS-DOSSIERS — cliquez pour ouvrir, glissez des photos dessus pour les ranger</Text>
+          <HStack gap="1" mb="5" flexWrap="wrap">
             {subs.map((s) => (
-              <Link key={s.id} to={`/dossier-patient/dossier/${s.id}`}>
-                <HStack px="3" py="1.5" borderRadius="md" border="1px solid" borderColor={C.cardBorder}
-                  bg="white" _hover={{ borderColor: C.primary }} gap="2">
-                  <Box as={FiFolder} color={C.primary} />
-                  <Text fontSize="xs" fontWeight="600" color={C.ink}>{s.name}</Text>
-                </HStack>
-              </Link>
+              <FolderTile key={s.id} dossier={s} onOpen={openFolder} onMove={movePhotos} />
             ))}
           </HStack>
         </>
       )}
 
-      <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">PHOTOS — cliquer ouvre dans le Studio</Text>
+      <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">PHOTOS — cliquer ouvre dans le Studio, glisser vers un dossier déplace</Text>
       {photos.length === 0 ? (
         <Box border="1.5px dashed" borderColor="gray.300" borderRadius="lg" py="10" textAlign="center" mb="6">
           <VStack gap="2">
@@ -827,15 +850,14 @@ function DossierDetail({ id }) {
       ) : (
         <SimpleGrid columns={{ base: 2, md: 5, xl: 6 }} gap="4" mb="6">
           {photos.map((p) => (
-            <Link key={p.id} to={`/studio?edit=${p.id}`}>
-              <Box cursor="pointer" _hover={{ opacity: 0.85 }}>
-                <PhotoImg storagePath={p.storage_path} ratio="1/1" />
-                <Text fontSize="2xs" color="gray.500" mt="1" isTruncated>
-                  {p.original_filename || 'photo'}
-                </Text>
-                <Text fontSize="2xs" color="gray.400">{ago(p.created_at)}</Text>
-              </Box>
-            </Link>
+            <Box key={p.id} as={Link} to={`/studio?edit=${p.id}`} draggable cursor="pointer" _hover={{ opacity: 0.85 }}
+              onDragStart={(e) => startPhotoDrag(e, [p.id])}>
+              <PhotoImg storagePath={p.storage_path} ratio="1/1" />
+              <Text fontSize="2xs" color="gray.500" mt="1" isTruncated>
+                {p.original_filename || 'photo'}
+              </Text>
+              <Text fontSize="2xs" color="gray.400">{ago(p.created_at)}</Text>
+            </Box>
           ))}
         </SimpleGrid>
       )}
@@ -876,6 +898,8 @@ function DossierDetail({ id }) {
         title="Mettre le dossier à la corbeille ?"
         confirmLabel="Oui, mettre à la corbeille"
         message={`Voulez-vous vraiment mettre « ${dossier?.name || ''} » à la corbeille ? Ses ${photos.length} photo(s) et ${montages.length} montage(s) seront déplacés avec lui — restauration possible depuis la corbeille.`} />
+        </Box>
+      </HStack>
     </Box>
   )
 }
