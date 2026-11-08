@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Box, Button, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
-import { FiExternalLink, FiFolder, FiGrid, FiList, FiStar, FiTag } from 'react-icons/fi'
-import { Card, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
+import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
+import { FiExternalLink, FiFolder, FiFolderMinus, FiGrid, FiList, FiStar, FiTag } from 'react-icons/fi'
+import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
@@ -324,7 +324,18 @@ export default function Phototheque({ CollectionsComponent }) {
 
         {loading && <Text fontSize="sm">Recherche en cours…</Text>}
         {error && <Card p="4"><Text role="alert">{error}</Text><Button size="xs" onClick={() => setRefresh((v) => v + 1)}>Réessayer</Button></Card>}
-        {!loading && !error && !rows.length && <Card p="5"><Text fontSize="sm">Aucune photo pour ces critères.</Text><Button size="xs" mt="2" onClick={reset}>Effacer les filtres</Button></Card>}
+        {!loading && !error && !rows.length && (filters.patient ? (
+          <EmptyPane py="12" textAlign="center">
+            <VStack gap="2">
+              <Box as={FiFolderMinus} fontSize="3xl" color="gray.300" />
+              <Text fontSize="md" fontWeight="600" color={C.ink}>Ce dossier est vide</Text>
+              <Text fontSize="sm" color="gray.500">« {patientName(filters.patient)} » ne contient aucune photo — glissez des images sur ce dossier dans l'arborescence pour les y ranger.</Text>
+              <Button size="sm" variant="outline" mt="1" onClick={reset}>Toutes les photos</Button>
+            </VStack>
+          </EmptyPane>
+        ) : (
+          <Card p="5"><Text fontSize="sm">Aucune photo pour ces critères.</Text><Button size="xs" mt="2" onClick={reset}>Effacer les filtres</Button></Card>
+        ))}
         {viewMode === 'grid' ? (
         <SimpleGrid columns={{ base: 2, md: 4, xl: 6 }} gap="3"
           onClick={(e) => { if (e.target === e.currentTarget) setSelected([]) }}>

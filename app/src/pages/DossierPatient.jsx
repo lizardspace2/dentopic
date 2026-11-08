@@ -9,12 +9,12 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   FiTrash2, FiPlus, FiFolder, FiCamera, FiUpload, FiEye, FiMoreHorizontal,
   FiImage, FiLayers, FiClock, FiArrowLeft, FiEdit2, FiGrid, FiFolderPlus,
-  FiUser,
+  FiUser, FiFolderMinus,
 } from 'react-icons/fi'
 import {
   Card, Tag, ProgressBar, PageHeader, HelpButton, PrimaryButton,
   SearchInput, Select, Modal, ago, isTestName, Tip, ConfirmModal, PromptModal,
-  MenuDropdown, MenuItem, toast,
+  MenuDropdown, MenuItem, toast, EmptyPane,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -835,18 +835,25 @@ function DossierDetail({ id }) {
         </>
       )}
 
-      <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">PHOTOS — cliquer ouvre dans le Studio, glisser vers un dossier déplace</Text>
+      {photos.length > 0 && <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">PHOTOS — cliquer ouvre dans le Studio, glisser vers un dossier déplace</Text>}
       {photos.length === 0 ? (
-        <Box border="1.5px dashed" borderColor="gray.300" borderRadius="lg" py="10" textAlign="center" mb="6">
+        <EmptyPane py="14" textAlign="center" mb="6">
           <VStack gap="2">
-            <Box as={FiImage} fontSize="xl" color="gray.400" />
-            <Text fontSize="sm" color="gray.500">Aucune photo — capturez ou importez pour commencer.</Text>
-            <HStack gap="2">
+            <Box as={subs.length || montages.length ? FiImage : FiFolderMinus} fontSize="3xl" color="gray.300" />
+            <Text fontSize="md" fontWeight="600" color={C.ink}>
+              {subs.length || montages.length ? 'Aucune photo dans ce dossier' : 'Ce dossier est vide'}
+            </Text>
+            <Text fontSize="sm" color="gray.500">
+              {subs.length || montages.length
+                ? 'Glissez des photos sur ce dossier depuis la photothèque, ou importez-en.'
+                : 'Capturez ou importez des photos, ou glissez-en depuis la photothèque.'}
+            </Text>
+            <HStack gap="2" mt="2" justify="center">
               <Link to={`/acquisition/capture/${id}`}><Button size="sm" bg={C.primary} color="#ffffff"><FiCamera /> Capturer</Button></Link>
               <Button size="sm" variant="outline" onClick={() => fileInput.current?.click()}><FiUpload /> Importer</Button>
             </HStack>
           </VStack>
-        </Box>
+        </EmptyPane>
       ) : (
         <SimpleGrid columns={{ base: 2, md: 5, xl: 6 }} gap="4" mb="6">
           {photos.map((p) => (
@@ -862,9 +869,9 @@ function DossierDetail({ id }) {
         </SimpleGrid>
       )}
 
-      <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">MONTAGES</Text>
+      {(montages.length > 0 || photos.length > 0 || subs.length > 0) && <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">MONTAGES</Text>}
       {montages.length === 0 ? (
-        <Text fontSize="sm" color="gray.500" mb="2">Aucun montage — créez-en un dans le Studio.</Text>
+        (photos.length > 0 || subs.length > 0) && <Text fontSize="sm" color="gray.500" mb="2">Aucun montage — créez-en un dans le Studio.</Text>
       ) : (
         <SimpleGrid columns={{ base: 2, md: 5, xl: 6 }} gap="4">
           {montages.map((m) => (
