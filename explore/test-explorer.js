@@ -85,6 +85,10 @@ async function login(page) {
   check('Nœud « Toutes les photos » réinitialise', !page.url().includes('patient='))
 
   // ============ 4. VUE LISTE + SÉLECTION WINDOWS ============
+  // navigation façon Windows : la racine ne montre que dossiers + photos sans
+  // dossier — on descend dans un dossier garni pour tester la sélection
+  await page.locator('p', { hasText: 'Dupont' }).first().click()
+  await page.waitForTimeout(2500)
   await page.locator('button[aria-label="Vue liste (détails)"]').click()
   await page.waitForTimeout(800)
   check('Vue liste : entêtes colonnes', (await page.locator('text=FICHIER').count()) >= 1

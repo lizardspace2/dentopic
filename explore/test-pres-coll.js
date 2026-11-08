@@ -358,6 +358,9 @@ async function presCard(page, name) {
   ok('recherche enregistrée supprimée', await page.locator(`text=TEST recherche ${RUN}`).count() === 0);
 
   // ---- sélection en lot dans Photos ------------------------------------------------------
+  // vue Windows : la racine ne montre que les dossiers — descendre dans Dupont
+  await page.locator('button', { hasText: 'TEST Dupont Martin' }).last().click();
+  await page.waitForTimeout(2500);
   await page.locator('button:has-text("Sélectionner cette page")').click();
   await page.waitForTimeout(600);
   ok('barre de lot : compteur sélection', await page.locator('text=/photo\\(s\\) sélectionnée\\(s\\)/').count() > 0);
@@ -380,6 +383,9 @@ async function presCard(page, name) {
   } else ok('étoile favori', false);
 
   // ============================ COLLECTIONS (sous-onglet) =====================
+  // remonter à la racine : le filtre dossier masquerait les collections
+  const clearChip = page.locator('button:has-text("Tout effacer")');
+  if (await clearChip.count()) { await clearChip.click(); await page.waitForTimeout(1000); }
   await page.locator('button', { hasText: /^Collections \(/ }).click();
   await page.waitForTimeout(1500);
   ok('onglet Collections : liste affichée', await page.locator('text=MES COLLECTIONS').count() > 0);

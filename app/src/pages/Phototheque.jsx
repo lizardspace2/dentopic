@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
+import { Box, Button, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiExternalLink, FiFolder, FiFolderMinus, FiGrid, FiList, FiMaximize2, FiStar, FiTag } from 'react-icons/fi'
 import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import PhotoViewer from '../components/PhotoViewer'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
-import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos, classifyPhoto, movePhotosToDossier, importPhotos } from '../api'
-import { DossierTree, ContextMenu, startPhotoDrag, useFileDrop, fileInfo } from '../components/Explorer'
+import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos, classifyPhoto, movePhotosToDossier, importPhotos, photoStatsByDossier } from '../api'
+import { DossierTree, ContextMenu, FolderTile, FolderBreadcrumb, dossierChildren, startPhotoDrag, useFileDrop, fileInfo } from '../components/Explorer'
 import { CLINICAL_VIEWS, CLINICAL_STAGES, clinicalLabels } from '../clinical'
 import { LIBRARY_DEFAULTS, expandDossierIds, matchesLibraryText, readLibraryFilters, rootDossierId } from '../phototheque'
 import { C } from '../theme'
@@ -44,6 +44,7 @@ export default function Phototheque({ CollectionsComponent }) {
   const [menu, setMenu] = useState(null) // menu contextuel clic droit {x, y, photo}
   const [moveForm, setMoveForm] = useState(null) // déplacement vers un dossier {ids, dossierId}
   const [viewer, setViewer] = useState(null) // index dans `rows` de la photo agrandie
+  const [stats, setStats] = useState({}) // nb de photos par dossier (sous-titre tuiles)
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('dentopic.library-view') || 'grid')
   const lastIdx = useRef(-1)
   useEffect(() => { localStorage.setItem('dentopic.library-view', viewMode) }, [viewMode])
@@ -64,6 +65,7 @@ export default function Phototheque({ CollectionsComponent }) {
     loadLibraryContext(wsId, controller.signal)
       .then((result) => { if (!controller.signal.aborted) setContext(result) })
       .catch(() => { if (!controller.signal.aborted) setContextError('Impossible de charger les dossiers et collections.') })
+    photoStatsByDossier(wsId).then(setStats).catch(() => {})
     return () => controller.abort()
   }, [wsId, contextRetry])
 
@@ -72,7 +74,7 @@ export default function Phototheque({ CollectionsComponent }) {
     const controller = new AbortController()
     setLoading(true); setError(''); setRows([]); setCount(null)
     const timer = setTimeout(() => {
-      searchLibraryPhotos(wsId, filters.tab === 'photos' ? filters : { ...filters, page: '0' }, context, controller.signal)
+      searchLibraryPhotos(wsId, filters.tab === 'photos' ? { ...filters, browse: browsing ? '1' : '' } : { ...filters, page: '0' }, context, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) return
           if (filters.tab === 'photos' && Number(filters.page) > 0 && Number(filters.page) * result.pageSize >= result.count) {
@@ -109,6 +111,13 @@ export default function Phototheque({ CollectionsComponent }) {
   const specialties = [...new Set([...dossiers.flatMap((d) => d.specialties || []), ...(context?.collections || []).map((c) => c.specialty).filter(Boolean)])].sort()
   const patientDossier = (id) => dossiers.find((d) => d.id === rootDossierId(dossiers, id))
   const patientName = (id) => patientDossier(id)?.name || 'Sans dossier'
+  // navigation façon explorateur : aucun filtre/recherche → on affiche les
+  // sous-dossiers en tuiles et les photos du dossier courant uniquement.
+  const browsing = filters.tab === 'photos' && !filters.q && (!filters.quick || filters.quick === 'recent')
+    && !filters.view && !filters.stage && !filters.session && !filters.day
+    && !filters.from && !filters.to && !filters.specialty
+  const subFolders = browsing ? dossierChildren(dossiers, filters.patient || null) : []
+  const folderMenu = menu?.kind === 'folder' ? menu : null // clic droit sur une tuile dossier
   const page = Number(filters.page), pageSize = 48
   const chips = [
     ['patient', filters.patient && patientName(filters.patient)], ['specialty', filters.specialty],
@@ -176,6 +185,10 @@ export default function Phototheque({ CollectionsComponent }) {
     finally { setBusy(false) }
   }
   const fileDrop = useFileDrop((files) => importInto(files, filters.patient || null))
+  // « Importer des photos… » depuis le clic droit d'un dossier
+  const importRef = useRef(null)
+  const importTarget = useRef(null)
+  const setImportFor = (dossierId) => { importTarget.current = dossierId; importRef.current?.click() }
   // glisser-déposer : photos lâchées sur un dossier de l'arborescence
   const movePhotos = async (ids, dossierId) => {
     const to = (context?.dossiers || []).find((d) => d.id === dossierId)
@@ -204,7 +217,7 @@ export default function Phototheque({ CollectionsComponent }) {
   const openMenu = (e, p, idx) => {
     e.preventDefault()
     if (!selected.includes(p.id)) { setSelected([p.id]); lastIdx.current = idx }
-    setMenu({ x: e.clientX, y: e.clientY, photo: p })
+    setMenu({ x: e.clientX, y: e.clientY, photo: p, kind: 'photo' })
   }
   const openClassify = (photo) => setClassify({
     photo, dossierId: photo.dossier_id || '',
@@ -238,6 +251,8 @@ export default function Phototheque({ CollectionsComponent }) {
 
   return (
     <Box w="100%" px="6" py="6">
+      <input ref={importRef} type="file" accept="image/*" multiple hidden
+        onChange={(e) => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) importInto(f, importTarget.current) }} />
       <PageHeader icon={FiFolder} iconBg={C.greenBg} iconColor={C.greenText} title="Collection · Photothèque clinique"
         subtitle="Retrouvez une photo, un patient ou une collection, sans déplacer les originaux." />
       <Card p="4" mb="4">
@@ -311,8 +326,38 @@ export default function Phototheque({ CollectionsComponent }) {
               </Text>
             </Box>
           )}
+        {browsing && (
+          <Box mb="2">
+            <FolderBreadcrumb dossiers={dossiers} currentId={filters.patient || null}
+              rootLabel="Toutes les photos"
+              onNavigate={(id) => change({ patient: id || '', session: '', day: '' })} />
+          </Box>
+        )}
+        {/* sous-dossiers du dossier courant — tuiles façon « grandes icônes » Windows */}
+        {subFolders.length > 0 && (
+          <Flex wrap="wrap" gap="1" mb="3">
+            {subFolders.map((ds) => {
+              const photos = stats[ds.id]?.photos || 0
+              const subs = dossierChildren(dossiers, ds.id).length
+              const info = [
+                ds.name,
+                `${photos} photo(s)${subs ? ` · ${subs} sous-dossier(s)` : ''}`,
+                ds.patient_dossier_number ? `Dossier n° ${ds.patient_dossier_number}` : null,
+                ds.updated_at ? `Modifié : ${new Date(ds.updated_at).toLocaleDateString('fr-FR')}` : null,
+              ].filter(Boolean).join('\n')
+              return (
+                <FolderTile key={ds.id} dossier={ds} size={56} w="112px" title={info}
+                  subtitle={`${photos} photo(s)`}
+                  onOpen={(fid) => change({ patient: fid })}
+                  onMove={(ids) => movePhotos(ids, ds.id)}
+                  onFileDrop={(files) => importInto(files, ds.id)}
+                  onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, kind: 'folder', dossier: ds }) }} />
+              )
+            })}
+          </Flex>
+        )}
         <HStack mb="3" gap="2" flexWrap="wrap">
-          <Text fontSize="sm" fontWeight="700" color={C.ink}>{count == null ? 'Recherche…' : `${count} photo(s)`}</Text>
+          <Text fontSize="sm" fontWeight="700" color={C.ink} aria-label="Nombre de photos affichées">{count == null ? 'Recherche…' : `${count} photo(s)`}</Text>
           {selected.length > 0 && <Text fontSize="2xs" color={C.muted}>— Ctrl+clic : ajouter, Shift+clic : plage, clic droit : menu</Text>}
           <Box flex="1" />
           <HStack gap="0" border="1px solid" borderColor={C.cardBorder} borderRadius="md" overflow="hidden">
@@ -352,8 +397,8 @@ export default function Phototheque({ CollectionsComponent }) {
           <EmptyPane py="12" textAlign="center">
             <VStack gap="2">
               <Box as={FiFolderMinus} fontSize="3xl" color="gray.300" />
-              <Text fontSize="md" fontWeight="600" color={C.ink}>Ce dossier est vide</Text>
-              <Text fontSize="sm" color="gray.500">« {patientName(filters.patient)} » ne contient aucune photo — glissez des images sur ce dossier dans l'arborescence pour les y ranger.</Text>
+              <Text fontSize="md" fontWeight="600" color={C.ink}>{subFolders.length ? 'Aucune photo dans ce dossier' : 'Ce dossier est vide'}</Text>
+              <Text fontSize="sm" color="gray.500">« {patientName(filters.patient)} » ne contient aucune photo{subFolders.length ? ' directement — ses sous-dossiers sont affichés ci-dessus' : ''} — glissez des images sur ce dossier pour les y ranger.</Text>
               <Button size="sm" variant="outline" mt="1" onClick={reset}>Toutes les photos</Button>
             </VStack>
           </EmptyPane>
@@ -454,18 +499,26 @@ export default function Phototheque({ CollectionsComponent }) {
         </Box>
       </HStack>
       </>}
-      {context && filters.tab === 'patients' && <><SimpleGrid columns={{ base: 1, md: 3 }} gap="3">
-        {patients.slice(page * pageSize, (page + 1) * pageSize).map((d) => <Card key={d.id} p="4">
-          <Text fontSize="sm" fontWeight="700" color={C.ink}>{d.name}</Text>
-          <Text fontSize="xs" color={C.body}>{d.patientNames}{d.patient_dossier_number ? ` · N° ${d.patient_dossier_number}` : ''}</Text>
-          <HStack gap="1" my="2" flexWrap="wrap">{(d.specialties || []).map((s) => <Tag key={s}>{s}</Tag>)}</HStack>
-          <HStack gap="2" flexWrap="wrap">
-            <Button size="xs" onClick={() => setPatient(d)}>Séances / comparer</Button>
-            <Button size="xs" variant="outline" onClick={() => change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: d.id })}>Toutes les photos</Button>
-          </HStack>
-        </Card>)}
+      {context && filters.tab === 'patients' && <><Flex wrap="wrap" gap="1" alignContent="flex-start">
+        {patients.slice(page * pageSize, (page + 1) * pageSize).map((d) => {
+          const photos = stats[d.id]?.photos || 0
+          const subs = dossierChildren(dossiers, d.id).length
+          const info = [
+            d.name,
+            d.patientNames || null,
+            `${photos} photo(s)${subs ? ` · ${subs} sous-dossier(s)` : ''}`,
+            d.patient_dossier_number ? `Dossier n° ${d.patient_dossier_number}` : null,
+            (d.specialties || []).length ? `Spécialités : ${d.specialties.join(', ')}` : null,
+          ].filter(Boolean).join('\n')
+          return (
+            <FolderTile key={d.id} dossier={d} size={64} w="118px" title={info}
+              subtitle={`${photos} photo(s)`}
+              onOpen={() => change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: d.id })}
+              onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, kind: 'folder', dossier: d, patient: true }) }} />
+          )
+        })}
         {!patients.length && <Text fontSize="sm">Aucun patient / dossier pour cette recherche.</Text>}
-      </SimpleGrid>
+      </Flex>
       <HStack justify="center" my="4" gap="3">
         <Button size="sm" variant="outline" disabled={page === 0} onClick={() => change({ page: String(page - 1) })}>Précédente</Button>
         <Text fontSize="xs" color={C.body}>Page {page + 1} / {Math.max(1, Math.ceil(patients.length / pageSize))}</Text>
@@ -522,7 +575,14 @@ export default function Phototheque({ CollectionsComponent }) {
         onPrev={viewer > 0 ? () => setViewer(viewer - 1) : null}
         onNext={viewer != null && viewer < rows.length - 1 ? () => setViewer(viewer + 1) : null}
         onStudio={(p) => nav(`/studio?edit=${p.id}`)} />
-      <ContextMenu menu={menu} onClose={() => setMenu(null)} items={menu ? [
+      {/* clic droit sur un dossier (tuile) — ouvrir / importer */}
+      <ContextMenu menu={folderMenu} onClose={() => setMenu(null)} items={folderMenu ? [
+        { icon: FiFolder, label: 'Ouvrir le dossier', onClick: () => change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: folderMenu.dossier.id }) },
+        ...(folderMenu.patient ? [{ icon: FiStar, label: 'Séances / comparer…', onClick: () => setPatient(folderMenu.dossier) }] : []),
+        { icon: FiExternalLink, label: 'Voir la fiche dossier', onClick: () => nav(`/dossier-patient/dossier/${folderMenu.dossier.id}`) },
+        { icon: FiTag, label: 'Importer des photos…', onClick: () => setImportFor(folderMenu.dossier.id) },
+      ] : []} />
+      <ContextMenu menu={menu?.kind === 'photo' ? menu : null} onClose={() => setMenu(null)} items={menu?.kind === 'photo' ? [
         { icon: FiMaximize2, label: 'Agrandir', onClick: () => setViewer(rows.findIndex((x) => x.id === menu.photo.id)) },
         { icon: FiExternalLink, label: 'Ouvrir dans le Studio', onClick: () => nav(`/studio?edit=${menu.photo.id}`) },
         { icon: FiTag, label: 'Classer la photo…', onClick: () => openClassify(menu.photo) },

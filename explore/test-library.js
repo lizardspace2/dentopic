@@ -49,14 +49,19 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
 
   // helper : compteur « N photo(s) » affiché (tolérant aux données accumulées)
   const photoCount = async () => {
-    const t = await page.locator('text=/\\d+ photo\\(s\\)/').first().textContent().catch(() => '0');
-    return parseInt(t.match(/\d+/)[0]);
+    const t = await page.locator('[aria-label="Nombre de photos affichées"]').first().textContent().catch(() => '0');
+    return parseInt((t.match(/\d+/) || ['0'])[0]);
   };
 
   // ---- Photothèque : liste -----------------------------------------------------
   await page.goto(BASE + '/collection', { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(2500);
-  ok('Photothèque : compteur ≥ 10 photo(s)', (await photoCount()) >= 10);
+  ok('Photothèque : dossiers racine en tuiles', await page.locator('button[title*="photo(s)"]').count() >= 8);
+  // vue Windows : la racine = dossiers + photos sans dossier ; descendre dans
+  // un dossier garni pour la suite des vérifications
+  await page.locator('button', { hasText: 'TEST Dupont Martin' }).last().click();
+  await page.waitForTimeout(2500);
+  ok('Photothèque : compteur ≥ 6 photo(s)', (await photoCount()) >= 6);
 
   // vignettes chargées via URLs signées
   await page.waitForTimeout(2500);
@@ -97,9 +102,11 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
   await page.waitForTimeout(1200);
   ok('Patients : 2 dossiers listés', await page.locator('text=/TEST Dupont Martin|TEST Durand Claire/').count() >= 2);
   await shot(page, 'l05-patients');
-  const dupontCard = page.locator('div').filter({ hasText: 'TEST Dupont Martin' })
-    .filter({ has: page.locator('button:has-text("Séances / comparer")') }).last();
-  await dupontCard.locator('button:has-text("Séances / comparer")').click();
+  // « Séances / comparer » est désormais dans le clic droit de la tuile dossier
+  const dupontTile = page.locator('button', { hasText: 'TEST Dupont Martin' }).last();
+  await dupontTile.click({ button: 'right' });
+  await page.waitForTimeout(500);
+  await page.locator('text=Séances / comparer').click();
   await page.waitForTimeout(1500);
   const sessionsVisible = await page.locator('text=/Comparer deux séances/').count();
   ok('timeline patient : section comparaison de séances', sessionsVisible > 0);
@@ -138,6 +145,9 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
 
   // ---- Studio : ouvrir une photo + pellicule -----------------------------------------
   await page.goto(BASE + '/collection', { waitUntil: 'networkidle', timeout: 30000 });
+  await page.waitForTimeout(2500);
+  // la racine ne montre que les dossiers — descendre dans Dupont pour voir ses photos
+  await page.locator('button', { hasText: 'TEST Dupont Martin' }).last().click();
   await page.waitForTimeout(2500);
   await page.locator('button[aria-label="Agrandir test-photo-01.png"]').click();
   await page.waitForTimeout(1500);

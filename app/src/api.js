@@ -180,7 +180,7 @@ export async function searchLibraryPhotos(wsId, filters, context, signal) {
   const pageSize = 48, page = Math.max(0, Number(filters.page) || 0), end = (page + 1) * pageSize
   const dossiers = context.dossiers
   let allowed = null
-  if (filters.patient) allowed = expandDossierIds(dossiers, [filters.patient])
+  if (filters.patient) allowed = filters.browse === '1' ? [filters.patient] : expandDossierIds(dossiers, [filters.patient])
   if (filters.specialty) {
     const ids = expandDossierIds(dossiers, dossiers.filter((d) => (d.specialties || []).includes(filters.specialty)).map((d) => d.id))
     allowed = allowed ? allowed.filter((id) => ids.includes(id)) : ids
@@ -197,6 +197,7 @@ export async function searchLibraryPhotos(wsId, filters, context, signal) {
     for (let offset = 0; offset < hidden.length; offset += 80) {
       query = query.or(`dossier_id.is.null,dossier_id.not.in.(${hidden.slice(offset, offset + 80).join(',')})`)
     }
+    if (filters.browse === '1' && !filters.patient) query = query.is('dossier_id', null)
     if (filters.quick === 'favorites') query = query.eq('is_favorite', true)
     if (filters.quick === 'unassigned') query = query.or('dossier_id.is.null,edit_meta->dental->>view.is.null,edit_meta->dental->>stage.is.null')
     if (filters.view) query = query.eq('edit_meta->dental->>view', filters.view)
