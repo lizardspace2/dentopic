@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
-import { FiExternalLink, FiFolder, FiFolderMinus, FiGrid, FiList, FiStar, FiTag } from 'react-icons/fi'
+import { FiExternalLink, FiFolder, FiFolderMinus, FiGrid, FiList, FiMaximize2, FiStar, FiTag } from 'react-icons/fi'
 import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
+import PhotoViewer from '../components/PhotoViewer'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
 import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos, classifyPhoto, movePhotosToDossier, importPhotos } from '../api'
@@ -42,6 +43,7 @@ export default function Phototheque({ CollectionsComponent }) {
   const [classify, setClassify] = useState(null)
   const [menu, setMenu] = useState(null) // menu contextuel clic droit {x, y, photo}
   const [moveForm, setMoveForm] = useState(null) // déplacement vers un dossier {ids, dossierId}
+  const [viewer, setViewer] = useState(null) // index dans `rows` de la photo agrandie
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('dentopic.library-view') || 'grid')
   const lastIdx = useRef(-1)
   useEffect(() => { localStorage.setItem('dentopic.library-view', viewMode) }, [viewMode])
@@ -368,7 +370,7 @@ export default function Phototheque({ CollectionsComponent }) {
             onContextMenu={(e) => openMenu(e, p, idx)}
             boxShadow={selected.includes(p.id) ? `0 0 0 2px ${C.primary}` : 'none'}>
             <Box position="relative">
-              <Box as="button" display="block" w="100%" aria-label={`Ouvrir ${p.original_filename || 'la photo'} dans le Studio`} onClick={(e) => { e.stopPropagation(); nav(`/studio?edit=${p.id}`) }}>
+              <Box as="button" display="block" w="100%" aria-label={`Agrandir ${p.original_filename || 'la photo'}`} onClick={(e) => { e.stopPropagation(); setViewer(idx) }}>
                 <PhotoImg storagePath={p.storage_path} ratio="4/3" borderRadius="0" />
               </Box>
               <Box position="absolute" top="1" left="1" bg={C.pageBg} px="1" borderRadius="sm" onClick={(e) => e.stopPropagation()}>
@@ -513,7 +515,15 @@ export default function Phototheque({ CollectionsComponent }) {
           </Text>
         </>}
       </Modal>
+      {/* visionneuse plein écran — flèches ← → pour naviguer dans la page courante */}
+      <PhotoViewer photo={viewer != null ? rows[viewer] : null}
+        counter={viewer != null ? `${viewer + 1} / ${rows.length}` : null}
+        onClose={() => setViewer(null)}
+        onPrev={viewer > 0 ? () => setViewer(viewer - 1) : null}
+        onNext={viewer != null && viewer < rows.length - 1 ? () => setViewer(viewer + 1) : null}
+        onStudio={(p) => nav(`/studio?edit=${p.id}`)} />
       <ContextMenu menu={menu} onClose={() => setMenu(null)} items={menu ? [
+        { icon: FiMaximize2, label: 'Agrandir', onClick: () => setViewer(rows.findIndex((x) => x.id === menu.photo.id)) },
         { icon: FiExternalLink, label: 'Ouvrir dans le Studio', onClick: () => nav(`/studio?edit=${menu.photo.id}`) },
         { icon: FiTag, label: 'Classer la photo…', onClick: () => openClassify(menu.photo) },
         { icon: FiStar, label: menu.photo.is_favorite ? 'Retirer des favorites' : 'Ajouter aux favorites', onClick: () => favorite(menu.photo) },

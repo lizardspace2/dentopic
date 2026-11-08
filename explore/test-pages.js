@@ -393,9 +393,11 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   ok('Planche : enregistrée comme montage', await page.locator('text=/1 montages|[2-9] montages/').count() > 0);
   await shot(page, 'p21-montage-created');
 
-  // Photo → Studio
-  await page.locator('a[href*="/studio?edit="]').first().click(); await page.waitForTimeout(3500);
-  ok('Détail : clic photo → Studio', page.url().includes('/studio'), page.url());
+  // Photo → visionneuse plein écran → Studio via le bouton dédié
+  await page.locator('button[title*="Type : Image"]').first().click(); await page.waitForTimeout(1500);
+  ok('Détail : clic photo → visionneuse', await page.locator('button:has-text("Ouvrir dans le Studio")').count() > 0);
+  await page.locator('button:has-text("Ouvrir dans le Studio")').click(); await page.waitForTimeout(3500);
+  ok('Visionneuse → Studio', page.url().includes('/studio'), page.url());
   await page.goBack(); await page.waitForTimeout(2000);
 
   // Renommer le dossier (PromptModal : input autofocus + Entrée) puis restaurer le nom d'origine

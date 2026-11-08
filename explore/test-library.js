@@ -139,9 +139,12 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
   // ---- Studio : ouvrir une photo + pellicule -----------------------------------------
   await page.goto(BASE + '/collection', { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(2500);
-  await page.locator('button[aria-label="Ouvrir test-photo-01.png dans le Studio"]').click();
+  await page.locator('button[aria-label="Agrandir test-photo-01.png"]').click();
+  await page.waitForTimeout(1500);
+  await shot(page, 'l09-viewer');
+  ok('visionneuse plein écran ouverte', await page.locator('button:has-text("Ouvrir dans le Studio")').count() > 0);
+  await page.locator('button:has-text("Ouvrir dans le Studio")').click();
   await page.waitForTimeout(3500);
-  await shot(page, 'l09-studio-photo');
   ok('Studio : photo ouverte (canvas)', await page.locator('canvas').count() > 0);
   const ctx = await page.locator('text=TEST Dupont Martin').count();
   ok('contexte patient « TEST Dupont Martin » affiché', ctx > 0);

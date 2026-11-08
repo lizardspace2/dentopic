@@ -18,6 +18,7 @@ import {
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
+import PhotoViewer from '../components/PhotoViewer'
 import { useApp } from '../context/AppContext'
 import {
   listDossiers, countTrashDossiers, listPhotos, montageCountByDossier,
@@ -567,6 +568,7 @@ function DossierDetail({ id }) {
   const [confirmTrash, setConfirmTrash] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [viewer, setViewer] = useState(null) // index de la photo affichée en grand
   const fileInput = useRef(null)
 
   const reload = async () => {
@@ -741,9 +743,10 @@ function DossierDetail({ id }) {
         </EmptyPane>
       ) : (
         <SimpleGrid columns={{ base: 2, md: 5, xl: 6 }} gap="4" mb="6">
-          {photos.map((p) => (
-            <Box key={p.id} as={Link} to={`/studio?edit=${p.id}`} draggable cursor="pointer" _hover={{ opacity: 0.85 }}
-              title={fileInfo(p)}
+          {photos.map((p, idx) => (
+            <Box key={p.id} as="button" draggable cursor="pointer" _hover={{ opacity: 0.85 }}
+              textAlign="left" title={fileInfo(p)}
+              onClick={() => setViewer(idx)}
               onDragStart={(e) => startPhotoDrag(e, [p.id])}>
               <PhotoImg storagePath={p.storage_path} ratio="1/1" />
               <Text fontSize="2xs" color="gray.500" mt="1" isTruncated>
@@ -791,6 +794,14 @@ function DossierDetail({ id }) {
         title="Mettre le dossier à la corbeille ?"
         confirmLabel="Oui, mettre à la corbeille"
         message={`Voulez-vous vraiment mettre « ${dossier?.name || ''} » à la corbeille ? Ses ${photos.length} photo(s) et ${montages.length} montage(s) seront déplacés avec lui — restauration possible depuis la corbeille.`} />
+
+      {/* visionneuse plein écran — clic sur une photo l'agrandit sans quitter la page */}
+      <PhotoViewer photo={viewer != null ? photos[viewer] : null}
+        counter={viewer != null ? `${viewer + 1} / ${photos.length}` : null}
+        onClose={() => setViewer(null)}
+        onPrev={viewer > 0 ? () => setViewer(viewer - 1) : null}
+        onNext={viewer != null && viewer < photos.length - 1 ? () => setViewer(viewer + 1) : null}
+        onStudio={(p) => nav(`/studio?edit=${p.id}`)} />
         </Box>
       </HStack>
     </Box>
