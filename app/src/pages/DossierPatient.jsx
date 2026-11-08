@@ -3,18 +3,18 @@
 // (renommer / corbeille). La vue détail liste les photos, montages et sous-dossiers.
 import { useEffect, useRef, useState } from 'react'
 import {
-  Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack,
+  Box, Button, Center, Flex, HStack, Input, SimpleGrid, Text, VStack,
 } from '@chakra-ui/react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  FiTrash2, FiPlus, FiFolder, FiCamera, FiUpload, FiEye, FiMoreHorizontal,
+  FiTrash2, FiPlus, FiFolder, FiCamera, FiUpload, FiEye,
   FiImage, FiLayers, FiClock, FiArrowLeft, FiEdit2, FiGrid, FiFolderPlus,
   FiUser, FiFolderMinus,
 } from 'react-icons/fi'
 import {
-  Card, Tag, ProgressBar, PageHeader, HelpButton, PrimaryButton,
+  Card, Tag, PageHeader, HelpButton, PrimaryButton,
   SearchInput, Select, Modal, ago, isTestName, Tip, ConfirmModal, PromptModal,
-  MenuDropdown, MenuItem, toast, EmptyPane,
+  toast, EmptyPane,
 } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
@@ -28,7 +28,7 @@ import {
 } from '../api'
 import {
   DossierTree, FolderTile, FolderBreadcrumb, startPhotoDrag, dossierChildren, useFileDrop,
-  fileInfo, WinFolder,
+  fileInfo, ContextMenu,
 } from '../components/Explorer'
 import { photoUrl } from '../media'
 import { buildContactSheet, fetchImg } from './studio/engine'
@@ -85,20 +85,10 @@ function DossierGrid() {
   const EMPTY_FORM = { last: '', first: '', birth: '', num: '', specs: [] }
   const [form, setForm] = useState(EMPTY_FORM)
   const [busy, setBusy] = useState(false)
-  const [menuFor, setMenuFor] = useState(null)
   const [trashList, setTrashList] = useState([]) // dossiers à la corbeille
-  const [hover, setHover] = useState(null) // dossier id survolé
-  const [patients, setPatients] = useState({}) // cache fiche patient par dossier
+  const [ctx, setCtx] = useState(null) // menu contextuel clic droit { x, y, ds }
   const importTarget = useRef(null) // dossier id de l'import
   const fileInput = useRef(null)
-
-  // fiche patient chargée à la demande au premier survol de la carte
-  const onCardHover = (ds) => {
-    setHover(ds.id)
-    if (!(ds.id in patients)) {
-      getPatient(ds.id).then((pat) => setPatients((m) => ({ ...m, [ds.id]: pat })))
-    }
-  }
 
   const reload = async () => {
     if (!wsId) return
@@ -182,7 +172,7 @@ function DossierGrid() {
 
   // « Modifier la fiche » : charge la fiche patient liée puis ouvre le modal d'édition
   const openEdit = async (ds) => {
-    setMenuFor(null)
+    setCtx(null)
     const pat = await getPatient(ds.id)
     setEditForm({
       id: ds.id, patientId: pat?.id || null,
@@ -243,7 +233,10 @@ function DossierGrid() {
     } catch { toast.error('Import impossible. Réessayez.') }
   }
 
-  const list = (d?.dossiers || [])
+  // navigation façon explorateur : la vue racine ne liste que les dossiers
+  // de premier niveau ; la recherche/filtre fouille toute l'arborescence.
+  const browsing = !q && !specFilter
+  const list = (browsing ? dossierChildren(d?.dossiers || [], null) : (d?.dossiers || []))
     .filter((ds) =>
       (!q || ds.name.toLowerCase().includes(q.toLowerCase())
         || (ds.patient_dossier_number || '').includes(q))
@@ -331,123 +324,30 @@ function DossierGrid() {
           onNavigate={(id) => { if (id) nav(`/dossier-patient/dossier/${id}`) }}
           onFileDrop={importInto} />
         <Box flex="1" minW="0">
-      <SimpleGrid columns={{ base: 1, md: 3 }} gap="5">
+      {/* vue « grandes icônes » façon explorateur Windows :
+          dossier jaune + nom, clic ouvre, clic droit = menu, survol = stats */}
+      <Flex wrap="wrap" gap="1" alignContent="flex-start">
         {list.map((ds) => {
-          const p = d?.byDossier[ds.id]
-          const photos = p?.photos || 0
+          const photos = d?.byDossier[ds.id]?.photos || 0
           const montages = d?.montageCounts[ds.id] || 0
           const subs = d?.subCounts[ds.id] || 0
-          const progress = Math.min(100, photos * 20)
+          const info = [
+            ds.name,
+            `${photos} photo(s) · ${montages} montage(s) · ${subs} sous-dossier(s)`,
+            ds.patient_dossier_number ? `Dossier n° ${ds.patient_dossier_number}` : null,
+            (ds.specialties || []).length ? `Spécialités : ${ds.specialties.join(', ')}` : null,
+            `Modifié : ${ago(ds.updated_at)}`,
+          ].filter(Boolean).join('\n')
           return (
-            <Card key={ds.id} p="4">
-              <HStack mb="3" justify="space-between">
-                <HStack gap="2" minW="0">
-                  <Text fontSize="sm" fontWeight="700" color={C.ink} isTruncated
-                    cursor="pointer" onClick={() => nav(`/dossier-patient/dossier/${ds.id}`)}
-                    _hover={{ color: C.primary }}>
-                    {ds.name}
-                  </Text>
-                  {ds.patient_dossier_number && (
-                    <Tip label="Numéro de dossier patient">
-                      <Text fontSize="2xs" color="gray.400" flexShrink="0">n°{ds.patient_dossier_number}</Text>
-                    </Tip>
-                  )}
-                  {d?.listening.has(ds.id) && (
-                    <Tip label="Une session de capture est en cours dans ce dossier">
-                      <Tag color="teal">Écoute</Tag>
-                    </Tip>
-                  )}
-                  {isTestName(ds.name) && (
-                    <Tip label="Dossier de démonstration / test">
-                      <Tag color="purple">Test</Tag>
-                    </Tip>
-                  )}
-                </HStack>
-                <Tip label="Dossier patient — cliquez la vignette pour ouvrir">
-                  <WinFolder size={20} />
-                </Tip>
-              </HStack>
-              {/* vignette = dernière photo du dossier — clic ouvre la fiche,
-                  survol = fiche récapitulative du patient + actions rapides */}
-              <Box position="relative" mb="3"
-                onMouseEnter={() => onCardHover(ds)} onMouseLeave={() => setHover(null)}>
-                <Link to={`/dossier-patient/dossier/${ds.id}`}>
-                  <PhotoImg storagePath={p?.coverPath} ratio="16/9" />
-                </Link>
-                {hover === ds.id && (
-                  <PatientHover ds={ds} pat={patients[ds.id]}
-                    onView={() => nav(`/dossier-patient/dossier/${ds.id}`)}
-                    onEdit={() => openEdit(ds)} />
-                )}
-              </Box>
-              {(ds.specialties || []).length > 0 && (
-                <HStack gap="1.5" mb="2" flexWrap="wrap">
-                  {ds.specialties.slice(0, 3).map((s) => (
-                    <Tip key={s} label={`Spécialité : ${s}`}>
-                      <HStack gap="1" fontSize="2xs" color="gray.500">
-                        <Box w="6px" h="6px" borderRadius="full" bg={specColor(s)} />
-                        <Text>{s}</Text>
-                      </HStack>
-                    </Tip>
-                  ))}
-                  {ds.specialties.length > 3 && (
-                    <Tip label={ds.specialties.slice(3).join(', ')}>
-                      <Text fontSize="2xs" color="gray.400">+{ds.specialties.length - 3}</Text>
-                    </Tip>
-                  )}
-                </HStack>
-              )}
-              <HStack gap="3" mb="2" color="gray.500">
-                <Tip label="Photos rangées dans ce dossier"><Text fontSize="2xs"><FiImage style={{ display: 'inline' }} /> {photos} photos</Text></Tip>
-                <Tip label="Montages et planches créés depuis ce dossier"><Text fontSize="2xs"><FiLayers style={{ display: 'inline' }} /> {montages} montages</Text></Tip>
-                <Tip label="Sous-dossiers de rangement"><Text fontSize="2xs"><FiFolder style={{ display: 'inline' }} /> {subs} sous-dossiers</Text></Tip>
-                <Tip label="Dernière modification"><Text fontSize="2xs"><FiClock style={{ display: 'inline' }} /> {ago(ds.updated_at)}</Text></Tip>
-              </HStack>
-              <Tip label={`Progression estimée du cas — ${photos} photo(s) sur ~5 attendues`} display="block" mb="3">
-                <ProgressBar value={progress} label={`${progress} % du cas`} />
-              </Tip>
-              <HStack gap="2">
-                <Link to={`/acquisition/capture/${ds.id}`} style={{ flex: 1 }}>
-                  <Tip label="Démarrer une session de capture dans ce dossier">
-                    <PrimaryButton icon={FiCamera} w="100%">Capturer</PrimaryButton>
-                  </Tip>
-                </Link>
-                <Tip label="Importer des fichiers (JPG, PNG…) dans ce dossier">
-                  <Button variant="outline" size="sm" px="2" aria-label="Importer des photos"
-                    onClick={() => { importTarget.current = ds.id; fileInput.current?.click() }}>
-                    <FiUpload />
-                  </Button>
-                </Tip>
-                <Tip label="Ouvrir le dossier — photos, montages, sous-dossiers">
-                  <Link to={`/dossier-patient/dossier/${ds.id}`}>
-                    <Button variant="outline" size="sm" px="2" aria-label="Ouvrir le dossier"><FiEye /></Button>
-                  </Link>
-                </Tip>
-                <Box position="relative">
-                  <Tip label="Plus d'actions : fiche, sous-dossier, corbeille">
-                    <Button variant="outline" size="sm" px="2" aria-label="Plus d'actions"
-                      onClick={() => setMenuFor(menuFor === ds.id ? null : ds.id)}>
-                      <FiMoreHorizontal />
-                    </Button>
-                  </Tip>
-                  <MenuDropdown open={menuFor === ds.id} onClose={() => setMenuFor(null)}>
-                      <MenuItem icon={FiEye} label="Ouvrir le dossier"
-                        onClick={() => { setMenuFor(null); nav(`/dossier-patient/dossier/${ds.id}`) }} />
-                      <MenuItem icon={FiUser} label="Modifier la fiche patient…"
-                        onClick={() => openEdit(ds)} />
-                      <MenuItem icon={FiFolderPlus} label="Nouveau sous-dossier…"
-                        onClick={() => { setMenuFor(null); setName(''); setModal({ kind: 'sub', id: ds.id }) }} />
-                      <MenuItem icon={FiEdit2} label="Renommer…"
-                        onClick={() => { setMenuFor(null); setName(ds.name); setModal({ kind: 'rename', id: ds.id }) }} />
-                      <MenuItem icon={FiTrash2} label="Mettre à la corbeille" danger
-                        onClick={() => { setMenuFor(null); setModal({ kind: 'trash', ds }) }} />
-                  </MenuDropdown>
-                </Box>
-              </HStack>
-            </Card>
+            <FolderTile key={ds.id} dossier={ds} size={64} w="118px" title={info}
+              subtitle={`${photos} photo(s)${d?.listening.has(ds.id) ? ' · Écoute' : ''}`}
+              onOpen={(fid) => nav(`/dossier-patient/dossier/${fid}`)}
+              onFileDrop={importInto}
+              onContextMenu={(e) => { e.preventDefault(); setCtx({ x: e.clientX, y: e.clientY, ds }) }} />
           )
         })}
-      </SimpleGrid>
+      </Flex>
+
       {list.length === 0 && d && (
         <Text fontSize="sm" color="gray.500" textAlign="center" py="10">
           Aucun dossier{q ? ` ne correspond à « ${q} »` : ''}.
@@ -455,6 +355,25 @@ function DossierGrid() {
       )}
         </Box>
       </HStack>
+
+      {/* menu contextuel dossier — clic droit sur une tuile */}
+      <ContextMenu menu={ctx} onClose={() => setCtx(null)} items={ctx ? [
+        { icon: FiEye, label: 'Ouvrir le dossier',
+          onClick: () => nav(`/dossier-patient/dossier/${ctx.ds.id}`) },
+        { icon: FiCamera, label: 'Capturer des photos',
+          onClick: () => nav(`/acquisition/capture/${ctx.ds.id}`) },
+        { icon: FiUpload, label: 'Importer des photos…',
+          onClick: () => { importTarget.current = ctx.ds.id; fileInput.current?.click() } },
+        '-',
+        { icon: FiUser, label: 'Modifier la fiche patient…', onClick: () => openEdit(ctx.ds) },
+        { icon: FiFolderPlus, label: 'Nouveau sous-dossier…',
+          onClick: () => { setName(''); setModal({ kind: 'sub', id: ctx.ds.id }) } },
+        { icon: FiEdit2, label: 'Renommer…',
+          onClick: () => { setName(ctx.ds.name); setModal({ kind: 'rename', id: ctx.ds.id }) } },
+        '-',
+        { icon: FiTrash2, label: 'Mettre à la corbeille', danger: true,
+          onClick: () => setModal({ kind: 'trash', ds: ctx.ds }) },
+      ] : []} />
 
       {/* corbeille dossier — confirmation obligatoire */}
       <ConfirmModal open={modal?.kind === 'trash'} onClose={() => setModal(null)}
@@ -625,71 +544,6 @@ function DossierGrid() {
           )}
         </VStack>
       </Modal>
-    </Box>
-  )
-}
-
-// Survol d'une carte : fiche récapitulative du patient + actions rapides.
-// Posé sur la vignette — cliquable (contrairement à <Tip> qui est pointerEvents:none).
-const SYS_KEYS = new Set(['id', 'workspace_id', 'dossier_id', 'created_at', 'updated_at', 'deleted_at'])
-const FIELD_LABELS = {
-  phone: 'Téléphone', email: 'E-mail', address: 'Adresse', city: 'Ville',
-  notes: 'Notes', gender: 'Sexe', blood_type: 'Groupe', allergies: 'Allergies',
-}
-
-function PatientHover({ ds, pat, onView, onEdit }) {
-  const birth = pat?.birth_date
-    ? new Date(pat.birth_date).toLocaleDateString('fr-FR')
-    : null
-  const age = pat?.birth_date
-    ? Math.floor((Date.now() - new Date(pat.birth_date)) / (365.25 * 864e5))
-    : null
-  // champs supplémentaires renseignés dans la fiche (téléphone, e-mail, notes…)
-  const extras = pat
-    ? Object.entries(pat)
-        .filter(([k, v]) => !SYS_KEYS.has(k) && !['last_name', 'first_name', 'birth_date'].includes(k) && v != null && v !== '')
-        .slice(0, 3)
-    : []
-  const row = (k, v) => (
-    <HStack key={k} justify="space-between" fontSize="2xs" gap="3">
-      <Text color="gray.500" flexShrink="0">{k}</Text>
-      <Text color={C.ink} fontWeight="600" textAlign="right" isTruncated>{v}</Text>
-    </HStack>
-  )
-  return (
-    <Box
-      position="absolute" inset="0" borderRadius="lg" overflow="hidden" zIndex="5"
-      bg="white" opacity="0.98" border="1px solid" borderColor={C.cardBorder}
-      boxShadow="lg" p="3" display="flex" flexDirection="column" gap="1.5"
-      cursor="default" onClick={(e) => e.preventDefault()}
-    >
-      <HStack justify="space-between" mb="0.5">
-        <Text fontSize="xs" fontWeight="700" color={C.ink} isTruncated>
-          {[pat?.last_name, pat?.first_name].filter(Boolean).join(' ') || ds.name}
-        </Text>
-        <Tag color="blue"><FiUser style={{ marginRight: 3 }} />Fiche</Tag>
-      </HStack>
-      {pat === undefined ? (
-        <Text fontSize="2xs" color="gray.400">Chargement de la fiche…</Text>
-      ) : (
-        <VStack align="stretch" gap="1" flex="1" overflow="auto">
-          {ds.patient_dossier_number && row('N° dossier', ds.patient_dossier_number)}
-          {birth && row('Né(e) le', `${birth}${age != null ? ` — ${age} ans` : ''}`)}
-          {(ds.specialties || []).length > 0 && row('Spécialité(s)', ds.specialties.join(', '))}
-          {ds.description && row('Notes', ds.description)}
-          {extras.map(([k, v]) => row(FIELD_LABELS[k] || k, typeof v === 'string' ? v : JSON.stringify(v)))}
-          {!pat && <Text fontSize="2xs" color="gray.400">Aucune fiche patient liée — « Modifier » la crée.</Text>}
-        </VStack>
-      )}
-      <HStack gap="2" pt="1" mt="auto">
-        <Button size="xs" flex="1" bg={C.primary} color="#ffffff" borderRadius="md"
-          _hover={{ filter: 'brightness(1.1)' }} onClick={onView}>
-          <FiEye style={{ marginRight: 4 }} /> Voir la fiche
-        </Button>
-        <Button size="xs" flex="1" variant="outline" borderRadius="md" onClick={onEdit}>
-          <FiEdit2 style={{ marginRight: 4 }} /> Modifier
-        </Button>
-      </HStack>
     </Box>
   )
 }

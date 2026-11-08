@@ -326,10 +326,9 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   await shot(page, 'p15-new-patient');
   await backToList();
 
-  // Menu « Plus d'actions » sur la carte TEST Express
-  const expressCard = page.locator('div').filter({ hasText: `TEST Express ${R}` })
-    .filter({ has: page.locator('button[aria-label="Plus d\'actions"]') }).last();
-  await expressCard.locator('button[aria-label="Plus d\'actions"]').click(); await page.waitForTimeout(500);
+  // Menu contextuel (clic droit) sur la tuile TEST Express
+  const expressTile = page.locator('button', { hasText: `TEST Express ${R}` }).last();
+  await expressTile.click({ button: 'right' }); await page.waitForTimeout(500);
   for (const item of ['Ouvrir le dossier', 'Modifier la fiche patient', 'Nouveau sous-dossier', 'Renommer', 'Mettre à la corbeille'])
     ok(`Menu dossier : « ${item} »`, await page.locator(`text=${item}`).count() > 0);
   await shot(page, 'p16-card-menu');
@@ -340,28 +339,27 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   await page.locator('button:has-text("Renommer")').last().click(); await page.waitForTimeout(1200);
   ok('Renommer : nom mis à jour', await page.locator(`text=TEST Express V2 ${R}`).count() > 0);
 
-  // Nouveau sous-dossier
-  const expressCard2 = page.locator('div').filter({ hasText: `TEST Express V2 ${R}` })
-    .filter({ has: page.locator('button[aria-label="Plus d\'actions"]') }).last();
-  await expressCard2.locator('button[aria-label="Plus d\'actions"]').click(); await page.waitForTimeout(400);
+  // Nouveau sous-dossier via clic droit
+  const expressTile2 = page.locator('button', { hasText: `TEST Express V2 ${R}` }).last();
+  await expressTile2.click({ button: 'right' }); await page.waitForTimeout(400);
   await page.locator('text=Nouveau sous-dossier').last().click(); await page.waitForTimeout(500);
   await page.locator('input[placeholder="Nom du sous-dossier"]').fill('Séance test');
   await page.locator('button:has-text("Créer")').last().click(); await page.waitForTimeout(1200);
   ok('Sous-dossier créé sans erreur', errorsAt() === 0);
 
-  // Modifier la fiche patient (carte Dupont)
-  const dupontCard = page.locator('div').filter({ hasText: 'TEST Dupont Martin' })
-    .filter({ has: page.locator('button[aria-label="Plus d\'actions"]') }).last();
-  await dupontCard.locator('button[aria-label="Plus d\'actions"]').click(); await page.waitForTimeout(400);
+  // Modifier la fiche patient (tuile Dupont, clic droit)
+  const dupontTile = page.locator('button', { hasText: 'TEST Dupont Martin' }).last();
+  await dupontTile.click({ button: 'right' }); await page.waitForTimeout(400);
   await page.locator('text=Modifier la fiche patient').last().click(); await page.waitForTimeout(1000);
   ok('Fiche patient : modale d\'édition ouverte', await page.locator('button:has-text("Enregistrer")').count() > 0);
   await page.locator('input[placeholder="877"]').fill('1001');
   await page.locator('button:has-text("Enregistrer")').last().click(); await page.waitForTimeout(1500);
-  ok('Fiche patient : n° 1001 enregistré', await page.locator('text=/1001/').count() > 0);
+  ok('Fiche patient : n° 1001 enregistré',
+    await page.locator('button[title*="1001"]').count() > 0 || await page.locator('text=/1001/').count() > 0);
   await shot(page, 'p17-edit-patient');
 
   // --- Vue détail Dupont ---
-  await page.locator('button[aria-label="Ouvrir le dossier"]').first().click(); await page.waitForTimeout(2000);
+  await page.locator('button[title*="photo(s)"]').first().click(); await page.waitForTimeout(2000);
   // retomber sur la fiche Dupont (la 1ʳᵉ carte « Ouvrir » peut varier) — vérifier par URL/titre
   await page.goto(BASE + '/dossier-patient', { waitUntil: 'networkidle' }); await page.waitForTimeout(1500);
   await page.locator('text=TEST Dupont Martin').first().click(); await page.waitForTimeout(2000);
@@ -412,9 +410,8 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
 
   // Corbeille sur le dossier jetable « TEST Express V2 »
   await backToList();
-  const trashCard = page.locator('div').filter({ hasText: `TEST Express V2 ${R}` })
-    .filter({ has: page.locator('button[aria-label="Plus d\'actions"]') }).last();
-  await trashCard.locator('button[aria-label="Plus d\'actions"]').click(); await page.waitForTimeout(400);
+  const trashTile = page.locator('button', { hasText: `TEST Express V2 ${R}` }).last();
+  await trashTile.click({ button: 'right' }); await page.waitForTimeout(400);
   await page.locator('text=Mettre à la corbeille').last().click(); await page.waitForTimeout(600);
   ok('Corbeille : confirmation affichée', await page.locator('text=/corbeille \\?/').count() > 0);
   await shot(page, 'p22-trash-confirm');

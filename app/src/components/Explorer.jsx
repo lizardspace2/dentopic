@@ -198,20 +198,23 @@ export function DossierTree({ dossiers, currentId, onNavigate, onMove, onFileDro
 
 // ---- Tuile dossier (façon icône de dossier Windows) -------------------------
 
-export function FolderTile({ dossier, onOpen, onMove, onFileDrop }) {
+export function FolderTile({ dossier, onOpen, onMove, onFileDrop, size = 44, w = '110px', subtitle, title, onContextMenu }) {
   const { over, handlers } = useCombinedDrop(
     onMove ? (ids) => onMove(ids, dossier.id) : null,
     onFileDrop ? (files) => onFileDrop(files, dossier.id) : null)
   return (
-    <Box as="button" textAlign="center" px="3" py="3" borderRadius="lg" w="110px"
+    <Box as="button" textAlign="center" px="3" py="3" borderRadius="lg" w={w}
       border="1.5px solid" borderColor={over ? C.primary : 'transparent'}
       bg={over ? C.softBlue : 'transparent'}
-      _hover={{ bg: C.softBlue, borderColor: C.primary }}
+      _hover={{ bg: C.softBlue }}
       onClick={() => onOpen(dossier.id)}
+      onContextMenu={onContextMenu}
+      title={title}
       {...handlers}
     >
-      <WinFolder size={44} mx="auto" />
-      <Text fontSize="2xs" fontWeight="600" color={C.ink} mt="1" isTruncated>{dossier.name}</Text>
+      <WinFolder size={size} mx="auto" />
+      <Text fontSize="2xs" fontWeight="600" color={C.ink} mt="1" lineClamp={2} wordBreak="break-word">{dossier.name}</Text>
+      {subtitle && <Text fontSize="2xs" color={C.muted} isTruncated>{subtitle}</Text>}
     </Box>
   )
 }
