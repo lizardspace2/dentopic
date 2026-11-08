@@ -3,7 +3,7 @@
 // glisser-déposer de photos vers un dossier.
 import { Fragment, useEffect, useState } from 'react'
 import { Box, HStack, Text } from '@chakra-ui/react'
-import { FiChevronDown, FiChevronRight, FiFolder } from 'react-icons/fi'
+import { FiChevronDown, FiChevronRight } from 'react-icons/fi'
 import { Card } from './ui'
 import { C } from '../theme'
 
@@ -84,6 +84,34 @@ function useCombinedDrop(onMove, onFiles) {
   }
 }
 
+// ---- Icône dossier façon Windows (jaune, deux tons) -------------------------
+
+export function WinFolder({ size = 16, ...rest }) {
+  return (
+    <Box as="svg" viewBox="0 0 32 26" w={`${size}px`} h={`${Math.round(size * 26 / 32)}px`}
+      flexShrink={0} aria-hidden="true" {...rest}>
+      <path d="M3 3.5h8.5l2.8 2.8H29a2.5 2.5 0 0 1 2.5 2.5v13.7a2.5 2.5 0 0 1-2.5 2.5H3a2.5 2.5 0 0 1-2.5-2.5V6a2.5 2.5 0 0 1 2.5-2.5z" fill="#F7B940" />
+      <path d="M2 9.2h28a2 2 0 0 1 2 2v11.3a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V11.2a2 2 0 0 1 2-2z" fill="#FFDD75" />
+    </Box>
+  )
+}
+
+// Infobulle façon Windows : nom / type / taille / dimensions / date / dossier.
+export function fileInfo(p, dossierName) {
+  const mime = (p.mime || 'image').replace('image/', '').toUpperCase()
+  const dims = p.width && p.height ? ` · ${p.width} × ${p.height} px` : ''
+  const size = p.bytes ? `${(p.bytes / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Ko` : '—'
+  const date = new Date(p.taken_at || p.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
+  const lines = [
+    p.original_filename || 'Photo',
+    `Type : Image ${mime}${dims}`,
+    `Taille : ${size}`,
+    `Date : ${date}`,
+  ]
+  if (dossierName) lines.push(`Dossier : ${dossierName}`)
+  return lines.join('\n')
+}
+
 // ---- Helpers hiérarchie -----------------------------------------------------
 
 export function dossierChildren(dossiers, parentId) {
@@ -124,8 +152,7 @@ function TreeNode({ ds, dossiers, depth, currentId, onNavigate, onMove, onFileDr
           onClick={(e) => { e.stopPropagation(); setOpen((v) => !v) }}>
           {open ? <FiChevronDown /> : <FiChevronRight />}
         </Box>
-        <Box as={FiFolder} flexShrink={0} fontSize="sm" mr="1.5"
-          color={active ? C.primary : 'gray.400'} />
+        <WinFolder size={15} mr="1.5" />
         <Text fontSize="xs" isTruncated fontWeight={active ? '700' : '400'}
           color={active ? C.primary : C.body}>{ds.name}</Text>
         {over && <Text ml="auto" fontSize="2xs" color={C.primary} flexShrink={0}>→ ici</Text>}
@@ -154,8 +181,7 @@ export function DossierTree({ dossiers, currentId, onNavigate, onMove, onFileDro
           bg={allActive ? C.softBlue : 'transparent'} _hover={{ bg: C.softBlue }}
           onClick={() => onNavigate(null)}>
           <Box w="14px" flexShrink={0} />
-          <Box as={FiFolder} flexShrink={0} fontSize="sm" mr="1.5"
-            color={allActive ? C.primary : 'gray.400'} />
+          <WinFolder size={15} mr="1.5" />
           <Text fontSize="xs" isTruncated fontWeight={allActive ? '700' : '400'}
             color={allActive ? C.primary : C.body}>{allLabel}</Text>
         </HStack>
@@ -184,7 +210,7 @@ export function FolderTile({ dossier, onOpen, onMove, onFileDrop }) {
       onClick={() => onOpen(dossier.id)}
       {...handlers}
     >
-      <Box as={FiFolder} fontSize="34px" color={C.primary} mx="auto" />
+      <WinFolder size={44} mx="auto" />
       <Text fontSize="2xs" fontWeight="600" color={C.ink} mt="1" isTruncated>{dossier.name}</Text>
     </Box>
   )

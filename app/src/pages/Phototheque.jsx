@@ -7,7 +7,7 @@ import PhotoImg from '../components/PhotoImg'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
 import { loadLibraryContext, searchLibraryPhotos, labelClinicalPhotos, setPhotoFavorite, addCollectionItem, fileUnassignedPhotos, classifyPhoto, movePhotosToDossier, importPhotos } from '../api'
-import { DossierTree, ContextMenu, startPhotoDrag, useFileDrop } from '../components/Explorer'
+import { DossierTree, ContextMenu, startPhotoDrag, useFileDrop, fileInfo } from '../components/Explorer'
 import { CLINICAL_VIEWS, CLINICAL_STAGES, clinicalLabels } from '../clinical'
 import { LIBRARY_DEFAULTS, expandDossierIds, matchesLibraryText, readLibraryFilters, rootDossierId } from '../phototheque'
 import { C } from '../theme'
@@ -362,6 +362,7 @@ export default function Phototheque({ CollectionsComponent }) {
         <SimpleGrid columns={{ base: 2, md: 4, xl: 6 }} gap="3"
           onClick={(e) => { if (e.target === e.currentTarget) setSelected([]) }}>
           {rows.map((p, idx) => { const cl = clinicalLabels(p); return <Card key={p.id} overflow="hidden" draggable
+            title={fileInfo(p, patientName(p.dossier_id))}
             onDragStart={(e) => startPhotoDrag(e, selected.includes(p.id) ? selected : [p.id])}
             onClick={(e) => photoClick(e, p, idx)}
             onContextMenu={(e) => openMenu(e, p, idx)}
@@ -405,11 +406,14 @@ export default function Phototheque({ CollectionsComponent }) {
             <Text flex="1.6" fontSize="2xs" fontWeight="700" color="gray.500">FICHIER</Text>
             <Text flex="1" fontSize="2xs" fontWeight="700" color="gray.500">DOSSIER</Text>
             <Text w="90px" fontSize="2xs" fontWeight="700" color="gray.500">DATE</Text>
+            <Text w="70px" fontSize="2xs" fontWeight="700" color="gray.500">TYPE</Text>
+            <Text w="70px" fontSize="2xs" fontWeight="700" color="gray.500" textAlign="right">TAILLE</Text>
             <Text w="190px" fontSize="2xs" fontWeight="700" color="gray.500">ÉTIQUETTES</Text>
             <Box w="110px" flexShrink={0} />
           </HStack>
           {rows.map((p, idx) => { const cl = clinicalLabels(p); return (
             <HStack key={p.id} px="3" py="1.5" gap="3" cursor="default" draggable
+              title={fileInfo(p, patientName(p.dossier_id))}
               bg={selected.includes(p.id) ? C.softBlue : 'transparent'}
               _hover={{ bg: C.softBlue }}
               onClick={(e) => photoClick(e, p, idx)}
@@ -420,6 +424,8 @@ export default function Phototheque({ CollectionsComponent }) {
               <Text flex="1.6" fontSize="xs" color={C.ink} isTruncated>{p.original_filename || 'Photo'}</Text>
               <Text flex="1" fontSize="xs" color={C.body} isTruncated>{patientName(p.dossier_id)}</Text>
               <Text w="90px" fontSize="2xs" color={C.muted}>{new Date(p.taken_at || p.created_at).toLocaleDateString('fr-FR')}</Text>
+              <Text w="70px" fontSize="2xs" color={C.muted}>{(p.mime || '').replace('image/', '').toUpperCase() || '—'}</Text>
+              <Text w="70px" fontSize="2xs" color={C.muted} textAlign="right">{p.bytes ? `${(p.bytes / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko` : '—'}</Text>
               <HStack w="190px" gap="1" flexWrap="wrap">
                 {(!p.dossier_id || !cl.view || !cl.stage) && <Tag color="amber">À classer</Tag>}
                 {cl.view && <Tag color="green">{labelFor(CLINICAL_VIEWS, cl.view)}</Tag>}

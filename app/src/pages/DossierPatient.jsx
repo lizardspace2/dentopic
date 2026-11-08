@@ -28,6 +28,7 @@ import {
 } from '../api'
 import {
   DossierTree, FolderTile, FolderBreadcrumb, startPhotoDrag, dossierChildren, useFileDrop,
+  fileInfo, WinFolder,
 } from '../components/Explorer'
 import { photoUrl } from '../media'
 import { buildContactSheet, fetchImg } from './studio/engine'
@@ -363,7 +364,7 @@ function DossierGrid() {
                   )}
                 </HStack>
                 <Tip label="Dossier patient — cliquez la vignette pour ouvrir">
-                  <Box as={FiFolder} color="gray.400" fontSize="sm" />
+                  <WinFolder size={20} />
                 </Tip>
               </HStack>
               {/* vignette = dernière photo du dossier — clic ouvre la fiche,
@@ -888,6 +889,7 @@ function DossierDetail({ id }) {
         <SimpleGrid columns={{ base: 2, md: 5, xl: 6 }} gap="4" mb="6">
           {photos.map((p) => (
             <Box key={p.id} as={Link} to={`/studio?edit=${p.id}`} draggable cursor="pointer" _hover={{ opacity: 0.85 }}
+              title={fileInfo(p)}
               onDragStart={(e) => startPhotoDrag(e, [p.id])}>
               <PhotoImg storagePath={p.storage_path} ratio="1/1" />
               <Text fontSize="2xs" color="gray.500" mt="1" isTruncated>
