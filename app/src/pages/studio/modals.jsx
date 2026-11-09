@@ -5,41 +5,91 @@ import { FiDownload, FiFileText, FiFolder, FiSave } from 'react-icons/fi'
 import { Field, Modal, SearchInput, Select, Tip, toast } from '../../components/ui'
 import { C, S } from '../../theme'
 import PhotoImg from '../../components/PhotoImg'
-import { listDossiers, listPhotos } from '../../api'
+import { DossierTree, FolderBreadcrumb, FolderTile, dossierChildren, fileInfo } from '../../components/Explorer'
+import { listDossiers, listPhotos, photoStatsByDossier } from '../../api'
 import SessionComparison from './SessionComparison'
 import { rootDossierId } from '../../phototheque'
 import { BLEND_MODES, FILTER_DEFS, NEW_DOC_PRESETS, SHEET_SLOTS } from './constants'
 import { ADJUST_KINDS, ADJUST_PARAMS, DEFAULT_FX, colorMask, hexToHsv, hsvToHex, hsvToRgb, rgbToHex } from './engine'
 
 // ---- Ouvrir : photo du workspace (ou import local géré par la page) -------------
+// Mini-explorateur façon Collection : arbre de dossiers, fil d'Ariane,
+// tuiles de sous-dossiers, cartouches rapides et recherche en liste plate.
 
 export function OpenPhotoModal({ open, onClose, wsId, onPick }) {
   const [photos, setPhotos] = useState([])
+  const [dossiers, setDossiers] = useState([])
+  const [stats, setStats] = useState({})
   const [q, setQ] = useState('')
+  const [folder, setFolder] = useState(null) // dossier courant (null = racine)
+  const [quick, setQuick] = useState('all')  // 'all' | 'fav' | 'unassigned'
   useEffect(() => {
-    if (open && wsId) listPhotos(wsId, { limit: 120 }).then(setPhotos)
+    if (!open || !wsId) return
+    setQ(''); setFolder(null); setQuick('all')
+    Promise.all([listPhotos(wsId, { limit: 500 }), listDossiers(wsId), photoStatsByDossier(wsId)])
+      .then(([ps, ds, st]) => { setPhotos(ps); setDossiers(ds); setStats(st || {}) })
   }, [open, wsId])
-  const list = photos.filter((p) => !q || (p.original_filename || '').toLowerCase().includes(q.toLowerCase()))
+
+  const searching = !!q || quick !== 'all'
+  const navigate = (id) => { setFolder(id); setQuick('all'); setQ('') }
+  const subFolders = searching ? [] : dossierChildren(dossiers, folder)
+  const dossierName = (id) => dossiers.find((d) => d.id === id)?.name || 'Sans dossier'
+  const list = photos.filter((p) => {
+    if (q && !(p.original_filename || '').toLowerCase().includes(q.toLowerCase())) return false
+    if (quick === 'fav' && !p.is_favorite) return false
+    if (quick === 'unassigned' && p.dossier_id) return false
+    if (!searching && (p.dossier_id || null) !== folder) return false
+    return true
+  })
+
   return (
     <Modal open={open} onClose={onClose} title="Ouvrir une photo"
-      subtitle="Les photos du workspace (bucket privé, signed URLs)" width="720px">
-      <SearchInput placeholder="Rechercher un fichier…" w="100%" mb="3"
-        value={q} onChange={(e) => setQ(e.target.value)} />
-      <SimpleGrid columns={{ base: 3, md: 5 }} gap="3" maxH="380px" overflowY="auto">
-        {list.map((p) => (
-          <Box key={p.id} cursor="pointer" onClick={() => onPick(p)} _hover={{ opacity: 0.85 }}>
-            <PhotoImg storagePath={p.storage_path} ratio="1/1" />
-            <Text fontSize="2xs" color="gray.500" mt="1" isTruncated>
-              {p.original_filename || p.storage_path}
-            </Text>
-          </Box>
+      subtitle="Les photos du workspace (bucket privé, signed URLs)" width="920px">
+      <HStack gap="2" mb="3" flexWrap="wrap">
+        <Box flex="1" minW="200px">
+          <SearchInput placeholder="Rechercher un fichier…" w="100%"
+            value={q} onChange={(e) => setQ(e.target.value)} />
+        </Box>
+        {[['all', 'Toutes'], ['fav', 'Favorites'], ['unassigned', 'Sans dossier']].map(([k, label]) => (
+          <Button key={k} size="xs" variant={quick === k ? 'solid' : 'outline'} borderRadius="full"
+            aria-pressed={quick === k} onClick={() => setQuick(k)}>{label}</Button>
         ))}
-        {list.length === 0 && (
-          <Text fontSize="sm" color="gray.500" gridColumn="1/-1" textAlign="center" py="6">
-            Aucune photo.
-          </Text>
-        )}
-      </SimpleGrid>
+      </HStack>
+      <HStack align="start" gap="3">
+        <DossierTree dossiers={dossiers} currentId={folder}
+          allLabel="Tous les dossiers" title="Dossiers" onNavigate={navigate} />
+        <Box flex="1" minW="0">
+          {!searching && <Box mb="2">
+            <FolderBreadcrumb dossiers={dossiers} currentId={folder}
+              rootLabel="Tous les dossiers" onNavigate={navigate} />
+          </Box>}
+          {subFolders.length > 0 && (
+            <HStack gap="1" mb="2" flexWrap="wrap">
+              {subFolders.map((ds) => (
+                <FolderTile key={ds.id} dossier={ds} size={40} w="96px"
+                  subtitle={`${stats[ds.id]?.photos || 0} photo(s)`}
+                  onOpen={navigate} />
+              ))}
+            </HStack>
+          )}
+          <SimpleGrid columns={{ base: 3, md: 5 }} gap="3" maxH="340px" overflowY="auto">
+            {list.map((p) => (
+              <Box key={p.id} cursor="pointer" onClick={() => onPick(p)} _hover={{ opacity: 0.85 }}
+                title={fileInfo(p, dossierName(p.dossier_id))}>
+                <PhotoImg storagePath={p.storage_path} ratio="1/1" />
+                <Text fontSize="2xs" color="gray.500" mt="1" isTruncated>
+                  {p.original_filename || p.storage_path}
+                </Text>
+              </Box>
+            ))}
+            {list.length === 0 && (
+              <Text fontSize="sm" color="gray.500" gridColumn="1/-1" textAlign="center" py="6">
+                {searching ? 'Aucune photo pour ces critères.' : (subFolders.length ? 'Aucune photo dans ce dossier — ses sous-dossiers sont au-dessus.' : 'Ce dossier est vide.')}
+              </Text>
+            )}
+          </SimpleGrid>
+        </Box>
+      </HStack>
     </Modal>
   )
 }
