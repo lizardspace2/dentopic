@@ -248,6 +248,8 @@ export default function Phototheque({ CollectionsComponent }) {
     if (storeSaved(next)) { setSaveOpen(false); setSaveName('') }
   }
   const reset = () => setParams(filters.tab === 'photos' ? {} : { tab: filters.tab }, { replace: true })
+  // façon Windows : entrer dans un dossier quitte la recherche et les filtres
+  const navigateFolder = (id) => change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: id || '' })
 
   return (
     <Box w="100%" px="6" py="6">
@@ -313,7 +315,7 @@ export default function Phototheque({ CollectionsComponent }) {
       <HStack align="start" gap="4">
         <DossierTree dossiers={context.dossiers} currentId={filters.patient || null}
           allLabel="Toutes les photos" title="Dossiers"
-          onNavigate={(id) => change({ patient: id || '', session: '', day: '' })}
+          onNavigate={navigateFolder}
           onMove={movePhotos} onFileDrop={importInto} />
         <Box flex="1" minW="0" position="relative" borderRadius="lg"
           outline={fileDrop.over ? `2px dashed ${C.primary}` : 'none'} outlineOffset="-2px"
@@ -330,7 +332,7 @@ export default function Phototheque({ CollectionsComponent }) {
           <Box mb="2">
             <FolderBreadcrumb dossiers={dossiers} currentId={filters.patient || null}
               rootLabel="Toutes les photos"
-              onNavigate={(id) => change({ patient: id || '', session: '', day: '' })} />
+              onNavigate={navigateFolder} />
           </Box>
         )}
         {/* sous-dossiers du dossier courant — tuiles façon « grandes icônes » Windows */}
@@ -348,7 +350,7 @@ export default function Phototheque({ CollectionsComponent }) {
               return (
                 <FolderTile key={ds.id} dossier={ds} size={56} w="112px" title={info}
                   subtitle={`${photos} photo(s)`}
-                  onOpen={(fid) => change({ patient: fid })}
+                  onOpen={navigateFolder}
                   onMove={(ids) => movePhotos(ids, ds.id)}
                   onFileDrop={(files) => importInto(files, ds.id)}
                   onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, kind: 'folder', dossier: ds }) }} />
