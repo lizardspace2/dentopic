@@ -296,7 +296,8 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   ok('Dossiers : tri « Nom A→Z » sans erreur', errorsAt() === 0);
   await page.locator('select').first().selectOption('recent');
 
-  // puces de spécialité présentes (filtre)
+  // puces de spécialité présentes (filtre) — déplier le panneau « Spécialité »
+  await page.locator('button', { hasText: /^Spécialité/ }).first().click(); await page.waitForTimeout(400);
   ok('Dossiers : puces de spécialité visibles', await page.locator('text=Toutes spécialités').count() > 0);
   const specChip = page.locator('text=Orthodontie').first();
   if (await specChip.count()) {

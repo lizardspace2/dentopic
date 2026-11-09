@@ -253,7 +253,7 @@ export default function Publication() {
             <Button variant="outline" size="xs" onClick={() => setCursor(new Date())}>Aujourd'hui</Button>
             <Button variant="ghost" size="xs" px="1" onClick={() => shift(1)} aria-label="Période suivante"><FiChevronRight /></Button>
             <Text fontSize="lg" fontWeight="700" color={C.ink} flex="1" textAlign="center">{calTitle}</Text>
-            <Select h="30px" fontSize="xs" value={kindFilter} aria-label="Filtrer par type de contenu"
+            <Select h="30px" w="auto" px="3" fontSize="xs" borderRadius="full" value={kindFilter} aria-label="Filtrer par type de contenu"
               onChange={(e) => setKindFilter(e.target.value)}>
               <option value="all">Type : Tous</option>
               {KINDS.map(([k, l]) => <option key={k} value={k}>Type : {l}</option>)}

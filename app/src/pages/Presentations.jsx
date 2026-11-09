@@ -214,25 +214,22 @@ export default function Presentations() {
         )}
       </HStack>
 
-      <HStack gap="3" mb="5">
-        <SearchInput placeholder="Rechercher une présentation…"
-          value={q} onChange={(e) => setQ(e.target.value)} />
-        <HStack gap="3">
+      <HStack gap="2" mb="5" flexWrap="wrap">
+        <Box flex="1" minW="200px">
+          <SearchInput w="100%" placeholder="Rechercher une présentation…"
+            value={q} onChange={(e) => setQ(e.target.value)} />
+        </Box>
+        <HStack gap="1.5">
           {TABS.map((t) => (
-            <Text
-              key={t} fontSize="xs" cursor="pointer"
-              fontWeight={tab === t ? '600' : '400'}
-              color={tab === t ? C.primary : 'gray.500'}
-              onClick={() => setTab(t)}
-            >
-              {t}
-            </Text>
+            <Button key={t} size="xs" variant={tab === t ? 'solid' : 'outline'} borderRadius="full"
+              aria-pressed={tab === t} onClick={() => setTab(t)}>{t}</Button>
           ))}
         </HStack>
-        <Select h="30px" fontSize="xs" value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="recent">Plus récent</option>
-          <option value="slides">Plus de diapos</option>
-          <option value="name">Nom A→Z</option>
+        <Select h="30px" w="auto" px="3" fontSize="xs" borderRadius="full" aria-label="Trier les présentations"
+          value={sort} onChange={(e) => setSort(e.target.value)}>
+          <option value="recent">Tri : Plus récent</option>
+          <option value="slides">Tri : Plus de diapos</option>
+          <option value="name">Tri : Nom A→Z</option>
         </Select>
       </HStack>
 

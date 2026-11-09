@@ -20,6 +20,12 @@ const EMPTY = {
   q: '', tag: '', diagnostic: '', traitement: '', materiau: '', severite: '',
   aiClass: '', statut: '', sexe: '', ageMin: '', ageMax: '',
 }
+const FIELD_LABELS = {
+  tag: 'Tag', diagnostic: 'Diagnostic', traitement: 'Traitement', materiau: 'Matériau',
+  severite: 'Sévérité', aiClass: 'Classe IA', statut: 'Statut', sexe: 'Sexe',
+  ageMin: 'Âge min', ageMax: 'Âge max',
+}
+const STATUT_LABELS = { favorite: 'Photo favorite', unsorted: 'Photo non triée', draft: 'Montage brouillon', finalized: 'Montage finalisé' }
 
 const TextInput = (p) => <Input fontSize="sm" bg="white" {...p} />
 const norm = (s) => (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -34,10 +40,23 @@ export default function Recherche() {
   const [applied, setApplied] = useState(EMPTY) // filtres réellement appliqués
   const [period, setPeriod] = useState('all')
   const [periodApplied, setPeriodApplied] = useState('all')
+  const [advOpen, setAdvOpen] = useState(() => {
+    try { return localStorage.getItem('dentopic.searchFiltersOpen') === '1' } catch { return false }
+  })
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const set = (k) => (e) => setF((s) => ({ ...s, [k]: e.target.value }))
   const search = () => { setApplied(f); setPeriodApplied(period) }
+  const toggleAdv = () => setAdvOpen((v) => {
+    const n = !v
+    try { localStorage.setItem('dentopic.searchFiltersOpen', n ? '1' : '0') } catch { /* privé */ }
+    return n
+  })
+  // critères avancés appliqués → cartouches + compteur + ouverture auto
+  const advApplied = Object.entries(applied).filter(([k, v]) => k !== 'q' && v)
+  const advCount = advApplied.length + (periodApplied !== 'all' ? 1 : 0)
+  const panelOpen = advOpen || advCount > 0
+  const clearCriterion = (k) => { setF((s) => ({ ...s, [k]: '' })); setApplied((s) => ({ ...s, [k]: '' })) }
 
   useEffect(() => {
     if (!wsId) return
@@ -122,79 +141,97 @@ export default function Recherche() {
         </Box>
       </HStack>
 
-      <Card p="6" mb="5">
-        <Text fontSize="sm" fontWeight="600" color={C.ink} mb="4">Filtres</Text>
-        <SimpleGrid columns={{ base: 1, md: 2 }} gap="4" mb="4">
-          <Field label="N° de dossier patient / N° de cas / nom">
-            <TextInput placeholder="ex. 2024-001, Patient Dupont…" value={f.q} onChange={set('q')} />
-          </Field>
-          <Field label="Tag">
-            <Select w="100%" value={f.tag} onChange={set('tag')}>
-              <option value="">Tous les tags</option>
-              {tags.map((t) => <option key={t} value={t}>{t}</option>)}
-            </Select>
-          </Field>
-        </SimpleGrid>
-        <SimpleGrid columns={{ base: 1, md: 4 }} gap="4" mb="4">
-          <Field label="Diagnostic"><TextInput placeholder="ex. Carie" value={f.diagnostic} onChange={set('diagnostic')} /></Field>
-          <Field label="Type de traitement"><TextInput placeholder="ex. Facette" value={f.traitement} onChange={set('traitement')} /></Field>
-          <Field label="Matériau"><TextInput placeholder="ex. Céramique" value={f.materiau} onChange={set('materiau')} /></Field>
-          <Field label="Sévérité"><TextInput placeholder="ex. Sévère" value={f.severite} onChange={set('severite')} /></Field>
-        </SimpleGrid>
-        <SimpleGrid columns={{ base: 1, md: 4 }} gap="4" mb="4">
-          <Field label="Classe IA photo">
-            <Select w="100%" value={f.aiClass} onChange={set('aiClass')}>
-              <option value="">Toutes</option>
-              {aiClasses.map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
-          </Field>
-          <Field label="Statut">
-            <Select w="100%" value={f.statut} onChange={set('statut')}>
-              <option value="">Tous</option>
-              <option value="favorite">Photo favorite</option>
-              <option value="unsorted">Photo non triée</option>
-              <option value="draft">Montage brouillon</option>
-              <option value="finalized">Montage finalisé</option>
-            </Select>
-          </Field>
-          <Field label="Sexe">
-            <Select w="100%" value={f.sexe} onChange={set('sexe')}>
-              <option value="">Tous</option>
-              <option value="F">F</option>
-              <option value="M">M</option>
-            </Select>
-          </Field>
-          <Field label="Âge min"><TextInput type="number" value={f.ageMin} onChange={set('ageMin')} /></Field>
-        </SimpleGrid>
-        <SimpleGrid columns={{ base: 1, md: 4 }} gap="4" mb="5">
-          <Field label="Âge max"><TextInput type="number" value={f.ageMax} onChange={set('ageMax')} /></Field>
-        </SimpleGrid>
-
-        <HStack gap="0" mb="5">
-          {PERIODS.map(([k, label], i) => (
-            <Button
-              key={k} size="xs"
-              borderRadius={i === 0 ? 'md 0 0 md' : '0'}
-              bg={period === k ? C.primary : 'white'}
-              color={period === k ? '#ffffff' : 'gray.600'}
-              border="1px solid" borderColor="gray.200"
-              onClick={() => setPeriod(k)}
-            >
-              {label}
-            </Button>
-          ))}
-        </HStack>
-
-        <HStack gap="3">
+      {/* barre compacte + panneau de critères dépliable — cartouches des
+          filtres appliqués, façon comparateurs de vols */}
+      <Card p="4" mb="5">
+        <HStack gap="2" flexWrap="wrap">
+          <Box flex="1" minW="220px">
+            <TextInput w="100%" placeholder="N° de dossier, n° de cas, nom ou patient — ex. 2024-001, Dupont…"
+              value={f.q} onChange={set('q')} onKeyDown={(e) => { if (e.key === 'Enter') search() }} />
+          </Box>
           <PrimaryButton icon={FiSearch} onClick={search}>Rechercher</PrimaryButton>
-          <Button variant="outline" size="sm" color="gray.600"
-            onClick={() => { setF(EMPTY); setApplied(EMPTY); setPeriod('all'); setPeriodApplied('all') }}>
-            Réinitialiser
-          </Button>
-          <Button variant="outline" size="sm" color="gray.600">
-            <FiBookmark /> Enregistrer la recherche
+          <Button size="sm" variant={panelOpen ? 'solid' : 'outline'} borderRadius="full"
+            aria-expanded={panelOpen} onClick={toggleAdv}>
+            Critères{advCount ? ` (${advCount})` : ''}
           </Button>
         </HStack>
+        {(advCount > 0 || applied.q) && (
+          <HStack mt="2" gap="2" flexWrap="wrap">
+            {applied.q && <Button size="xs" variant="outline" borderRadius="full" onClick={() => clearCriterion('q')}>{applied.q} ×</Button>}
+            {advApplied.map(([k, v]) => (
+              <Button key={k} size="xs" variant="outline" borderRadius="full" onClick={() => clearCriterion(k)}>
+                {FIELD_LABELS[k]} : {k === 'statut' ? (STATUT_LABELS[v] || v) : v} ×
+              </Button>
+            ))}
+            {periodApplied !== 'all' && (
+              <Button size="xs" variant="outline" borderRadius="full"
+                onClick={() => { setPeriod('all'); setPeriodApplied('all') }}>
+                Période : {PERIODS.find(([k]) => k === periodApplied)?.[1]} ×
+              </Button>
+            )}
+            <Button size="xs" variant="plain"
+              onClick={() => { setF(EMPTY); setApplied(EMPTY); setPeriod('all'); setPeriodApplied('all') }}>
+              Tout effacer
+            </Button>
+          </HStack>
+        )}
+        {panelOpen && <Box mt="3" pt="3" borderTop="1px solid" borderColor={C.cardBorder}>
+          <SimpleGrid columns={{ base: 1, md: 4 }} gap="3" mb="3">
+            <Field label="Tag">
+              <Select w="100%" h="30px" fontSize="xs" borderRadius="full" value={f.tag} onChange={set('tag')}>
+                <option value="">Tous les tags</option>
+                {tags.map((t) => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </Field>
+            <Field label="Diagnostic"><TextInput h="30px" fontSize="xs" borderRadius="full" placeholder="ex. Carie" value={f.diagnostic} onChange={set('diagnostic')} /></Field>
+            <Field label="Type de traitement"><TextInput h="30px" fontSize="xs" borderRadius="full" placeholder="ex. Facette" value={f.traitement} onChange={set('traitement')} /></Field>
+            <Field label="Matériau"><TextInput h="30px" fontSize="xs" borderRadius="full" placeholder="ex. Céramique" value={f.materiau} onChange={set('materiau')} /></Field>
+          </SimpleGrid>
+          <SimpleGrid columns={{ base: 1, md: 4 }} gap="3" mb="3">
+            <Field label="Sévérité"><TextInput h="30px" fontSize="xs" borderRadius="full" placeholder="ex. Sévère" value={f.severite} onChange={set('severite')} /></Field>
+            <Field label="Classe IA photo">
+              <Select w="100%" h="30px" fontSize="xs" borderRadius="full" value={f.aiClass} onChange={set('aiClass')}>
+                <option value="">Toutes</option>
+                {aiClasses.map((c) => <option key={c} value={c}>{c}</option>)}
+              </Select>
+            </Field>
+            <Field label="Statut">
+              <Select w="100%" h="30px" fontSize="xs" borderRadius="full" value={f.statut} onChange={set('statut')}>
+                <option value="">Tous</option>
+                {Object.entries(STATUT_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </Select>
+            </Field>
+            <Field label="Sexe">
+              <Select w="100%" h="30px" fontSize="xs" borderRadius="full" value={f.sexe} onChange={set('sexe')}>
+                <option value="">Tous</option>
+                <option value="F">F</option>
+                <option value="M">M</option>
+              </Select>
+            </Field>
+          </SimpleGrid>
+          <SimpleGrid columns={{ base: 2, md: 4 }} gap="3" mb="4">
+            <Field label="Âge min"><TextInput h="30px" fontSize="xs" borderRadius="full" type="number" value={f.ageMin} onChange={set('ageMin')} /></Field>
+            <Field label="Âge max"><TextInput h="30px" fontSize="xs" borderRadius="full" type="number" value={f.ageMax} onChange={set('ageMax')} /></Field>
+          </SimpleGrid>
+          <HStack gap="2" flexWrap="wrap">
+            <HStack gap="0">
+              {PERIODS.map(([k, label], i) => (
+                <Button key={k} size="xs" borderRadius={i === 0 ? 'full 0 0 full' : i === PERIODS.length - 1 ? '0 full full 0' : '0'}
+                  variant={period === k ? 'solid' : 'outline'} onClick={() => setPeriod(k)}>
+                  {label}
+                </Button>
+              ))}
+            </HStack>
+            <Box flex="1" />
+            <Button variant="outline" size="sm" borderRadius="full" color="gray.600"
+              onClick={() => { setF(EMPTY); setApplied(EMPTY); setPeriod('all'); setPeriodApplied('all') }}>
+              Réinitialiser
+            </Button>
+            <Button variant="outline" size="sm" borderRadius="full" color="gray.600">
+              <FiBookmark /> Enregistrer la recherche
+            </Button>
+          </HStack>
+        </Box>}
       </Card>
 
       {loading && <EmptyPane><Text fontSize="sm" color="gray.500">Chargement…</Text></EmptyPane>}

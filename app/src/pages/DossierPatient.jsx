@@ -78,6 +78,7 @@ function DossierGrid() {
   const [d, setD] = useState(null)
   const [q, setQ] = useState('')
   const [specFilter, setSpecFilter] = useState(null)
+  const [specOpen, setSpecOpen] = useState(false) // panneau spécialités déplié
   const [sort, setSort] = useState('recent') // 'recent' | 'name' | 'photos'
   const [modal, setModal] = useState(null) // 'new' | 'rename' | 'edit' | 'sub'
   const [name, setName] = useState('')
@@ -279,36 +280,38 @@ function DossierGrid() {
         )}
       </HStack>
 
-      <HStack gap="3" mb="3">
-        <SearchInput placeholder="Rechercher par n° de dossier, nom ou patient…"
-          value={q} onChange={(e) => setQ(e.target.value)} />
-        <Tip label="Trier les dossiers">
-          <Select w="160px" value={sort} onChange={(e) => setSort(e.target.value)}>
-            <option value="recent">Récents</option>
-            <option value="name">Nom A→Z</option>
-            <option value="photos">Nb de photos</option>
-          </Select>
-        </Tip>
+      <HStack gap="2" mb="3" flexWrap="wrap">
+        <Box flex="1" minW="200px">
+          <SearchInput w="100%" placeholder="Rechercher par n° de dossier, nom ou patient…"
+            value={q} onChange={(e) => setQ(e.target.value)} />
+        </Box>
+        <Select h="30px" w="auto" px="3" fontSize="xs" borderRadius="full" aria-label="Trier les dossiers"
+          value={sort} onChange={(e) => setSort(e.target.value)}>
+          <option value="recent">Tri : Récents</option>
+          <option value="name">Tri : Nom A→Z</option>
+          <option value="photos">Tri : Nb de photos</option>
+        </Select>
+        <Button size="sm" variant={(specOpen || specFilter) ? 'solid' : 'outline'} borderRadius="full"
+          aria-expanded={specOpen || !!specFilter} onClick={() => setSpecOpen((v) => !v)}>
+          Spécialité
+        </Button>
+        {/* cartouche du filtre actif — amovible */}
+        {specFilter && <Button size="xs" variant="outline" borderRadius="full"
+          onClick={() => setSpecFilter(null)}>{specFilter} ×</Button>}
       </HStack>
-      {/* filtre par spécialité (chips façon « Cas cliniques ») */}
-      <HStack gap="1.5" mb="4" flexWrap="wrap">
-        <Tip label="Afficher tous les dossiers">
-          <Box as="button" px="2.5" py="1" fontSize="2xs" borderRadius="full" cursor="pointer"
-            bg={!specFilter ? C.ink : 'transparent'} color={!specFilter ? '#ffffff' : 'gray.500'}
-            border="1.5px solid" borderColor={!specFilter ? C.ink : 'gray.200'}
-            onClick={() => setSpecFilter(null)}>
-            Toutes spécialités
-          </Box>
-        </Tip>
+      {/* spécialités en cartouches — déplié à la demande ou si filtre actif */}
+      {(specOpen || specFilter) && <HStack gap="1.5" mb="4" flexWrap="wrap">
+        <Box as="button" px="2.5" py="1" fontSize="2xs" borderRadius="full" cursor="pointer"
+          bg={!specFilter ? C.ink : 'transparent'} color={!specFilter ? '#ffffff' : 'gray.500'}
+          border="1.5px solid" borderColor={!specFilter ? C.ink : 'gray.200'}
+          onClick={() => setSpecFilter(null)}>
+          Toutes spécialités
+        </Box>
         {SPECIALTIES.map((s) => (
-          <Tip key={s.label} label={`Filtrer : ${s.label}`}>
-            <span>
-              <SpecChip label={s.label} active={specFilter === s.label}
-                onClick={() => setSpecFilter(specFilter === s.label ? null : s.label)} />
-            </span>
-          </Tip>
+          <SpecChip key={s.label} label={s.label} active={specFilter === s.label}
+            onClick={() => setSpecFilter(specFilter === s.label ? null : s.label)} />
         ))}
-      </HStack>
+      </HStack>}
 
       <Tip label="Tapez un nom puis Entrée — le dossier est créé et ouvert" display="block" mb="5">
         <Box border="1.5px dashed" borderColor="gray.300" borderRadius="md" px="3" py="1">
