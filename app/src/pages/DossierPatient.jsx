@@ -566,6 +566,7 @@ function DossierDetail({ id }) {
   const [photos, setPhotos] = useState([])
   const [montages, setMontages] = useState([])
   const [subs, setSubs] = useState([])
+  const [subStats, setSubStats] = useState({}) // nb de photos par sous-dossier
   const [missing, setMissing] = useState(false)
   const [sheet, setSheet] = useState(false) // modal planche contact
   const [confirmTrash, setConfirmTrash] = useState(false)
@@ -576,8 +577,9 @@ function DossierDetail({ id }) {
 
   const reload = async () => {
     if (!wsId) return
-    const [all, ph, mo, pat] = await Promise.all([
+    const [all, ph, mo, pat, st] = await Promise.all([
       listDossiers(wsId), listPhotosByDossier(id), listMontagesByDossier(id), getPatient(id),
+      photoStatsByDossier(wsId),
     ])
     const ds = all.find((x) => x.id === id)
     setDossier(ds || null)
@@ -586,6 +588,7 @@ function DossierDetail({ id }) {
     setPatient(pat)
     setPhotos(ph)
     setMontages(mo)
+    setSubStats(st || {})
     setSubs(dossierChildren(all, id))
   }
   useEffect(() => { reload() }, [wsId, id])
@@ -718,14 +721,24 @@ function DossierDetail({ id }) {
         <>
           <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">SOUS-DOSSIERS — cliquez pour ouvrir, glissez des photos dessus pour les ranger</Text>
           <HStack gap="1" mb="5" flexWrap="wrap">
-            {subs.map((s) => (
-              <FolderTile key={s.id} dossier={s} onOpen={openFolder} onMove={movePhotos} />
-            ))}
+            {subs.map((s) => {
+              const n = subStats[s.id]?.photos || 0
+              const subs2 = dossierChildren(allDossiers, s.id).length
+              const info = [
+                s.name,
+                `${n} photo(s)${subs2 ? ` · ${subs2} sous-dossier(s)` : ''}`,
+                s.updated_at ? `Modifié : ${new Date(s.updated_at).toLocaleDateString('fr-FR')}` : null,
+              ].filter(Boolean).join('\n')
+              return (
+                <FolderTile key={s.id} dossier={s} title={info} subtitle={`${n} photo(s)`}
+                  onOpen={openFolder} onMove={movePhotos} />
+              )
+            })}
           </HStack>
         </>
       )}
 
-      {photos.length > 0 && <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">PHOTOS — cliquer ouvre dans le Studio, glisser vers un dossier déplace</Text>}
+      {photos.length > 0 && <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">PHOTOS — cliquer agrandit la photo, glisser vers un dossier déplace</Text>}
       {photos.length === 0 ? (
         <EmptyPane py="14" textAlign="center" mb="6">
           <VStack gap="2">

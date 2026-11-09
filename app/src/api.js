@@ -336,6 +336,7 @@ export function photoStatsByDossier(wsId) {
       .select('dossier_id,storage_path,created_at')
       .eq('workspace_id', wsId)
       .not('dossier_id', 'is', null)
+      .limit(10000)
   ).then(({ data }) => {
     const out = {}
     ;(data || []).forEach((p) => {
