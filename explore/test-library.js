@@ -82,7 +82,9 @@ async function closeModal(page) { await page.mouse.click(15, 475); await page.wa
   await page.locator('button', { hasText: 'Tout effacer' }).click();
   await page.waitForTimeout(1500);
 
-  // ---- Filtre par vue -----------------------------------------------------------
+  // ---- Filtre par vue (panneau « Filtres ») ---------------------------------------
+  await page.locator('button', { hasText: /Filtres/ }).first().click();
+  await page.waitForTimeout(400);
   await page.locator('select[aria-label="Toutes les vues"]').selectOption('smile');
   await page.waitForTimeout(1500);
   ok('filtre vue « Sourire » → ≥ 2 photo(s)', (await photoCount()) >= 2);

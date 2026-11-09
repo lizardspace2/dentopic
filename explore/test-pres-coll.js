@@ -343,7 +343,9 @@ async function presCard(page, name) {
   await page.goto(BASE + '/collection', { waitUntil: 'networkidle', timeout: 30000 });
   await page.waitForTimeout(2500);
 
-  // ---- photothèque : recherches enregistrées ------------------------------------------
+  // ---- photothèque : recherches enregistrées (panneau « Filtres ») ------------------
+  await page.locator('button', { hasText: /Filtres/ }).first().click();
+  await page.waitForTimeout(400);
   await page.locator('button:has-text("Enregistrer cette recherche")').click();
   await page.waitForTimeout(600);
   ok('modale « Enregistrer cette recherche »', await page.locator('text=Enregistrer cette recherche').last().count() > 0);

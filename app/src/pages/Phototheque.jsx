@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, Button, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
-import { FiExternalLink, FiFolder, FiFolderMinus, FiGrid, FiList, FiMaximize2, FiStar, FiTag } from 'react-icons/fi'
+import { FiExternalLink, FiFilter, FiFolder, FiFolderMinus, FiGrid, FiList, FiMaximize2, FiStar, FiTag } from 'react-icons/fi'
 import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import PhotoViewer from '../components/PhotoViewer'
@@ -46,6 +46,9 @@ export default function Phototheque({ CollectionsComponent }) {
   const [viewer, setViewer] = useState(null) // index dans `rows` de la photo agrandie
   const [stats, setStats] = useState({}) // nb de photos par dossier (sous-titre tuiles)
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('dentopic.library-view') || 'grid')
+  const [filtersOpen, setFiltersOpen] = useState(() => {
+    try { return localStorage.getItem('dentopic.libFiltersOpen') === '1' } catch { return false }
+  })
   const lastIdx = useRef(-1)
   useEffect(() => { localStorage.setItem('dentopic.library-view', viewMode) }, [viewMode])
   const storageKey = wsId && userId ? `dentopic.library-searches.${wsId}.${userId}` : null
@@ -250,6 +253,16 @@ export default function Phototheque({ CollectionsComponent }) {
   const reset = () => setParams(filters.tab === 'photos' ? {} : { tab: filters.tab }, { replace: true })
   // façon Windows : entrer dans un dossier quitte la recherche et les filtres
   const navigateFolder = (id) => change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: id || '' })
+  // panneau filtres repliable (persisté) — ouvert d'office si un filtre
+  // avancé est déjà actif (lien partagé, recherche enregistrée)
+  const advancedActive = !!(filters.view || filters.stage || filters.from || filters.to
+    || filters.session || filters.day || filters.specialty)
+  const toggleFilters = () => setFiltersOpen((v) => {
+    const n = !v
+    try { localStorage.setItem('dentopic.libFiltersOpen', n ? '1' : '0') } catch { /* privé */ }
+    return n
+  })
+  const panelOpen = filtersOpen || advancedActive
 
   return (
     <Box w="100%" px="6" py="6">
@@ -257,57 +270,76 @@ export default function Phototheque({ CollectionsComponent }) {
         onChange={(e) => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) importInto(f, importTarget.current) }} />
       <PageHeader icon={FiFolder} iconBg={C.greenBg} iconColor={C.greenText} title="Collection · Photothèque clinique"
         subtitle="Retrouvez une photo, un patient ou une collection, sans déplacer les originaux." />
-      <Card p="4" mb="4">
-        <SearchInput w="100%" placeholder="Patient, N° dossier, fichier, description, collection…" value={filters.q}
-          onChange={(e) => change({ q: e.target.value })} />
-        <HStack mt="3" gap="2" flexWrap="wrap">
-          {[["photos", "Photos", count], ["patients", "Patients", patients.length], ["collections", "Collections", collections.length]].map(([tab, label, total]) => (
-            <Button key={tab} size="sm" variant={filters.tab === tab ? 'solid' : 'outline'} aria-pressed={filters.tab === tab}
-              onClick={() => change({ tab })}>{label} ({total == null ? '…' : total})</Button>
-          ))}
-          <Box flex="1" />
-          <Button size="xs" variant="outline" disabled={!storageKey} onClick={() => setSaveOpen(true)}>Enregistrer cette recherche</Button>
-        </HStack>
-        <SimpleGrid columns={{ base: 1, md: 2 }} gap="2" mt="3">
-          <Select w="100%" value={filters.patient} aria-label="Filtrer par patient" onChange={(e) => change({ patient: e.target.value, session: '', day: '' })}>
-            <option value="">Tous les patients / dossiers</option>
-            {dossiers.filter((d) => !d.parent_id).map((d) => <option key={d.id} value={d.id}>{d.name}{d.patient_dossier_number ? ` · ${d.patient_dossier_number}` : ''}</option>)}
-          </Select>
-          <Select w="100%" value={filters.specialty} aria-label="Filtrer par spécialité" onChange={(e) => change({ specialty: e.target.value })}>
-            <option value="">Toutes les spécialités</option>
-            {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Select>
-        </SimpleGrid>
-        {filters.tab === 'photos' && <>
-          <HStack mt="3" gap="2" flexWrap="wrap">
-            {[["recent", "Récentes"], ["favorites", "Favorites"], ["unassigned", "À classer"]].map(([quick, label]) => (
-              <Button key={quick} size="xs" variant={filters.quick === quick ? 'solid' : 'outline'} aria-pressed={filters.quick === quick}
-                onClick={() => change({ quick })}>{label}</Button>
+      {/* barre de recherche + cartouches — façon comparateurs de vols :
+          les filtres avancés se déplient via « Filtres », les filtres
+          actifs restent visibles sous forme de cartouches amovibles */}
+      <Card p="3" mb="4">
+        <HStack gap="2" flexWrap="wrap">
+          <Box flex="1" minW="220px">
+            <SearchInput w="100%" placeholder="Patient, N° dossier, fichier, description, collection…" value={filters.q}
+              onChange={(e) => change({ q: e.target.value })} />
+          </Box>
+          <HStack gap="1">
+            {[["photos", "Photos", count], ["patients", "Patients", patients.length], ["collections", "Collections", collections.length]].map(([tab, label, total]) => (
+              <Button key={tab} size="sm" variant={filters.tab === tab ? 'solid' : 'outline'} borderRadius="full" aria-pressed={filters.tab === tab}
+                onClick={() => change({ tab })}>{label} ({total == null ? '…' : total})</Button>
             ))}
-            <Text fontSize="2xs" color={C.body}>À classer : patient, vue ou étape manquant — bouton « Classer » sur chaque photo, ou cochez-en plusieurs pour classer en lot.</Text>
           </HStack>
-          <SimpleGrid columns={{ base: 1, md: 4 }} gap="2" mt="3">
-            {[["view", "Toutes les vues", CLINICAL_VIEWS], ["stage", "Toutes les étapes", CLINICAL_STAGES]].map(([key, label, options]) => (
-              <Select key={key} w="100%" aria-label={label} value={filters[key]} onChange={(e) => change({ [key]: e.target.value })}>
-                <option value="">{label}</option>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-              </Select>
-            ))}
-            <Field label="Du"><Input type="date" size="sm" aria-label="Date de début" value={filters.from} onChange={(e) => change({ from: e.target.value })} /></Field>
-            <Field label="Au"><Input type="date" size="sm" aria-label="Date de fin" value={filters.to} onChange={(e) => change({ to: e.target.value })} /></Field>
-          </SimpleGrid>
-        </>}
-        <HStack mt="3" gap="2" flexWrap="wrap">
-          {chips.map(([key, value]) => <Button key={key} size="xs" variant="outline" onClick={() => change(key === 'patient' ? { patient: '', session: '', day: '' } : { [key]: '' })}>{value} ×</Button>)}
-          <Button size="xs" variant="plain" onClick={reset}>Tout effacer</Button>
+          <Button size="sm" variant={panelOpen ? 'solid' : 'outline'} borderRadius="full" aria-expanded={panelOpen}
+            onClick={toggleFilters}>
+            <HStack gap="1"><FiFilter /><Text>Filtres{chips.length ? ` (${chips.length})` : ''}</Text></HStack>
+          </Button>
         </HStack>
-        {saved.length > 0 && <HStack mt="2" gap="2" flexWrap="wrap">
-          <Text fontSize="2xs" color={C.body}>Mes recherches · cet appareil :</Text>
-          {saved.map((s) => <HStack key={s.id} gap="0">
-            <Button size="xs" variant="outline" onClick={() => setParams(new URLSearchParams(s.params), { replace: true })}>{s.name}</Button>
-            <Button size="xs" variant="plain" aria-label={`Retirer la recherche ${s.name}`} onClick={() => storeSaved(saved.filter((item) => item.id !== s.id))}>×</Button>
-          </HStack>)}
-        </HStack>}
-        {savedError && <Text fontSize="xs" role="alert" mt="2">{savedError}</Text>}
+        {/* cartouches : filtres rapides + filtres actifs amovibles */}
+        <HStack mt="2" gap="2" flexWrap="wrap">
+          {filters.tab === 'photos' && [["recent", "Récentes"], ["favorites", "Favorites"], ["unassigned", "À classer"]].map(([quick, label]) => (
+            <Button key={quick} size="xs" variant={filters.quick === quick ? 'solid' : 'outline'} borderRadius="full" aria-pressed={filters.quick === quick}
+              onClick={() => change({ quick })}>{label}</Button>
+          ))}
+          {chips.map(([key, value]) => <Button key={key} size="xs" variant="outline" borderRadius="full"
+            onClick={() => change(key === 'patient' ? { patient: '', session: '', day: '' } : { [key]: '' })}>{value} ×</Button>)}
+          {(chips.length > 0 || (filters.tab === 'photos' && filters.quick !== 'recent')) &&
+            <Button size="xs" variant="plain" onClick={reset}>Tout effacer</Button>}
+          {filters.tab === 'photos' && filters.quick === 'unassigned' &&
+            <Text fontSize="2xs" color={C.body}>patient, vue ou étape manquant — bouton « Classer » sur chaque photo.</Text>}
+        </HStack>
+        {/* panneau déplié : cartouches de sélection patient/spécialité/vue/étape/dates */}
+        {panelOpen && <Box mt="3" pt="3" borderTop="1px solid" borderColor={C.cardBorder}>
+          <HStack gap="2" flexWrap="wrap">
+            <Select h="30px" w="auto" minW="170px" px="3" fontSize="xs" borderRadius="full"
+              value={filters.patient} aria-label="Filtrer par patient" onChange={(e) => change({ patient: e.target.value, session: '', day: '' })}>
+              <option value="">Tous les patients / dossiers</option>
+              {dossiers.filter((d) => !d.parent_id).map((d) => <option key={d.id} value={d.id}>{d.name}{d.patient_dossier_number ? ` · ${d.patient_dossier_number}` : ''}</option>)}
+            </Select>
+            <Select h="30px" w="auto" minW="150px" px="3" fontSize="xs" borderRadius="full"
+              value={filters.specialty} aria-label="Filtrer par spécialité" onChange={(e) => change({ specialty: e.target.value })}>
+              <option value="">Toutes les spécialités</option>
+              {specialties.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
+            {filters.tab === 'photos' && <>
+              {[["view", "Toutes les vues", CLINICAL_VIEWS], ["stage", "Toutes les étapes", CLINICAL_STAGES]].map(([key, label, options]) => (
+                <Select key={key} h="30px" w="auto" minW="150px" px="3" fontSize="xs" borderRadius="full"
+                  aria-label={label} value={filters[key]} onChange={(e) => change({ [key]: e.target.value })}>
+                  <option value="">{label}</option>{options.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                </Select>
+              ))}
+              <Input type="date" h="30px" w="auto" px="3" fontSize="xs" borderRadius="full" aria-label="Date de début"
+                value={filters.from} onChange={(e) => change({ from: e.target.value })} />
+              <Input type="date" h="30px" w="auto" px="3" fontSize="xs" borderRadius="full" aria-label="Date de fin"
+                value={filters.to} onChange={(e) => change({ to: e.target.value })} />
+            </>}
+            <Box flex="1" />
+            <Button size="xs" variant="outline" borderRadius="full" disabled={!storageKey} onClick={() => setSaveOpen(true)}>Enregistrer cette recherche</Button>
+          </HStack>
+          {saved.length > 0 && <HStack mt="2" gap="2" flexWrap="wrap">
+            <Text fontSize="2xs" color={C.body}>Mes recherches · cet appareil :</Text>
+            {saved.map((s) => <HStack key={s.id} gap="0">
+              <Button size="xs" variant="outline" borderRadius="full" onClick={() => setParams(new URLSearchParams(s.params), { replace: true })}>{s.name}</Button>
+              <Button size="xs" variant="plain" aria-label={`Retirer la recherche ${s.name}`} onClick={() => storeSaved(saved.filter((item) => item.id !== s.id))}>×</Button>
+            </HStack>)}
+          </HStack>}
+          {savedError && <Text fontSize="xs" role="alert" mt="2">{savedError}</Text>}
+        </Box>}
       </Card>
       {contextError && <Card p="4"><Text role="alert">{contextError}</Text><Button size="xs" onClick={() => setContextRetry((v) => v + 1)}>Réessayer</Button></Card>}
       {!context && !contextError && <Text fontSize="sm">Chargement de la photothèque…</Text>}
