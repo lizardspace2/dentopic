@@ -80,6 +80,10 @@ async function presCard(page, name) {
   await page.waitForTimeout(1800);
   ok('carte créée visible', await page.locator(`text=${A}`).count() > 0);
 
+  // ---- bandeau de création (modèles visibles d'emblée, façon Canva) -----------
+  ok('bandeau « Créer une présentation »', await page.locator('text=Créer une présentation').count() > 0);
+  ok('bandeau : carte vierge + modèles', await page.locator('button:has-text("Document vierge")').count() > 0
+    && await page.locator('button:has-text("Cas esthétique sourire")').count() > 0);
   // ---- création depuis la galerie de modèles ------------------------------------
   await page.locator('button:has-text("Démarrer depuis un template")').click();
   await page.waitForTimeout(600);
@@ -90,7 +94,8 @@ async function presCard(page, name) {
   ok('galerie : catégories visibles',
     await page.locator('button:has-text("Pour le patient")').count() > 0
     && await page.locator('button:has-text("Pro & laboratoire")').count() > 0);
-  await page.locator('button:has-text("Cas esthétique sourire")').first().click();
+  // .last() = carte de la modale (le bandeau de la page affiche le même modèle)
+  await page.locator('button:has-text("Cas esthétique sourire")').last().click();
   await page.waitForTimeout(500);
   await page.locator('input[placeholder*="esthétique"]').fill(B);
   await page.locator('button:has-text("Créer la présentation")').click();
@@ -214,7 +219,8 @@ async function presCard(page, name) {
   await cardA2.locator('button[aria-label="Ajouter une diapositive"]').click();
   await page.waitForTimeout(1000);
   // type Photo par défaut : pool affiché → cliquer la 1re vignette
-  const poolImg = page.locator('img[src*="storage"]').first();
+  // (.last() = modale — les couvertures de cartes contiennent aussi des img storage)
+  const poolImg = page.locator('img[src*="storage"]').last();
   ok('pool de photos proposé dans la modale', await poolImg.count() > 0);
   if (await poolImg.count()) {
     await poolImg.click();

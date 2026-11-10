@@ -480,6 +480,24 @@ export function sharePresentation(id, enabled, expiresDays = null) {
   return updatePresentation(id, fields)
 }
 
+/** { presentationId: storage_path | media_url } — première diapo avec visuel,
+ *  pour la vignette de couverture des cartes présentations. */
+export function coverByPresentation() {
+  return supabase
+    .from('presentation_slides')
+    .select('presentation_id,type,media_url,photo:patient_photos(storage_path),montage:montages(export_url)')
+    .order('position', { ascending: true })
+    .then(({ data }) => {
+      const out = {}
+      ;(data || []).forEach((s) => {
+        if (out[s.presentation_id]) return
+        const path = s.photo?.storage_path || s.montage?.export_url || s.media_url
+        if (path) out[s.presentation_id] = path
+      })
+      return out
+    })
+}
+
 /** { presentationId: slideCount } */
 export function slideCountByPresentation() {
   return supabase

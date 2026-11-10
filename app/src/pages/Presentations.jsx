@@ -26,7 +26,7 @@ import {
   listPresentationSlides, addPresentationSlide, removePresentationSlide,
   updatePresentationSlide,
   sharePresentation, listPhotos, listMontages, listVideoProjects,
-  listDossiers, getPatient, listPhotosByDossier,
+  listDossiers, getPatient, listPhotosByDossier, coverByPresentation,
 } from '../api'
 import { PRESENTATION_TEMPLATES, BILAN_SLIDES } from '../presentationTemplates'
 import { clinicalLabels } from '../clinical'
@@ -46,6 +46,7 @@ export default function Presentations() {
   const wsId = workspace?.id
   const [pres, setPres] = useState([])
   const [slideCounts, setSlideCounts] = useState({})
+  const [covers, setCovers] = useState({})
   const [dossiers, setDossiers] = useState([])
   const [tab, setTab] = useState('Toutes')
   const [q, setQ] = useState('')
@@ -59,10 +60,10 @@ export default function Presentations() {
 
   const reload = async () => {
     if (!wsId) return
-    const [p, s, d] = await Promise.all([
-      listPresentations(wsId), slideCountByPresentation(), listDossiers(wsId),
+    const [p, s, d, cv] = await Promise.all([
+      listPresentations(wsId), slideCountByPresentation(), listDossiers(wsId), coverByPresentation(),
     ])
-    setPres(p); setSlideCounts(s); setDossiers(d)
+    setPres(p); setSlideCounts(s); setDossiers(d); setCovers(cv)
   }
   useEffect(() => { reload() }, [wsId]) // eslint-disable-line
 
@@ -191,6 +192,41 @@ export default function Presentations() {
         <PrimaryButton icon={FiPlus} onClick={openNew}>Nouvelle présentation</PrimaryButton>
       </PageHeader>
 
+      {/* ---- bandeau de création façon Canva : modèles visibles d'emblée ---- */}
+      <Card p="4" mt="4" mb="2">
+        <HStack justify="space-between" mb="3">
+          <HStack gap="2">
+            <Box as={HiOutlineSparkles} color={C.primary} fontSize="md" />
+            <Text fontSize="sm" fontWeight="700" color={C.ink}>Créer une présentation</Text>
+            <Text fontSize="xs" color="gray.500" display={{ base: 'none', md: 'block' }}>
+              — choisissez un modèle, il se remplit avec les photos du dossier patient
+            </Text>
+          </HStack>
+          <Button size="xs" variant="ghost" color={C.primary} flexShrink={0}
+            onClick={() => setModal({ kind: 'gallery' })}>Tout voir →</Button>
+        </HStack>
+        <HStack gap="3" overflowX="auto" pb="1" align="stretch">
+          {/* modèle vierge */}
+          <Box as="button" flexShrink={0} w="148px" textAlign="left" cursor="pointer" onClick={openNew}>
+            <Center aspectRatio="16/10" borderRadius="md" border="1.5px dashed" borderColor="gray.300"
+              color="gray.400" _hover={{ borderColor: C.primary, color: C.primary }}>
+              <VStack gap="1"><FiPlus /><Text fontSize="2xs">Vierge</Text></VStack>
+            </Center>
+            <Text fontSize="2xs" fontWeight="600" color={C.ink} mt="1">Document vierge</Text>
+          </Box>
+          {PRESENTATION_TEMPLATES.map((t) => (
+            <Box key={t.key} as="button" flexShrink={0} w="148px" textAlign="left" cursor="pointer"
+              onClick={() => setModal({ kind: 'gallery', initialTpl: t })} title={t.desc}>
+              <TemplatePreview tpl={t} />
+              <HStack mt="1" justify="space-between" gap="1">
+                <Text fontSize="2xs" fontWeight="600" color={C.ink} isTruncated>{t.name}</Text>
+                <Text fontSize="2xs" color="gray.400" flexShrink={0}>{t.slides.length}d</Text>
+              </HStack>
+            </Box>
+          ))}
+        </HStack>
+      </Card>
+
       {noSlides > 0 && (
         <HStack bg={C.amberBg} border="1px solid" borderColor={C.amberBorder} borderRadius="md" px="3" py="2" my="4" gap="2"
           cursor="pointer" onClick={() => setOnlyEmpty(!onlyEmpty)}
@@ -269,9 +305,17 @@ export default function Presentations() {
             <Card key={p.id} overflow="hidden" _hover={{ borderColor: 'blue.300' }}
               cursor="pointer" onClick={() => setModal({ kind: 'detail', pres: p })}>
               <Box position="relative">
-                <Center bg="gray.100" aspectRatio="16/9" color="gray.400">
-                  <Box as={FiType} fontSize="22px" />
-                </Center>
+                {covers[p.id] ? (
+                  covers[p.id].startsWith('http') ? (
+                    <Box as="img" src={covers[p.id]} w="100%" aspectRatio="16/9" objectFit="cover" display="block" />
+                  ) : (
+                    <PhotoImg storagePath={covers[p.id]} ratio="16/9" />
+                  )
+                ) : (
+                  <Center bg="gray.100" aspectRatio="16/9" color="gray.400">
+                    <Box as={FiType} fontSize="22px" />
+                  </Center>
+                )}
                 <Box position="absolute" top="2" right="2"><Tag color={tagColor}>{tagLabel}</Tag></Box>
                 <Box position="absolute" bottom="2" left="2" bg="#1f2937" opacity="0.9" borderRadius="md" px="1.5" py="0.5">
                   <Text fontSize="2xs" color="#ffffff"><FiLayers style={{ display: 'inline' }} /> {slideCounts[p.id] || 0}</Text>
