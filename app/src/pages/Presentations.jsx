@@ -32,7 +32,7 @@ import {
 import { PRESENTATION_TEMPLATES, BILAN_SLIDES } from '../presentationTemplates'
 import { clinicalLabels } from '../clinical'
 import PresentMode from '../components/PresentMode'
-import SlideElements, { slideElements, layoutNotes, newEl } from '../components/SlideElements'
+import SlideElements, { slideElements, layoutNotes, newEl, SHAPE_DEFS, SHAPE_CSS } from '../components/SlideElements'
 
 const TABS = ['Toutes', 'Brouillons', 'Récentes', 'Archivées']
 const SLIDE_TYPES = [
@@ -570,6 +570,11 @@ const EL_SIZE_CQH = { xs: 2.5, sm: 3.5, md: 5, lg: 7.5, xl: 11 }
 const EL_COLORS = ['#f8fafc', '#94a3b8', '#0f172a', '#3b82f6', '#0d9488', '#f59e0b', '#ef4444']
 const EL_FILLS = ['#0d9488', '#3b82f6', '#7c3aed', '#f59e0b', '#ef4444', '#0f172a', '#ffffff']
 
+// Petite vignette de forme — même rendu que l'élément sur la toile.
+function ShapeGlyph({ kind, color = 'gray.600', w = '24px', h = '24px' }) {
+  return <Box w={w} h={h} bg={color} flexShrink={0} style={SHAPE_CSS[kind] || {}} />
+}
+
 function sizeKeyOf(el) {
   const v = el.size || 5
   return Object.entries(EL_SIZE_CQH).reduce((best, [k, x]) => (Math.abs(x - v) < Math.abs(EL_SIZE_CQH[best] - v) ? k : best), 'md')
@@ -638,12 +643,26 @@ function ElementPanel({ el, busy, onPatch, onOrder, onDup, onDel, onBack, onPick
       )}
       {el.t === 'shape' && (
         <>
+          <Text fontSize="2xs" color="gray.500">Type de forme</Text>
+          <HStack gap="1" flexWrap="wrap">
+            {SHAPE_DEFS.map(([k, l]) => (
+              <Center key={k} as="button" w="26px" h="26px" borderRadius="sm"
+                border="1.5px solid" cursor="pointer" title={l}
+                borderColor={(el.shape || 'rect') === k ? C.primary : 'gray.200'}
+                _hover={{ borderColor: C.primary }}
+                onClick={() => set({ shape: k })}>
+                <ShapeGlyph kind={k} color={(el.shape || 'rect') === k ? C.primary : 'gray.500'} w="16px" h="16px" />
+              </Center>
+            ))}
+          </HStack>
           <Text fontSize="2xs" color="gray.500">Remplissage</Text>
           <HStack gap="1.5" flexWrap="wrap">
             {EL_FILLS.map((c) => <Swatch key={c} value={c} cur={el.fill} onPick={(v) => set({ fill: v })} />)}
           </HStack>
-          <Button size="xs" variant={el.radius ? 'solid' : 'outline'} fontSize="2xs"
-            onClick={() => set({ radius: !el.radius })}>Coins arrondis</Button>
+          {(el.shape || 'rect') === 'rect' && (
+            <Button size="xs" variant={el.radius ? 'solid' : 'outline'} fontSize="2xs"
+              onClick={() => set({ radius: !el.radius })}>Coins arrondis</Button>
+          )}
         </>
       )}
       <Field label="Ordre de superposition">
@@ -690,6 +709,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const [poolMode, setPoolMode] = useState('slide') // 'slide' | 'el-add' | 'el-swap'
   const [poolItems, setPoolItems] = useState([])
   const [selEl, setSelEl] = useState(null)        // id de l'élément sélectionné sur la toile
+  const [shapeOpen, setShapeOpen] = useState(false) // menu des formes
   const [hist, setHist] = useState([])            // annuler : pile d'états d'éléments
   const [future, setFuture] = useState([])        // rétablir
 
@@ -702,7 +722,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const curEl = els.find((e) => e.id === selEl) || null
   useEffect(() => {
     setForm({ title: cur?.title || '', text: cur?.text_content || '' })
-    setSelEl(null); setHist([]); setFuture([])
+    setSelEl(null); setHist([]); setFuture([]); setShapeOpen(false)
   }, [sel, cur?.id]) // eslint-disable-line
   useEffect(() => {
     if (!pool || !wsId) { setPoolItems([]); return }
@@ -847,7 +867,16 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
     setPool(null); await load(); setBusy(false)
   }
 
-  const openPool = (kind, mode) => { setPool(kind); setPoolMode(mode) }
+  const openPool = (kind, mode) => { setPool(kind); setPoolMode(mode); setShapeOpen(false) }
+  const addShape = (k) => {
+    addEl(newEl({
+      t: 'shape', shape: k,
+      x: 35, y: k === 'line' ? 48 : 35,
+      w: k === 'line' ? 60 : 30, h: k === 'line' ? 2.5 : 30,
+      fill: '#3b82f6', radius: k === 'rect',
+    }))
+    setShapeOpen(false)
+  }
   const onPick = (m) => {
     const path = pool === 'photo' ? m.storage_path : m.export_url
     if (poolMode === 'slide') return replaceMedia(m.id)
@@ -913,7 +942,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
                     [FiType, 'Texte', () => addEl(newEl({ t: 'text', x: 10, y: 42, w: 80, h: 16, text: 'Nouveau texte', size: 6, color: '#f8fafc', align: 'center' }))],
                     [FiImage, 'Photo', () => openPool('photo', 'el-add')],
                     [FiLayers, 'Montage', () => openPool('montage', 'el-add')],
-                    [FiSquare, 'Forme', () => addEl(newEl({ t: 'shape', x: 35, y: 35, w: 30, h: 30, fill: '#3b82f6', radius: true }))],
+                    [FiSquare, 'Forme', () => { setShapeOpen(!shapeOpen); setPool(null) }],
                   ].map(([I, l, fn]) => (
                     <Button key={l} size="xs" variant="outline" fontSize="2xs" onClick={fn}>
                       <FiPlus /><Box as={I} />{l}
@@ -986,6 +1015,28 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
               )}
             </Box>
           </HStack>
+
+          {/* menu des formes */}
+          {shapeOpen && (
+            <Box mt="3" border="1px solid" borderColor={C.cardBorder} borderRadius="md" p="2.5">
+              <Text fontSize="2xs" fontWeight="600" color="gray.500" mb="2">
+                Choisir une forme à poser sur la diapo
+              </Text>
+              <HStack gap="2.5" flexWrap="wrap">
+                {SHAPE_DEFS.map(([k, l]) => (
+                  <VStack key={k} as="button" gap="1" w="52px" cursor="pointer"
+                    aria-label={`Forme ${l}`} onClick={() => addShape(k)}>
+                    <Center w="38px" h="38px" borderRadius="md" bg="gray.50"
+                      border="1px solid" borderColor="gray.200"
+                      _hover={{ borderColor: C.primary, bg: C.softBlue }}>
+                      <ShapeGlyph kind={k} w="22px" h="22px" />
+                    </Center>
+                    <Text fontSize="2xs" color="gray.500">{l}</Text>
+                  </VStack>
+                ))}
+              </HStack>
+            </Box>
+          )}
 
           {/* remplacement du média */}
           {pool && cur && (

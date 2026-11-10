@@ -57,6 +57,24 @@ export function newEl(fields) {
   return { id: `e${Date.now().toString(36)}${seq++}`, x: 15, y: 15, w: 70, h: 70, z: 99, ...fields }
 }
 
+// Formes disponibles — rendues en CSS (clip-path / border-radius).
+export const SHAPE_DEFS = [
+  ['rect', 'Rectangle'], ['pill', 'Pilule'], ['ellipse', 'Ellipse'],
+  ['triangle', 'Triangle'], ['diamond', 'Losange'], ['arrow', 'Flèche'],
+  ['star', 'Étoile'], ['hexagon', 'Hexagone'], ['line', 'Ligne'],
+]
+export const SHAPE_CSS = {
+  rect: {},
+  pill: { borderRadius: '999px' },
+  ellipse: { borderRadius: '50%' },
+  triangle: { clipPath: 'polygon(50% 0%, 100% 100%, 0% 100%)' },
+  diamond: { clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' },
+  arrow: { clipPath: 'polygon(0% 28%, 60% 28%, 60% 0%, 100% 50%, 60% 100%, 60% 72%, 0% 72%)' },
+  star: { clipPath: 'polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%)' },
+  hexagon: { clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' },
+  line: {},
+}
+
 // ---- éléments individuels ----------------------------------------------------
 
 function ElemImg({ el }) {
@@ -74,7 +92,12 @@ function ElemBody({ el }) {
     return <Box as="video" src={el.url} w="100%" h="100%" objectFit="contain" controls={false} muted />
   }
   if (el.t === 'shape') {
-    return <Box w="100%" h="100%" bg={el.fill || '#0d9488'} borderRadius={el.radius ? 'md' : 0} opacity={el.opacity ?? 1} />
+    const kind = el.shape || 'rect'
+    return (
+      <Box w="100%" h="100%" bg={el.fill || '#0d9488'} opacity={el.opacity ?? 1}
+        style={SHAPE_CSS[kind] || {}}
+        borderRadius={kind === 'rect' && el.radius ? 'md' : undefined} />
+    )
   }
   // texte
   return (
