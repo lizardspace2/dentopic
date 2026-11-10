@@ -121,7 +121,10 @@ async function presCard(page, name) {
   const order = async () => page.locator('[data-slide-title]')
     .evaluateAll((els) => els.map((e) => e.dataset.slideTitle));
   const orderBefore = await order();
-  await page.locator('button[aria-label="Descendre la diapositive"]').nth(1).click();
+  // l'éditeur a un seul bouton « Descendre » : sélectionner la diapo 2 d'abord
+  await page.locator('[data-slide-title]').nth(1).click();
+  await page.waitForTimeout(300);
+  await page.locator('button[aria-label="Descendre la diapositive"]').first().click();
   await page.waitForTimeout(900);
   const orderAfter = await order();
   ok('diapo réorganisée (flèche)', orderBefore.length > 2 && orderBefore[1] === orderAfter[2] && orderBefore[2] === orderAfter[1],
@@ -215,8 +218,8 @@ async function presCard(page, name) {
   ok('diapo texte ajoutée', await page.locator(`text=${A}`).count() > 0);
 
   // ---- ajout d'une diapo photo (pool de vraies photos) ---------------------------------
-  const cardA2 = await presCard(page, A);
-  await cardA2.locator('button[aria-label="Ajouter une diapositive"]').click();
+  // l'éditeur est encore ouvert (l'ajout y revient) — bouton du pied de modale
+  await page.locator('button:has-text("Ajouter une diapositive")').last().click();
   await page.waitForTimeout(1000);
   // type Photo par défaut : pool affiché → cliquer la 1re vignette
   // (.last() = modale — les couvertures de cartes contiennent aussi des img storage)
@@ -232,9 +235,8 @@ async function presCard(page, name) {
   }
 
   // ---- détail : liste + suppression d'une diapo -----------------------------------------
-  const cardA3 = await presCard(page, A);
-  await cardA3.locator('button[aria-label="Voir les diapositives"]').click();
-  await page.waitForTimeout(1000);
+  // la modale d'ajout est revenue à l'éditeur — les 2 diapos sont déjà visibles
+  await page.waitForTimeout(800);
   ok('détail : 2 diapos listées', await page.locator('text=/2 diapositive\\(s\\) ·/').count() > 0);
   await shot(page, 'p02-detail-slides');
   await page.locator('button[aria-label="Retirer la diapositive"]').first().click();

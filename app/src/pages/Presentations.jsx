@@ -30,6 +30,7 @@ import {
 } from '../api'
 import { PRESENTATION_TEMPLATES, BILAN_SLIDES } from '../presentationTemplates'
 import { clinicalLabels } from '../clinical'
+import { usePhotoUrl } from '../media'
 import PresentMode from '../components/PresentMode'
 
 const TABS = ['Toutes', 'Brouillons', 'Récentes', 'Archivées']
@@ -452,13 +453,16 @@ export default function Presentations() {
           onClose={() => setModal(modal.back || null)} />
       )}
 
-      {/* ---- détail : diapositives ---- */}
-      <DetailModal modal={modal} onClose={() => setModal(null)}
-        onAdd={() => setModal({ kind: 'add', pres: modal.pres })}
+      {/* ---- éditeur de diapositives (façon Canva) ---- */}
+      <EditorModal modal={modal} wsId={wsId} onClose={() => setModal(null)}
+        onAdd={(insertAt) => setModal({ kind: 'add', pres: modal.pres, insertAt,
+          back: { kind: 'detail', pres: modal.pres, focus: insertAt } })}
         onPresent={(slides) => setModal({ kind: 'present', pres: modal.pres, slides, back: { kind: 'detail', pres: modal.pres } })} />
 
       {/* ---- ajouter une diapositive ---- */}
-      <AddSlideModal modal={modal} wsId={wsId} onClose={() => setModal(null)} onDone={reload} />
+      <AddSlideModal modal={modal} wsId={wsId}
+        onClose={() => setModal(modal?.back || null)}
+        onDone={() => { reload(); setModal(modal?.back || null) }} />
 
       {/* ---- partage ---- */}
       <Modal open={modal?.kind === 'share'} onClose={() => setModal(null)}
@@ -530,100 +534,356 @@ export default function Presentations() {
   )
 }
 
-// ---- Détail : liste des diapositives -------------------------------------------
+// ---- Éditeur de présentation façon Canva --------------------------------------
+// Toile centrale (rendu réel 16:9 de la diapo), filmstrip glissable en bas
+// (« + » insère à cette position), panneau de propriétés à droite.
 
-function DetailModal({ modal, onClose, onAdd, onPresent }) {
+// Rendu d'une diapo dans la toile centrale — même logique que PresentMode.
+function SlideCanvas({ s }) {
+  if (!s) return null
+  const path = s.photo?.storage_path || s.montage?.export_url
+  return (
+    <Box aspectRatio="16/9" w="100%" borderRadius="lg" overflow="hidden" position="relative"
+      bg={s.type === 'text' ? '#1e3a5f' : '#0b1120'} boxShadow="lg">
+      {s.type === 'text' ? (
+        <Center h="100%" flexDirection="column" gap="3" px="10" textAlign="center">
+          <Text fontSize={{ base: 'lg', md: '2xl' }} fontWeight="700" color="#f1f5f9">
+            {s.title || 'Diapositive'}
+          </Text>
+          {s.text_content && (
+            <Text fontSize="sm" color="#94a3b8" whiteSpace="pre-line" lineHeight="1.6">
+              {s.text_content}
+            </Text>
+          )}
+        </Center>
+      ) : path ? (
+        <CanvasImg storagePath={path} />
+      ) : s.media_url ? (
+        <Box as="img" src={s.media_url} w="100%" h="100%" objectFit="contain" />
+      ) : (
+        <Center h="100%" flexDirection="column" gap="2" color="#475569">
+          <Box as={s.type === 'video' ? FiVideo : FiImage} fontSize="3xl" />
+          <Text fontSize="xs">Élément à ajouter à cette diapositive</Text>
+        </Center>
+      )}
+      {s.type !== 'text' && s.title && (
+        <Box position="absolute" bottom="0" left="0" right="0" px="4" pt="6" pb="2"
+          bg="linear-gradient(transparent, rgba(0,0,0,0.7))">
+          <Text fontSize="sm" fontWeight="600" color="#fff">{s.title}</Text>
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+// Image signée en « contain » pour la toile (les vignettes utilisent PhotoImg cover).
+function CanvasImg({ storagePath }) {
+  const url = usePhotoUrl(storagePath)
+  if (!url) return <Center h="100%" color="#334155"><FiImage /></Center>
+  return <Box as="img" src={url} w="100%" h="100%" objectFit="contain" draggable={false} />
+}
+
+// Miniature du filmstrip.
+function SlideThumb({ s }) {
+  const path = s.photo?.storage_path || s.montage?.export_url
+  const I = s.type === 'text' ? FiType : s.type === 'video' ? FiVideo : s.type === 'montage' ? FiLayers : FiImage
+  return (
+    <Box position="relative" aspectRatio="16/9" borderRadius="sm" overflow="hidden"
+      bg={s.type === 'text' ? '#1e3a5f' : '#0f172a'}>
+      {path ? (
+        <PhotoImg storagePath={path} ratio="16/9" />
+      ) : s.media_url ? (
+        <Box as="img" src={s.media_url} w="100%" h="100%" objectFit="cover" />
+      ) : (
+        <Center h="100%" color="rgba(255,255,255,0.5)"><Box as={I} fontSize="xs" /></Center>
+      )}
+      {s.type === 'text' && s.title && (
+        <Center position="absolute" inset="0" px="1">
+          <Text fontSize="7px" fontWeight="700" color="#fff" textAlign="center"
+            lineHeight="1.25" noOfLines={3}>{s.title}</Text>
+        </Center>
+      )}
+    </Box>
+  )
+}
+
+function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const p = modal?.pres
   const [slides, setSlides] = useState([])
+  const [sel, setSel] = useState(0)
   const [busy, setBusy] = useState(false)
   const [rmSlide, setRmSlide] = useState(null)
+  const [form, setForm] = useState({ title: '', text: '' })
+  const [dragFrom, setDragFrom] = useState(null)
+  const [dropAt, setDropAt] = useState(null)
+  const [pool, setPool] = useState(null)          // remplacer le média : 'photo'|'montage'|'video'
+  const [poolItems, setPoolItems] = useState([])
+
+  const load = () => p && listPresentationSlides(p.id).then(setSlides)
   useEffect(() => {
-    if (modal?.kind === 'detail' && p) listPresentationSlides(p.id).then(setSlides)
+    if (modal?.kind === 'detail' && p) { setSel(modal.focus ?? 0); setPool(null); load() }
   }, [modal]) // eslint-disable-line
+  const cur = slides[Math.min(sel, Math.max(0, slides.length - 1))] || null
+  useEffect(() => {
+    setForm({ title: cur?.title || '', text: cur?.text_content || '' })
+  }, [sel, cur?.id]) // eslint-disable-line
+  useEffect(() => {
+    if (!pool || !wsId) { setPoolItems([]); return }
+    const fns = {
+      photo: () => listPhotos(wsId, { limit: 60 }),
+      montage: () => listMontages(wsId),
+      video: () => listVideoProjects(wsId),
+    }
+    fns[pool]().then(setPoolItems)
+  }, [pool, wsId])
   if (!p) return null
+
+  // Renumérote toutes les positions après un changement structurel.
+  const persistOrder = async (next) => {
+    setSlides(next); setBusy(true)
+    for (const [i, s] of next.entries()) {
+      if (s.position !== i) await updatePresentationSlide(s.id, { position: i })
+    }
+    setBusy(false)
+  }
+  const move = (i, d) => {
+    const j = i + d
+    if (j < 0 || j >= slides.length || busy) return
+    const next = [...slides]; [next[i], next[j]] = [next[j], next[i]]
+    if (sel === i) setSel(j); else if (sel === j) setSel(i)
+    persistOrder(next)
+  }
+  const onDrop = (to) => {
+    setDropAt(null)
+    if (dragFrom == null || dragFrom === to) { setDragFrom(null); return }
+    const next = [...slides]
+    const [m] = next.splice(dragFrom, 1)
+    next.splice(to, 0, m)
+    setSel(to); setDragFrom(null)
+    persistOrder(next)
+  }
+  const saveFields = async () => {
+    if (!cur) return
+    await updatePresentationSlide(cur.id, {
+      title: form.title.trim() || null,
+      text_content: form.text.trim() || null,
+    })
+    load()
+  }
+  const duplicateSlide = async () => {
+    if (!cur || busy) return
+    setBusy(true)
+    for (const s of slides.slice(sel + 1)) {
+      await updatePresentationSlide(s.id, { position: (s.position ?? 0) + 1 })
+    }
+    await addPresentationSlide(p.id, {
+      position: (cur.position ?? sel) + 1, type: cur.type, title: cur.title,
+      text_content: cur.text_content, media_url: cur.media_url,
+      before_url: cur.before_url, after_url: cur.after_url,
+      photo_id: cur.photo_id, montage_id: cur.montage_id,
+      video_project_id: cur.video_project_id, timeline_photo_ids: cur.timeline_photo_ids,
+      notes: cur.notes,
+    })
+    await load(); setSel(sel + 1); setBusy(false)
+  }
   const removeSlide = async () => {
     if (!rmSlide) return
     setBusy(true)
     await removePresentationSlide(rmSlide)
-    setSlides((l) => l.filter((s) => s.id !== rmSlide))
-    setBusy(false); setRmSlide(null)
-  }
-  // Réordonne : échange la position de la diapo i avec sa voisine.
-  const move = async (i, d) => {
-    const j = i + d
-    if (j < 0 || j >= slides.length || busy) return
-    const a = slides[i], b = slides[j]
-    const next = [...slides]; next[i] = b; next[j] = a
-    setSlides(next)
-    setBusy(true)
-    await updatePresentationSlide(a.id, { position: b.position })
-    await updatePresentationSlide(b.id, { position: a.position })
+    const next = slides.filter((s) => s.id !== rmSlide)
+    setRmSlide(null)
+    setSel((i) => Math.max(0, Math.min(i, next.length - 1)))
+    await persistOrder(next)
     setBusy(false)
   }
+  const replaceMedia = async (mediaId) => {
+    if (!cur || !pool) return
+    setBusy(true)
+    await updatePresentationSlide(cur.id, {
+      photo_id: pool === 'photo' ? mediaId : null,
+      montage_id: pool === 'montage' ? mediaId : null,
+      video_project_id: pool === 'video' ? mediaId : null,
+      media_url: null,
+    })
+    setPool(null); await load(); setBusy(false)
+  }
+
+  const typeLabel = (t) => SLIDE_TYPES.find(([k]) => k === t)?.[1] || t
+  const InsertBtn = ({ at }) => (
+    <Center as="button" aria-label={`Insérer une diapositive à la position ${at + 1}`}
+      w="18px" h="18px" flexShrink={0} borderRadius="full" fontSize="2xs"
+      bg="gray.200" color="gray.500" cursor="pointer" opacity="0.7"
+      _hover={{ bg: C.primary, color: '#fff', opacity: 1 }}
+      onClick={() => onAdd?.(at)}>
+      <FiPlus />
+    </Center>
+  )
+
   return (
     <Modal open={modal?.kind === 'detail'} onClose={onClose}
       title={p.name} subtitle={`${slides.length} diapositive(s) · modifiée ${ago(p.updated_at)}`}
-      width="560px"
+      width="1150px"
       footer={<>
+        <Text fontSize="2xs" color="gray.400" mr="auto" display={{ base: 'none', md: 'block' }}>
+          Glissez les vignettes pour réordonner · « + » insère une diapo à cette position
+        </Text>
         <Button variant="outline" size="sm" disabled={!slides.length}
           onClick={() => onPresent?.(slides)}>
           <FiPlay /> Présenter
         </Button>
-        <PrimaryButton icon={FiPlus} onClick={onAdd}>Ajouter une diapositive</PrimaryButton>
+        <PrimaryButton icon={FiPlus} onClick={() => onAdd?.(slides.length)}>
+          Ajouter une diapositive
+        </PrimaryButton>
       </>}>
       {!slides.length ? (
-        <Text fontSize="sm" color="gray.500" py="3">
-          Aucune diapositive — ajoutez des photos, montages, vidéos ou diapos texte.
-        </Text>
+        <VStack py="6" gap="3" align="center">
+          <Text fontSize="sm" color="gray.500">
+            Aucune diapositive — ajoutez des photos, montages, vidéos ou diapos texte.
+          </Text>
+          <PrimaryButton icon={FiPlus} onClick={() => onAdd?.(0)}>Ajouter une diapositive</PrimaryButton>
+        </VStack>
       ) : (
-        <VStack align="stretch" gap="2" maxH="400px" overflowY="auto">
-          {slides.map((s, i) => (
-            <HStack key={s.id} data-slide-title={s.title || s.type}
-              border="1px solid" borderColor={C.cardBorder} borderRadius="md" px="3" py="2">
-              <Text fontSize="2xs" color="gray.400" w="16px">{i + 1}</Text>
-              <Box w="56px" flexShrink={0}>
-                {s.photo?.storage_path ? (
-                  <PhotoImg storagePath={s.photo.storage_path} ratio="16/10" />
-                ) : s.montage?.export_url ? (
-                  <PhotoImg storagePath={s.montage.export_url} ratio="16/10" />
-                ) : s.media_url ? (
-                  <Box as="img" src={s.media_url} w="56px" h="35px" objectFit="cover" borderRadius="sm" />
+        <>
+          <HStack align="stretch" gap="4">
+            {/* toile centrale */}
+            <Box flex="1" minW="0" bg="gray.50" border="1px solid" borderColor={C.cardBorder}
+              borderRadius="lg" p="4">
+              <SlideCanvas s={cur} />
+              <HStack mt="3" justify="center" gap="2">
+                <Button size="xs" variant="outline" disabled={sel === 0}
+                  onClick={() => setSel(sel - 1)}><FiChevronUp style={{ transform: 'rotate(-90deg)' }} /> Préc.</Button>
+                <Text fontSize="xs" color="gray.500" fontVariantNumeric="tabular-nums">
+                  {Math.min(sel, slides.length - 1) + 1} / {slides.length}
+                </Text>
+                <Button size="xs" variant="outline" disabled={sel >= slides.length - 1}
+                  onClick={() => setSel(sel + 1)}>Suiv. <FiChevronDown style={{ transform: 'rotate(-90deg)' }} /></Button>
+              </HStack>
+            </Box>
+            {/* propriétés de la diapo sélectionnée */}
+            <VStack w="235px" flexShrink={0} align="stretch" gap="3">
+              <HStack justify="space-between">
+                <Text fontSize="2xs" fontWeight="700" color="gray.500">
+                  DIAPOSITIVE {Math.min(sel, slides.length - 1) + 1}
+                </Text>
+                <Tag color="gray">{typeLabel(cur?.type)}</Tag>
+              </HStack>
+              <HStack gap="1.5">
+                <Button size="xs" variant="outline" flex="1" disabled={sel === 0 || busy}
+                  aria-label="Monter la diapositive" onClick={() => move(sel, -1)}>
+                  <FiChevronUp style={{ transform: 'rotate(-90deg)' }} /> Reculer
+                </Button>
+                <Button size="xs" variant="outline" flex="1" disabled={sel >= slides.length - 1 || busy}
+                  aria-label="Descendre la diapositive" onClick={() => move(sel, 1)}>
+                  <FiChevronDown style={{ transform: 'rotate(-90deg)' }} /> Avancer
+                </Button>
+              </HStack>
+              <Field label="Titre">
+                <Input size="sm" fontSize="xs" value={form.title}
+                  placeholder="Titre de la diapositive"
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  onBlur={saveFields} />
+              </Field>
+              <Field label={cur?.type === 'text' ? 'Texte' : 'Légende (optionnel)'}>
+                <Box as="textarea" rows="3" w="100%" fontSize="xs" px="2" py="1.5"
+                  border="1px solid" borderColor={C.cardBorder} borderRadius="md"
+                  placeholder="Texte affiché sur la diapositive…"
+                  value={form.text}
+                  onChange={(e) => setForm({ ...form, text: e.target.value })}
+                  onBlur={saveFields} />
+              </Field>
+              {cur && cur.type !== 'text' && (
+                <Button size="xs" variant="outline"
+                  onClick={() => setPool(pool ? null : cur.type === 'montage' ? 'montage' : cur.type === 'video' ? 'video' : 'photo')}>
+                  <FiImage /> {pool ? 'Fermer le choix' : 'Remplacer le média'}
+                </Button>
+              )}
+              <HStack gap="1.5">
+                <Button size="xs" variant="outline" flex="1" disabled={busy}
+                  onClick={duplicateSlide}><FiCopy /> Dupliquer</Button>
+                <Button size="xs" variant="outline" flex="1" color="red.500" disabled={busy}
+                  onClick={() => setRmSlide(cur.id)}><FiTrash2 /> Supprimer</Button>
+              </HStack>
+            </VStack>
+          </HStack>
+
+          {/* remplacement du média */}
+          {pool && cur && (
+            <Box mt="3" border="1px solid" borderColor={C.cardBorder} borderRadius="md" p="2">
+              <Text fontSize="2xs" fontWeight="600" color="gray.500" mb="2">
+                Choisir {pool === 'photo' ? 'une photo' : pool === 'montage' ? 'un montage' : 'une vidéo'} de remplacement
+              </Text>
+              <Box maxH="170px" overflowY="auto">
+                {!poolItems.length ? (
+                  <Text fontSize="xs" color="gray.400" py="4" textAlign="center">Aucun élément disponible</Text>
                 ) : (
-                  <Center bg="gray.100" borderRadius="sm" h="35px">
-                    <Box as={s.type === 'text' ? FiType : s.type === 'video' ? FiVideo : FiLayers} color="gray.400" fontSize="xs" />
-                  </Center>
+                  <SimpleGrid columns={8} gap="2">
+                    {poolItems.map((m) => {
+                      const path = pool === 'photo' ? m.storage_path : m.export_url
+                      return (
+                        <Box key={m.id} borderRadius="md" overflow="hidden" cursor="pointer"
+                          border="2px solid" borderColor="transparent"
+                          _hover={{ borderColor: C.primary }} onClick={() => replaceMedia(m.id)}>
+                          {path ? <PhotoImg storagePath={path} ratio="1" />
+                            : <Center bg="gray.100" aspectRatio="1"><Box as={FiLayers} color="gray.400" /></Center>}
+                        </Box>
+                      )
+                    })}
+                  </SimpleGrid>
                 )}
               </Box>
-              <Box flex="1" minW="0">
-                <Text fontSize="xs" fontWeight="600" color={C.ink} isTruncated>
-                  {s.title || SLIDE_TYPES.find(([k]) => k === s.type)?.[1] || s.type}
-                </Text>
-                <Text fontSize="2xs" color="gray.400" isTruncated>
-                  {SLIDE_TYPES.find(([k]) => k === s.type)?.[1] || s.type}
-                  {s.text_content ? ` — ${s.text_content.slice(0, 60)}` : ''}
-                </Text>
-              </Box>
-              <Tag color="gray">{s.type}</Tag>
-              <VStack gap="0" flexShrink={0}>
-                <Box as="button" aria-label="Monter la diapositive" color="gray.400"
-                  fontSize="xs" cursor={i === 0 ? 'default' : 'pointer'}
-                  opacity={i === 0 ? 0.3 : 1} _hover={{ color: C.primary }}
-                  onClick={() => move(i, -1)}><FiChevronUp /></Box>
-                <Box as="button" aria-label="Descendre la diapositive" color="gray.400"
-                  fontSize="xs" cursor={i === slides.length - 1 ? 'default' : 'pointer'}
-                  opacity={i === slides.length - 1 ? 0.3 : 1} _hover={{ color: C.primary }}
-                  onClick={() => move(i, 1)}><FiChevronDown /></Box>
-              </VStack>
-              <Tip label="Retirer cette diapositive">
-                <Box as="button" aria-label="Retirer la diapositive" color="gray.400" p="1"
-                  cursor={busy ? 'wait' : 'pointer'} _hover={{ color: 'red.500' }}
-                  onClick={() => setRmSlide(s.id)}>
-                  <FiX />
+            </Box>
+          )}
+
+          {/* filmstrip : glisser-déposer + insertion « + » entre les diapos */}
+          <HStack mt="4" gap="1.5" overflowX="auto" py="1" align="center" minH="74px">
+            {slides.map((s, i) => (
+              <HStack key={s.id} gap="1.5" align="center" flexShrink={0}>
+                <InsertBtn at={i} />
+                <Box position="relative" w="96px" flexShrink={0} cursor="grab" role="group"
+                  data-slide-title={s.title || s.type}
+                  draggable
+                  onDragStart={() => setDragFrom(i)}
+                  onDragOver={(e) => { e.preventDefault(); setDropAt(i) }}
+                  onDragLeave={() => setDropAt((d) => (d === i ? null : d))}
+                  onDrop={() => onDrop(i)}
+                  onDragEnd={() => { setDragFrom(null); setDropAt(null) }}
+                  border="2px solid"
+                  borderColor={i === sel ? C.primary : dropAt === i && dragFrom != null ? 'blue.300' : 'transparent'}
+                  borderRadius="md" opacity={dragFrom === i ? 0.4 : 1}
+                  _hover={{ borderColor: i === sel ? C.primary : 'gray.300' }}
+                  onClick={() => setSel(i)}>
+                  <SlideThumb s={s} />
+                  <Center position="absolute" top="0.5" left="0.5" minW="14px" h="14px" px="0.5"
+                    borderRadius="sm" bg="rgba(15,23,42,0.75)" color="#fff" fontSize="8px" fontWeight="700">
+                    {i + 1}
+                  </Center>
+                  {i === sel && (
+                    <Center position="absolute" top="0.5" right="0.5" w="14px" h="14px"
+                      borderRadius="full" bg={C.primary} color="#fff" fontSize="8px">
+                      <FiCheck />
+                    </Center>
+                  )}
+                  <Center as="button" aria-label="Retirer la diapositive"
+                    position="absolute" bottom="0.5" right="0.5" w="14px" h="14px"
+                    borderRadius="full" bg="rgba(15,23,42,0.75)" color="#fca5a5"
+                    fontSize="8px" cursor="pointer" opacity="0"
+                    _groupHover={{ opacity: 1 }}
+                    onClick={(e) => { e.stopPropagation(); setRmSlide(s.id) }}>
+                    <FiX />
+                  </Center>
                 </Box>
-              </Tip>
-            </HStack>
-          ))}
-        </VStack>
+              </HStack>
+            ))}
+            {/* ajouter en fin de filmstrip */}
+            <Center as="button" aria-label="Ajouter une diapositive" flexShrink={0}
+              w="56px" aspectRatio="16/9" borderRadius="sm" border="1.5px dashed"
+              borderColor="gray.300" color="gray.400" cursor="pointer"
+              _hover={{ borderColor: C.primary, color: C.primary }}
+              onClick={() => onAdd?.(slides.length)}>
+              <FiPlus />
+            </Center>
+          </HStack>
+        </>
       )}
       <ConfirmModal open={!!rmSlide} onClose={() => setRmSlide(null)}
         onConfirm={removeSlide} busy={busy}
@@ -659,7 +919,13 @@ function AddSlideModal({ modal, wsId, onClose, onDone }) {
   const pool = type === 'photo' ? photos : type === 'montage' ? montages : videos
   const add = async () => {
     setBusy(true)
-    const pos = await listPresentationSlides(p.id).then((l) => l.length)
+    const cur = await listPresentationSlides(p.id)
+    const pos = modal?.insertAt ?? cur.length
+    if (pos < cur.length) {
+      for (const s of cur) {
+        if ((s.position ?? 0) >= pos) await updatePresentationSlide(s.id, { position: (s.position ?? 0) + 1 })
+      }
+    }
     const fields = {
       position: pos, type,
       title: title.trim() || null,
