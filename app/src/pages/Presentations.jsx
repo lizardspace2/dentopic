@@ -10,6 +10,7 @@ import {
   FiMoreVertical, FiClock, FiLink, FiEdit2, FiTrash2, FiCheck, FiCopy,
   FiExternalLink, FiImage, FiVideo, FiArchive, FiX, FiAlertTriangle,
   FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiHeart, FiTool,
+  FiSquare,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
@@ -30,8 +31,8 @@ import {
 } from '../api'
 import { PRESENTATION_TEMPLATES, BILAN_SLIDES } from '../presentationTemplates'
 import { clinicalLabels } from '../clinical'
-import { usePhotoUrl } from '../media'
 import PresentMode from '../components/PresentMode'
+import SlideElements, { slideElements, layoutNotes, newEl } from '../components/SlideElements'
 
 const TABS = ['Toutes', 'Brouillons', 'Récentes', 'Archivées']
 const SLIDE_TYPES = [
@@ -538,72 +539,131 @@ export default function Presentations() {
 // Toile centrale (rendu réel 16:9 de la diapo), filmstrip glissable en bas
 // (« + » insère à cette position), panneau de propriétés à droite.
 
-// Rendu d'une diapo dans la toile centrale — même logique que PresentMode.
-function SlideCanvas({ s }) {
+// Toile centrale : canevas d'éléments libres — sélection, déplacement,
+// redimensionnement à la souris comme sur PowerPoint/Canva.
+function SlideCanvas({ s, selEl, onSelectEl, onEls }) {
   if (!s) return null
-  const path = s.photo?.storage_path || s.montage?.export_url
   return (
     <Box aspectRatio="16/9" w="100%" borderRadius="lg" overflow="hidden" position="relative"
       bg={s.type === 'text' ? '#1e3a5f' : '#0b1120'} boxShadow="lg">
-      {s.type === 'text' ? (
-        <Center h="100%" flexDirection="column" gap="3" px="10" textAlign="center">
-          <Text fontSize={{ base: 'lg', md: '2xl' }} fontWeight="700" color="#f1f5f9">
-            {s.title || 'Diapositive'}
-          </Text>
-          {s.text_content && (
-            <Text fontSize="sm" color="#94a3b8" whiteSpace="pre-line" lineHeight="1.6">
-              {s.text_content}
-            </Text>
-          )}
-        </Center>
-      ) : path ? (
-        <CanvasImg storagePath={path} />
-      ) : s.media_url ? (
-        <Box as="img" src={s.media_url} w="100%" h="100%" objectFit="contain" />
-      ) : (
-        <Center h="100%" flexDirection="column" gap="2" color="#475569">
-          <Box as={s.type === 'video' ? FiVideo : FiImage} fontSize="3xl" />
-          <Text fontSize="xs">Élément à ajouter à cette diapositive</Text>
-        </Center>
-      )}
-      {s.type !== 'text' && s.title && (
-        <Box position="absolute" bottom="0" left="0" right="0" px="4" pt="6" pb="2"
-          bg="linear-gradient(transparent, rgba(0,0,0,0.7))">
-          <Text fontSize="sm" fontWeight="600" color="#fff">{s.title}</Text>
-        </Box>
-      )}
+      <SlideElements els={slideElements(s)} editing sel={selEl}
+        onSelect={onSelectEl} onEls={onEls}
+        emptyHint={{ icon: s.type === 'video' ? FiVideo : FiImage, label: 'Posez des éléments avec les boutons « + » ci-dessous' }} />
     </Box>
   )
 }
 
-// Image signée en « contain » pour la toile (les vignettes utilisent PhotoImg cover).
-function CanvasImg({ storagePath }) {
-  const url = usePhotoUrl(storagePath)
-  if (!url) return <Center h="100%" color="#334155"><FiImage /></Center>
-  return <Box as="img" src={url} w="100%" h="100%" objectFit="contain" draggable={false} />
-}
-
-// Miniature du filmstrip.
+// Miniature du filmstrip — mêmes éléments, réduits automatiquement (cqh).
 function SlideThumb({ s }) {
-  const path = s.photo?.storage_path || s.montage?.export_url
-  const I = s.type === 'text' ? FiType : s.type === 'video' ? FiVideo : s.type === 'montage' ? FiLayers : FiImage
   return (
     <Box position="relative" aspectRatio="16/9" borderRadius="sm" overflow="hidden"
       bg={s.type === 'text' ? '#1e3a5f' : '#0f172a'}>
-      {path ? (
-        <PhotoImg storagePath={path} ratio="16/9" />
-      ) : s.media_url ? (
-        <Box as="img" src={s.media_url} w="100%" h="100%" objectFit="cover" />
-      ) : (
-        <Center h="100%" color="rgba(255,255,255,0.5)"><Box as={I} fontSize="xs" /></Center>
-      )}
-      {s.type === 'text' && s.title && (
-        <Center position="absolute" inset="0" px="1">
-          <Text fontSize="7px" fontWeight="700" color="#fff" textAlign="center"
-            lineHeight="1.25" noOfLines={3}>{s.title}</Text>
-        </Center>
-      )}
+      <SlideElements els={slideElements(s)} />
     </Box>
+  )
+}
+
+const EL_SIZES = [
+  ['xs', 'Mini'], ['sm', 'Petit'], ['md', 'Moyen'], ['lg', 'Grand'], ['xl', 'Titre'],
+]
+const EL_SIZE_CQH = { xs: 2.5, sm: 3.5, md: 5, lg: 7.5, xl: 11 }
+const EL_COLORS = ['#f8fafc', '#94a3b8', '#0f172a', '#3b82f6', '#0d9488', '#f59e0b', '#ef4444']
+const EL_FILLS = ['#0d9488', '#3b82f6', '#7c3aed', '#f59e0b', '#ef4444', '#0f172a', '#ffffff']
+
+function sizeKeyOf(el) {
+  const v = el.size || 5
+  return Object.entries(EL_SIZE_CQH).reduce((best, [k, x]) => (Math.abs(x - v) < Math.abs(EL_SIZE_CQH[best] - v) ? k : best), 'md')
+}
+
+// Panneau de propriétés d'un élément sélectionné sur la toile.
+function ElementPanel({ el, busy, onPatch, onOrder, onDup, onDel, onBack, onPickImg }) {
+  const set = (p) => onPatch(el.id, p, true)
+  const Swatch = ({ value, cur, onPick }) => (
+    <Box as="button" w="18px" h="18px" borderRadius="sm" cursor="pointer" flexShrink={0}
+      bg={value} border="2px solid" aria-label={`Couleur ${value}`}
+      borderColor={cur === value ? C.primary : 'gray.300'} onClick={() => onPick(value)} />
+  )
+  return (
+    <VStack align="stretch" gap="3">
+      <HStack justify="space-between">
+        <Button size="xs" variant="ghost" px="1" fontSize="2xs" color="gray.500" onClick={onBack}>
+          ‹ Diapositive
+        </Button>
+        <Tag color="gray">
+          {el.t === 'text' ? 'Texte' : el.t === 'img' ? 'Image' : el.t === 'shape' ? 'Forme' : 'Vidéo'}
+        </Tag>
+      </HStack>
+      {el.t === 'text' && (
+        <>
+          <Field label="Contenu">
+            <Box as="textarea" rows="3" w="100%" fontSize="xs" px="2" py="1.5"
+              border="1px solid" borderColor={C.cardBorder} borderRadius="md"
+              value={el.text || ''} autoFocus
+              onChange={(e) => onPatch(el.id, { text: e.target.value }, false)}
+              onBlur={() => onPatch(el.id, {}, true)} />
+          </Field>
+          <HStack gap="1">
+            {EL_SIZES.map(([k, l]) => (
+              <Button key={k} size="xs" variant={sizeKeyOf(el) === k ? 'solid' : 'outline'}
+                fontSize="2xs" px="1.5" onClick={() => set({ size: EL_SIZE_CQH[k] })}>{l}</Button>
+            ))}
+          </HStack>
+          <HStack gap="1.5">
+            {EL_COLORS.map((c) => <Swatch key={c} value={c} cur={el.color} onPick={(v) => set({ color: v })} />)}
+          </HStack>
+          <HStack gap="1">
+            {[['left', 'Gauche'], ['center', 'Centré'], ['right', 'Droite']].map(([a, l]) => (
+              <Button key={a} size="xs" variant={(el.align || 'left') === a ? 'solid' : 'outline'}
+                fontSize="2xs" flex="1" onClick={() => set({ align: a })}>{l}</Button>
+            ))}
+          </HStack>
+          <Button size="xs" variant={el.bold ? 'solid' : 'outline'} fontSize="2xs"
+            onClick={() => set({ bold: !el.bold })}>Gras</Button>
+        </>
+      )}
+      {el.t === 'img' && (
+        <>
+          <HStack gap="1">
+            <Button size="xs" variant={(el.fit || 'contain') === 'contain' ? 'solid' : 'outline'}
+              fontSize="2xs" flex="1" onClick={() => set({ fit: 'contain' })}>Ajuster</Button>
+            <Button size="xs" variant={el.fit === 'cover' ? 'solid' : 'outline'}
+              fontSize="2xs" flex="1" onClick={() => set({ fit: 'cover' })}>Remplir</Button>
+          </HStack>
+          <Button size="xs" variant={el.radius ? 'solid' : 'outline'} fontSize="2xs"
+            onClick={() => set({ radius: !el.radius })}>Coins arrondis</Button>
+          <Button size="xs" variant="outline" onClick={onPickImg}>
+            <FiImage /> Changer l'image
+          </Button>
+        </>
+      )}
+      {el.t === 'shape' && (
+        <>
+          <Text fontSize="2xs" color="gray.500">Remplissage</Text>
+          <HStack gap="1.5" flexWrap="wrap">
+            {EL_FILLS.map((c) => <Swatch key={c} value={c} cur={el.fill} onPick={(v) => set({ fill: v })} />)}
+          </HStack>
+          <Button size="xs" variant={el.radius ? 'solid' : 'outline'} fontSize="2xs"
+            onClick={() => set({ radius: !el.radius })}>Coins arrondis</Button>
+        </>
+      )}
+      <Field label="Ordre de superposition">
+        <HStack gap="1">
+          <Button size="xs" variant="outline" flex="1" fontSize="2xs" disabled={busy}
+            onClick={() => onOrder(el.id, -1)}><FiChevronUp /> Arrière</Button>
+          <Button size="xs" variant="outline" flex="1" fontSize="2xs" disabled={busy}
+            onClick={() => onOrder(el.id, 1)}><FiChevronDown /> Avant</Button>
+        </HStack>
+      </Field>
+      <HStack gap="1.5">
+        <Button size="xs" variant="outline" flex="1" disabled={busy}
+          onClick={() => onDup(el.id)}><FiCopy /> Dupliquer</Button>
+        <Button size="xs" variant="outline" flex="1" color="red.500" disabled={busy}
+          onClick={() => onDel(el.id)}><FiTrash2 /> Supprimer</Button>
+      </HStack>
+      <Text fontSize="2xs" color="gray.400">
+        Position {Math.round(el.x)},{Math.round(el.y)} · Taille {Math.round(el.w)}×{Math.round(el.h)}%
+      </Text>
+    </VStack>
   )
 }
 
@@ -616,16 +676,21 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const [form, setForm] = useState({ title: '', text: '' })
   const [dragFrom, setDragFrom] = useState(null)
   const [dropAt, setDropAt] = useState(null)
-  const [pool, setPool] = useState(null)          // remplacer le média : 'photo'|'montage'|'video'
+  const [pool, setPool] = useState(null)          // 'photo'|'montage'|'video'
+  const [poolMode, setPoolMode] = useState('slide') // 'slide' | 'el-add' | 'el-swap'
   const [poolItems, setPoolItems] = useState([])
+  const [selEl, setSelEl] = useState(null)        // id de l'élément sélectionné sur la toile
 
   const load = () => p && listPresentationSlides(p.id).then(setSlides)
   useEffect(() => {
     if (modal?.kind === 'detail' && p) { setSel(modal.focus ?? 0); setPool(null); load() }
   }, [modal]) // eslint-disable-line
   const cur = slides[Math.min(sel, Math.max(0, slides.length - 1))] || null
+  const els = cur ? slideElements(cur) : []
+  const curEl = els.find((e) => e.id === selEl) || null
   useEffect(() => {
     setForm({ title: cur?.title || '', text: cur?.text_content || '' })
+    setSelEl(null)
   }, [sel, cur?.id]) // eslint-disable-line
   useEffect(() => {
     if (!pool || !wsId) { setPoolItems([]); return }
@@ -708,6 +773,41 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
     setPool(null); await load(); setBusy(false)
   }
 
+  // ---- éléments libres sur la diapo (persistés en JSON dans `notes`) --------
+  // commit=false → état local pendant le geste ; commit=true → sauvegarde REST.
+  const applyEls = (next, commit) => {
+    if (!cur) return
+    const notes = layoutNotes(next)
+    setSlides((list) => list.map((x) => (x.id === cur.id ? { ...x, notes } : x)))
+    if (commit) updatePresentationSlide(cur.id, { notes })
+  }
+  const patchEl = (id, p, commit) =>
+    applyEls(els.map((e) => (e.id === id ? { ...e, ...p } : e)), commit)
+  const addEl = (el) => { applyEls([...els, el], true); setSelEl(el.id) }
+  const delEl = (id) => { applyEls(els.filter((e) => e.id !== id), true); setSelEl(null) }
+  const dupEl = (id) => {
+    const e = els.find((x) => x.id === id)
+    if (!e) return
+    const { id: _i, ...rest } = e
+    addEl(newEl({ ...rest, x: Math.min(92, e.x + 4), y: Math.min(92, e.y + 4) }))
+  }
+  const orderEl = (id, d) => {
+    const o = [...els].sort((a, b) => (a.z ?? 0) - (b.z ?? 0))
+    const i = o.findIndex((e) => e.id === id); const j = i + d
+    if (j < 0 || j >= o.length) return
+    const zi = o[i].z ?? i; o[i].z = o[j].z ?? j; o[j].z = zi
+    applyEls(o, true)
+  }
+  const openPool = (kind, mode) => { setPool(kind); setPoolMode(mode) }
+  const onPick = (m) => {
+    const path = pool === 'photo' ? m.storage_path : m.export_url
+    if (poolMode === 'slide') return replaceMedia(m.id)
+    if (poolMode === 'el-swap' && selEl) patchEl(selEl, { path }, true)
+    else if (pool === 'video') addEl(newEl({ t: 'video', x: 12, y: 12, w: 76, h: 76, url: m.media_url || m.export_url }))
+    else if (path) addEl(newEl({ t: 'img', x: 12, y: 12, w: 76, h: 76, path, fit: 'contain' }))
+    setPool(null)
+  }
+
   const typeLabel = (t) => SLIDE_TYPES.find(([k]) => k === t)?.[1] || t
   const InsertBtn = ({ at }) => (
     <Center as="button" aria-label={`Insérer une diapositive à la position ${at + 1}`}
@@ -748,19 +848,41 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
             {/* toile centrale */}
             <Box flex="1" minW="0" bg="gray.50" border="1px solid" borderColor={C.cardBorder}
               borderRadius="lg" p="4">
-              <SlideCanvas s={cur} />
-              <HStack mt="3" justify="center" gap="2">
-                <Button size="xs" variant="outline" disabled={sel === 0}
-                  onClick={() => setSel(sel - 1)}><FiChevronUp style={{ transform: 'rotate(-90deg)' }} /> Préc.</Button>
-                <Text fontSize="xs" color="gray.500" fontVariantNumeric="tabular-nums">
-                  {Math.min(sel, slides.length - 1) + 1} / {slides.length}
-                </Text>
-                <Button size="xs" variant="outline" disabled={sel >= slides.length - 1}
-                  onClick={() => setSel(sel + 1)}>Suiv. <FiChevronDown style={{ transform: 'rotate(-90deg)' }} /></Button>
+              <SlideCanvas s={cur} selEl={selEl} onSelectEl={setSelEl} onEls={applyEls} />
+              <HStack mt="3" justify="space-between" flexWrap="wrap" gap="2">
+                {/* pose d'éléments sur la diapo, façon barre latérale Canva */}
+                <HStack gap="1">
+                  {[
+                    [FiType, 'Texte', () => addEl(newEl({ t: 'text', x: 10, y: 42, w: 80, h: 16, text: 'Nouveau texte', size: 6, color: '#f8fafc', align: 'center' }))],
+                    [FiImage, 'Photo', () => openPool('photo', 'el-add')],
+                    [FiLayers, 'Montage', () => openPool('montage', 'el-add')],
+                    [FiSquare, 'Forme', () => addEl(newEl({ t: 'shape', x: 35, y: 35, w: 30, h: 30, fill: '#3b82f6', radius: true }))],
+                  ].map(([I, l, fn]) => (
+                    <Button key={l} size="xs" variant="outline" fontSize="2xs" onClick={fn}>
+                      <FiPlus /><Box as={I} />{l}
+                    </Button>
+                  ))}
+                </HStack>
+                <HStack gap="2">
+                  <Button size="xs" variant="outline" disabled={sel === 0}
+                    onClick={() => setSel(sel - 1)}><FiChevronUp style={{ transform: 'rotate(-90deg)' }} /> Préc.</Button>
+                  <Text fontSize="xs" color="gray.500" fontVariantNumeric="tabular-nums">
+                    {Math.min(sel, slides.length - 1) + 1} / {slides.length}
+                  </Text>
+                  <Button size="xs" variant="outline" disabled={sel >= slides.length - 1}
+                    onClick={() => setSel(sel + 1)}>Suiv. <FiChevronDown style={{ transform: 'rotate(-90deg)' }} /></Button>
+                </HStack>
               </HStack>
             </Box>
-            {/* propriétés de la diapo sélectionnée */}
-            <VStack w="235px" flexShrink={0} align="stretch" gap="3">
+            {/* propriétés : élément sélectionné, sinon diapo */}
+            <Box w="235px" flexShrink={0} overflowY="auto" maxH="430px" pr="1">
+              {curEl ? (
+                <ElementPanel el={curEl} busy={busy}
+                  onPatch={patchEl} onOrder={orderEl} onDup={dupEl} onDel={delEl}
+                  onBack={() => setSelEl(null)}
+                  onPickImg={() => openPool('photo', 'el-swap')} />
+              ) : (
+            <VStack align="stretch" gap="3">
               <HStack justify="space-between">
                 <Text fontSize="2xs" fontWeight="700" color="gray.500">
                   DIAPOSITIVE {Math.min(sel, slides.length - 1) + 1}
@@ -793,7 +915,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
               </Field>
               {cur && cur.type !== 'text' && (
                 <Button size="xs" variant="outline"
-                  onClick={() => setPool(pool ? null : cur.type === 'montage' ? 'montage' : cur.type === 'video' ? 'video' : 'photo')}>
+                  onClick={() => pool ? setPool(null) : openPool(cur.type === 'montage' ? 'montage' : cur.type === 'video' ? 'video' : 'photo', 'slide')}>
                   <FiImage /> {pool ? 'Fermer le choix' : 'Remplacer le média'}
                 </Button>
               )}
@@ -804,13 +926,17 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
                   onClick={() => setRmSlide(cur.id)}><FiTrash2 /> Supprimer</Button>
               </HStack>
             </VStack>
+              )}
+            </Box>
           </HStack>
 
           {/* remplacement du média */}
           {pool && cur && (
             <Box mt="3" border="1px solid" borderColor={C.cardBorder} borderRadius="md" p="2">
               <Text fontSize="2xs" fontWeight="600" color="gray.500" mb="2">
-                Choisir {pool === 'photo' ? 'une photo' : pool === 'montage' ? 'un montage' : 'une vidéo'} de remplacement
+                {poolMode === 'el-swap' ? 'Choisir la nouvelle image de l’élément'
+                  : poolMode === 'el-add' ? `Choisir ${pool === 'montage' ? 'un montage' : 'une photo'} à poser sur la diapo`
+                  : `Choisir ${pool === 'photo' ? 'une photo' : pool === 'montage' ? 'un montage' : 'une vidéo'} de remplacement`}
               </Text>
               <Box maxH="170px" overflowY="auto">
                 {!poolItems.length ? (
@@ -822,7 +948,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
                       return (
                         <Box key={m.id} borderRadius="md" overflow="hidden" cursor="pointer"
                           border="2px solid" borderColor="transparent"
-                          _hover={{ borderColor: C.primary }} onClick={() => replaceMedia(m.id)}>
+                          _hover={{ borderColor: C.primary }} onClick={() => onPick(m)}>
                           {path ? <PhotoImg storagePath={path} ratio="1" />
                             : <Center bg="gray.100" aspectRatio="1"><Box as={FiLayers} color="gray.400" /></Center>}
                         </Box>

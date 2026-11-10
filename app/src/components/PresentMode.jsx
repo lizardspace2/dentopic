@@ -2,51 +2,21 @@
 // Navigation flèches + clavier (← →, Échap, Début, Fin), compteur, barre de
 // progression. Reçoit les diapos déjà chargées (join photo/montage).
 import { useEffect, useState } from 'react'
-import { Box, Center, HStack, Text, VStack } from '@chakra-ui/react'
-import { FiChevronLeft, FiChevronRight, FiImage, FiLayers, FiType, FiVideo, FiX } from 'react-icons/fi'
-import { usePhotoUrl } from '../media'
+import { Box, Center, HStack, Text } from '@chakra-ui/react'
+import { FiChevronLeft, FiChevronRight, FiX } from 'react-icons/fi'
+import SlideElements, { slideElements } from './SlideElements'
 
 const BG = '#0b1120'
 
-function SlideMedia({ storagePath }) {
-  const url = usePhotoUrl(storagePath)
-  if (!url) {
-    return <Center h="55vh" color="#334155"><Box as={FiImage} fontSize="4xl" /></Center>
-  }
-  return (
-    <Box as="img" src={url} maxW="100%" maxH="70vh" objectFit="contain"
-      borderRadius="lg" boxShadow="0 12px 48px rgba(0,0,0,0.55)" draggable={false} />
-  )
-}
-
+// Le canevas 16:9 affiche les éléments exactement comme dans l'éditeur (WYSIWYG).
 function SlideBody({ s }) {
-  if (s.type === 'text') {
-    return (
-      <VStack gap="4" maxW="760px" textAlign="center" px="6">
-        <Text fontSize={{ base: '2xl', md: '4xl' }} fontWeight="700" color="#f1f5f9" lineHeight="1.2">
-          {s.title || 'Diapositive'}
-        </Text>
-        {s.text_content && (
-          <Text fontSize={{ base: 'sm', md: 'lg' }} color="#94a3b8" whiteSpace="pre-line" lineHeight="1.7">
-            {s.text_content}
-          </Text>
-        )}
-      </VStack>
-    )
-  }
-  const path = s.photo?.storage_path || s.montage?.export_url
-  if (s.type === 'video' && s.media_url) {
-    return <Box as="video" src={s.media_url} controls maxW="100%" maxH="70vh" borderRadius="lg" />
-  }
-  if (!path) {
-    return (
-      <Center h="55vh" flexDirection="column" gap="3" color="#475569">
-        <Box as={s.type === 'video' ? FiVideo : s.type === 'montage' ? FiLayers : FiType} fontSize="4xl" />
-        <Text fontSize="sm">Élément à ajouter à cette diapositive</Text>
-      </Center>
-    )
-  }
-  return <SlideMedia storagePath={path} />
+  return (
+    <Box h="72vh" aspectRatio="16/9" maxW="100%" borderRadius="lg" overflow="hidden"
+      bg={s.type === 'text' ? '#1e3a5f' : BG} boxShadow="0 12px 48px rgba(0,0,0,0.55)">
+      <SlideElements els={slideElements(s)}
+        emptyHint={{ label: 'Diapositive vide' }} />
+    </Box>
+  )
 }
 
 export default function PresentMode({ slides, title, onClose }) {
@@ -95,11 +65,8 @@ export default function PresentMode({ slides, title, onClose }) {
       {/* diapositive centrée + flèches latérales */}
       <HStack flex="1" minH="0" px="4" gap="2" align="center">
         <NavBtn d={-1} I={FiChevronLeft} label="Diapositive précédente" />
-        <Center flex="1" minH="0" flexDirection="column" gap="3">
+        <Center flex="1" minH="0">
           {cur && <SlideBody s={cur} />}
-          {cur?.type !== 'text' && cur?.title && (
-            <Text fontSize="sm" color="#cbd5e1" fontWeight="500">{cur.title}</Text>
-          )}
         </Center>
         <NavBtn d={1} I={FiChevronRight} label="Diapositive suivante" />
       </HStack>
