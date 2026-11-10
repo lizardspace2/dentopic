@@ -4,7 +4,7 @@
 import { useEffect, useState } from 'react'
 import { Box, Center, HStack, Text } from '@chakra-ui/react'
 import { FiChevronLeft, FiChevronRight, FiX } from 'react-icons/fi'
-import SlideElements, { slideElements } from './SlideElements'
+import SlideElements, { slideElements, slideBg } from './SlideElements'
 
 const BG = '#0b1120'
 
@@ -13,7 +13,7 @@ function SlideBody({ s }) {
   return (
     <Box h="72vh" aspectRatio="16/9" maxW="100%" borderRadius="lg" overflow="hidden"
       bg={s.type === 'text' ? '#1e3a5f' : BG} boxShadow="0 12px 48px rgba(0,0,0,0.55)">
-      <SlideElements els={slideElements(s)}
+      <SlideElements els={slideElements(s)} bg={slideBg(s)}
         emptyHint={{ label: 'Diapositive vide' }} />
     </Box>
   )

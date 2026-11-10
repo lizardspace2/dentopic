@@ -22,8 +22,18 @@ export function hasLayout(s) {
   try { const j = JSON.parse(s?.notes || ''); return Array.isArray(j?.els) } catch { return false }
 }
 
-export function layoutNotes(els) {
-  return JSON.stringify({ v: LAYOUT_VERSION, els })
+export function layoutNotes(els, bg = null) {
+  return JSON.stringify(bg ? { v: LAYOUT_VERSION, els, bg } : { v: LAYOUT_VERSION, els })
+}
+
+// Fond personnalisé de la diapo : { c: '#hex' } | { g: 'linear-gradient(...)' }
+// | { path: 'storage/path' } — null → fond par défaut selon le type de diapo.
+export function slideBg(s) {
+  try {
+    const j = JSON.parse(s?.notes || '')
+    if (j?.bg && typeof j.bg === 'object') return j.bg
+  } catch { /* pas de layout */ }
+  return null
 }
 
 // Éléments affichés d'une diapo : layout persisté, ou dérivation legacy.
@@ -114,7 +124,7 @@ function ElemBody({ el }) {
 // editing → sélection au clic + glisser pour déplacer + poignée pour redimensionner.
 // onEls(next, commit) : appelé pendant le geste (commit=false) puis au relâchement (true).
 
-export default function SlideElements({ els, editing = false, sel = null, onSelect, onEls, emptyHint }) {
+export default function SlideElements({ els, editing = false, sel = null, onSelect, onEls, emptyHint, bg = null }) {
   const ref = useRef(null)
   const drag = useRef(null)
   const latest = useRef(els)
@@ -194,6 +204,14 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
   return (
     <Box ref={ref} position="relative" w="100%" h="100%" containerType="size"
       onPointerDown={editing ? () => onSelect?.(null) : undefined}>
+      {/* fond personnalisé : couleur, dégradé ou photo — sous les éléments */}
+      {bg?.c && <Box position="absolute" inset="0" bg={bg.c} pointerEvents="none" />}
+      {bg?.g && <Box position="absolute" inset="0" style={{ background: bg.g }} pointerEvents="none" />}
+      {bg?.path && (
+        <Box position="absolute" inset="0" pointerEvents="none">
+          <ElemImg el={{ path: bg.path, fit: 'cover' }} />
+        </Box>
+      )}
       {ordered.map((el) => (
         <Box key={el.id} position="absolute"
           left={`${el.x}%`} top={`${el.y}%`} w={`${el.w}%`} h={`${el.h}%`}

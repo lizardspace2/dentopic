@@ -32,7 +32,7 @@ import {
 import { PRESENTATION_TEMPLATES, BILAN_SLIDES } from '../presentationTemplates'
 import { clinicalLabels } from '../clinical'
 import PresentMode from '../components/PresentMode'
-import SlideElements, { slideElements, layoutNotes, newEl, SHAPE_DEFS, SHAPE_CSS } from '../components/SlideElements'
+import SlideElements, { slideElements, slideBg, layoutNotes, newEl, SHAPE_DEFS, SHAPE_CSS } from '../components/SlideElements'
 
 const TABS = ['Toutes', 'Brouillons', 'Récentes', 'Archivées']
 const SLIDE_TYPES = [
@@ -546,7 +546,7 @@ function SlideCanvas({ s, selEl, onSelectEl, onEls }) {
   return (
     <Box aspectRatio="16/9" w="100%" borderRadius="lg" overflow="hidden" position="relative"
       bg={s.type === 'text' ? '#1e3a5f' : '#0b1120'} boxShadow="lg">
-      <SlideElements els={slideElements(s)} editing sel={selEl}
+      <SlideElements els={slideElements(s)} bg={slideBg(s)} editing sel={selEl}
         onSelect={onSelectEl} onEls={onEls}
         emptyHint={{ icon: s.type === 'video' ? FiVideo : FiImage, label: 'Posez des éléments avec les boutons « + » ci-dessous' }} />
     </Box>
@@ -558,7 +558,7 @@ function SlideThumb({ s }) {
   return (
     <Box position="relative" aspectRatio="16/9" borderRadius="sm" overflow="hidden"
       bg={s.type === 'text' ? '#1e3a5f' : '#0f172a'}>
-      <SlideElements els={slideElements(s)} />
+      <SlideElements els={slideElements(s)} bg={slideBg(s)} />
     </Box>
   )
 }
@@ -575,6 +575,25 @@ function ShapeGlyph({ kind, color = 'gray.600', w = '24px', h = '24px' }) {
   return <Box w={w} h={h} bg={color} flexShrink={0} style={SHAPE_CSS[kind] || {}} />
 }
 
+// Pastille couleur cliquable (éléments + fonds de diapo).
+function ColorSwatch({ value, cur, onPick }) {
+  return (
+    <Box as="button" w="18px" h="18px" borderRadius="sm" cursor="pointer" flexShrink={0}
+      bg={value} border="2px solid" aria-label={`Couleur ${value}`}
+      borderColor={cur === value ? C.primary : 'gray.300'} onClick={() => onPick(value)} />
+  )
+}
+
+// Fonds prédéfinis de la diapo — couleurs pleines puis dégradés.
+const BG_COLORS = ['#0b1120', '#1e3a5f', '#f8fafc', '#0d9488', '#3b82f6', '#7c3aed', '#f59e0b', '#ef4444', '#0f172a']
+const BG_GRADS = [
+  ['Nuit', 'linear-gradient(135deg,#0b1120,#1e3a5f)'],
+  ['Violet', 'linear-gradient(135deg,#4c1d95,#7c3aed)'],
+  ['Sarcelle', 'linear-gradient(135deg,#134e4a,#14b8a6)'],
+  ['Ambre', 'linear-gradient(135deg,#78350f,#f59e0b)'],
+  ['Clair', 'linear-gradient(135deg,#f8fafc,#cbd5e1)'],
+]
+
 function sizeKeyOf(el) {
   const v = el.size || 5
   return Object.entries(EL_SIZE_CQH).reduce((best, [k, x]) => (Math.abs(x - v) < Math.abs(EL_SIZE_CQH[best] - v) ? k : best), 'md')
@@ -583,11 +602,7 @@ function sizeKeyOf(el) {
 // Panneau de propriétés d'un élément sélectionné sur la toile.
 function ElementPanel({ el, busy, onPatch, onOrder, onDup, onDel, onBack, onPickImg }) {
   const set = (p) => onPatch(el.id, p, true)
-  const Swatch = ({ value, cur, onPick }) => (
-    <Box as="button" w="18px" h="18px" borderRadius="sm" cursor="pointer" flexShrink={0}
-      bg={value} border="2px solid" aria-label={`Couleur ${value}`}
-      borderColor={cur === value ? C.primary : 'gray.300'} onClick={() => onPick(value)} />
-  )
+  const Swatch = ColorSwatch
   return (
     <VStack align="stretch" gap="3">
       <HStack justify="space-between">
@@ -736,33 +751,43 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
 
   // ---- éléments libres sur la diapo (persistés en JSON dans `notes`) --------
   // commit=false → état local pendant le geste ; commit=true → historique +
-  // sauvegarde REST. Undo/redo mémorisent les états de la diapo courante.
-  const persistEls = (next) => {
+  // sauvegarde REST. L'historique mémorise { els, bg } — le fond est annulable.
+  const curBg = cur ? slideBg(cur) : null
+  const writeLayout = (elsArr, bg) => {
     if (!cur) return
-    const notes = layoutNotes(next)
+    const notes = layoutNotes(elsArr, bg)
     setSlides((list) => list.map((x) => (x.id === cur.id ? { ...x, notes } : x)))
     updatePresentationSlide(cur.id, { notes })
   }
+  const persistEls = (next) => writeLayout(next, curBg)
   const applyEls = (next, commit) => {
     if (!cur) return
     if (!commit) {
-      setSlides((list) => list.map((x) => (x.id === cur.id ? { ...x, notes: layoutNotes(next) } : x)))
+      setSlides((list) => list.map((x) => (x.id === cur.id ? { ...x, notes: layoutNotes(next, curBg) } : x)))
       return
     }
-    setHist((h) => [...h.slice(-49), els])
+    setHist((h) => [...h.slice(-49), { els, bg: curBg }])
     setFuture([])
     persistEls(next)
   }
+  const setBg = (bg) => {
+    if (!cur) return
+    setHist((h) => [...h.slice(-49), { els, bg: curBg }])
+    setFuture([])
+    writeLayout(els, bg)
+  }
   const undo = () => {
     if (!hist.length) return
-    setFuture((f) => [els, ...f])
-    persistEls(hist[hist.length - 1])
+    const prev = hist[hist.length - 1]
+    setFuture((f) => [{ els, bg: curBg }, ...f])
+    writeLayout(prev.els, prev.bg)
     setHist((h) => h.slice(0, -1))
   }
   const redo = () => {
     if (!future.length) return
-    setHist((h) => [...h, els])
-    persistEls(future[0])
+    const next = future[0]
+    setHist((h) => [...h, { els, bg: curBg }])
+    writeLayout(next.els, next.bg)
     setFuture((f) => f.slice(1))
   }
   const patchEl = (id, p_, commit) =>
@@ -879,6 +904,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   }
   const onPick = (m) => {
     const path = pool === 'photo' ? m.storage_path : m.export_url
+    if (poolMode === 'bg') { setBg(path ? { path } : null); setPool(null); return }
     if (poolMode === 'slide') return replaceMedia(m.id)
     if (poolMode === 'el-swap' && selEl) patchEl(selEl, { path }, true)
     else if (pool === 'video') addEl(newEl({ t: 'video', x: 12, y: 12, w: 76, h: 76, url: m.media_url || m.export_url }))
@@ -999,6 +1025,31 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
                   onChange={(e) => setForm({ ...form, text: e.target.value })}
                   onBlur={saveFields} />
               </Field>
+              <Field label="Fond de la diapo">
+                <HStack gap="1" flexWrap="wrap" mb="1.5">
+                  <Center as="button" w="18px" h="18px" borderRadius="sm" flexShrink={0}
+                    border="1.5px dashed" borderColor="gray.400" color="gray.400"
+                    fontSize="9px" cursor="pointer" title="Fond par défaut"
+                    aria-label="Fond par défaut" onClick={() => setBg(null)}>
+                    <FiX />
+                  </Center>
+                  {BG_COLORS.map((c) => (
+                    <ColorSwatch key={c} value={c} cur={curBg?.c} onPick={(v) => setBg({ c: v })} />
+                  ))}
+                </HStack>
+                <HStack gap="1" flexWrap="wrap">
+                  {BG_GRADS.map(([l, g]) => (
+                    <Box key={l} as="button" w="18px" h="18px" borderRadius="sm" flexShrink={0}
+                      title={l} aria-label={`Dégradé ${l}`} style={{ background: g }}
+                      border="2px solid" borderColor={curBg?.g === g ? C.primary : 'gray.300'}
+                      onClick={() => setBg({ g })} />
+                  ))}
+                  <Button size="xs" variant="outline" fontSize="2xs" px="1.5"
+                    onClick={() => openPool('photo', 'bg')}>
+                    <FiImage /> Image…
+                  </Button>
+                </HStack>
+              </Field>
               {cur && cur.type !== 'text' && (
                 <Button size="xs" variant="outline"
                   onClick={() => pool ? setPool(null) : openPool(cur.type === 'montage' ? 'montage' : cur.type === 'video' ? 'video' : 'photo', 'slide')}>
@@ -1044,6 +1095,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
               <Text fontSize="2xs" fontWeight="600" color="gray.500" mb="2">
                 {poolMode === 'el-swap' ? 'Choisir la nouvelle image de l’élément'
                   : poolMode === 'el-add' ? `Choisir ${pool === 'montage' ? 'un montage' : 'une photo'} à poser sur la diapo`
+                  : poolMode === 'bg' ? 'Choisir une photo comme fond de la diapo'
                   : `Choisir ${pool === 'photo' ? 'une photo' : pool === 'montage' ? 'un montage' : 'une vidéo'} de remplacement`}
               </Text>
               <Box maxH="170px" overflowY="auto">
