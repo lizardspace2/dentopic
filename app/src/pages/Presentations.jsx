@@ -302,9 +302,12 @@ export default function Presentations() {
         {list.map((p) => {
           const [tagColor, tagLabel] = STATUS_TAG[p.status] || STATUS_TAG.draft
           return (
-            <Card key={p.id} overflow="hidden" _hover={{ borderColor: 'blue.300' }}
+            <Card key={p.id} _hover={{ borderColor: 'blue.300' }}
+              position="relative" zIndex={menuFor === p.id ? 30 : 'auto'}
               cursor="pointer" onClick={() => setModal({ kind: 'detail', pres: p })}>
-              <Box position="relative">
+              {/* overflow:hidden ici (pas sur la carte) : coins arrondis de la
+                  couverture sans couper le menu ⋯ qui s'ouvre vers le haut */}
+              <Box position="relative" overflow="hidden" borderTopRadius="xl">
                 {covers[p.id] ? (
                   covers[p.id].startsWith('http') ? (
                     <Box as="img" src={covers[p.id]} w="100%" aspectRatio="16/9" objectFit="cover" display="block" />
