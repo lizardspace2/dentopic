@@ -460,6 +460,12 @@ export function removePresentationSlide(id) {
     .then(({ error }) => !error)
 }
 
+/** Met à jour une diapositive (position, titre, text_content…). */
+export function updatePresentationSlide(id, fields) {
+  return supabase.from('presentation_slides').update(fields).eq('id', id)
+    .then(({ error }) => !error)
+}
+
 /** Active/désactive le partage par lien (share_token, expiration optionnelle). */
 export function sharePresentation(id, enabled, expiresDays = null) {
   const fields = enabled

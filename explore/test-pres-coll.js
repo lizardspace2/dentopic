@@ -80,20 +80,47 @@ async function presCard(page, name) {
   await page.waitForTimeout(1800);
   ok('carte créée visible', await page.locator(`text=${A}`).count() > 0);
 
-  // ---- création depuis template ------------------------------------------------
+  // ---- création depuis la galerie de modèles ------------------------------------
   await page.locator('button:has-text("Démarrer depuis un template")').click();
   await page.waitForTimeout(600);
-  ok('modale « Démarrer depuis un template » ouverte',
-    await page.locator('text=Une diapositive de titre sera créée automatiquement').count() > 0);
+  ok('galerie de modèles ouverte',
+    await page.locator('text=Choisir un modèle').count() > 0
+    && await page.locator('text=Cas esthétique sourire').count() > 0);
+  // les 3 filtres de catégorie existent
+  ok('galerie : catégories visibles',
+    await page.locator('button:has-text("Pour le patient")').count() > 0
+    && await page.locator('button:has-text("Pro & laboratoire")').count() > 0);
+  await page.locator('button:has-text("Cas esthétique sourire")').first().click();
+  await page.waitForTimeout(500);
   await page.locator('input[placeholder*="esthétique"]').fill(B);
-  await page.locator('button:has-text("Créer")').last().click();
-  await page.waitForTimeout(1800);
+  await page.locator('button:has-text("Créer la présentation")').click();
+  await page.waitForTimeout(2500);
   ok('carte template créée', await page.locator(`text=${B}`).count() > 0);
-  // la diapo de titre auto : vérifiée dans la modale détail (badge « 1 »)
+  // le modèle pré-remplit ses diapositives (6 pour « Cas esthétique sourire »)
   const cardB = await presCard(page, B);
   await cardB.locator('button[aria-label="Voir les diapositives"]').click();
   await page.waitForTimeout(900);
-  ok('template : 1 diapositive auto', await page.locator('text=/1 diapositive\\(s\\) ·/').count() > 0);
+  ok('template : diapos pré-remplies', await page.locator('text=/[4-9] diapositive\\(s\\) ·/').count() > 0);
+  // ---- mode Présenter ----------------------------------------------------------
+  await page.locator('button:has-text("Présenter")').first().click();
+  await page.waitForTimeout(800);
+  ok('mode présenter plein écran', await page.locator('[aria-label="Mode présentation"]').count() > 0
+    && await page.locator('[aria-label="Diapositive suivante"]').count() > 0);
+  await page.locator('[aria-label="Diapositive suivante"]').click();
+  await page.waitForTimeout(400);
+  ok('diapo suivante naviguée', await page.locator('text=/2 \\/ \\d+/').count() > 0);
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
+  ok('présentation refermée (Échap)', await page.locator('[aria-label="Mode présentation"]').count() === 0);
+  // ---- réorganisation des diapos ------------------------------------------------
+  const order = async () => page.locator('[data-slide-title]')
+    .evaluateAll((els) => els.map((e) => e.dataset.slideTitle));
+  const orderBefore = await order();
+  await page.locator('button[aria-label="Descendre la diapositive"]').nth(1).click();
+  await page.waitForTimeout(900);
+  const orderAfter = await order();
+  ok('diapo réorganisée (flèche)', orderBefore.length > 2 && orderBefore[1] === orderAfter[2] && orderBefore[2] === orderAfter[1],
+    JSON.stringify({ avant: orderBefore.slice(0, 3), apres: orderAfter.slice(0, 3) }));
   await closeModal(page);
 
   // ---- 3e présentation pour les tris/menus --------------------------------------

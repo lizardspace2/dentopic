@@ -8,6 +8,7 @@ import {
   FiPlus, FiType, FiMonitor, FiLayers, FiFileText, FiAlertCircle, FiEye,
   FiMoreVertical, FiClock, FiLink, FiEdit2, FiTrash2, FiCheck, FiCopy,
   FiExternalLink, FiImage, FiVideo, FiArchive, FiX, FiAlertTriangle,
+  FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiHeart, FiTool,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
@@ -22,9 +23,13 @@ import {
   listPresentations, slideCountByPresentation,
   createPresentation, updatePresentation, trashPresentation, duplicatePresentation,
   listPresentationSlides, addPresentationSlide, removePresentationSlide,
+  updatePresentationSlide,
   sharePresentation, listPhotos, listMontages, listVideoProjects,
-  listDossiers, getPatient,
+  listDossiers, getPatient, listPhotosByDossier,
 } from '../api'
+import { PRESENTATION_TEMPLATES, BILAN_SLIDES } from '../presentationTemplates'
+import { clinicalLabels } from '../clinical'
+import PresentMode from '../components/PresentMode'
 
 const TABS = ['Toutes', 'Brouillons', 'Récentes', 'Archivées']
 const SLIDE_TYPES = [
@@ -81,8 +86,8 @@ export default function Presentations() {
 
   // ---- actions ---------------------------------------------------------------
 
-  const openNew = (template = false) => {
-    setForm({ name: '', dossier_id: '', template })
+  const openNew = () => {
+    setForm({ name: '', dossier_id: '' })
     setModal({ kind: 'new' })
   }
   const openEdit = (p) => {
@@ -93,14 +98,27 @@ export default function Presentations() {
     if (!form?.name.trim()) return
     setBusy(true)
     const patientId = form.dossier_id ? (await getPatient(form.dossier_id))?.id : null
-    const created = await createPresentation(wsId, { name: form.name.trim(), patient_id: patientId })
-    if (created && form.template) {
-      await addPresentationSlide(created.id, {
-        position: 0, type: 'text', title: form.name.trim(),
-        text_content: 'Présentation — ajoutez vos diapositives depuis la carte.',
-      })
-    }
+    await createPresentation(wsId, { name: form.name.trim(), patient_id: patientId })
     setBusy(false); setModal(null); setForm(null); reload()
+  }
+  // Création depuis un modèle — slides pré-remplies depuis le dossier patient.
+  const createFromTemplate = async (tpl, name, dossierId) => {
+    setBusy(true)
+    const finalName = name.trim() || tpl.name
+    const patientId = dossierId ? (await getPatient(dossierId))?.id : null
+    const created = await createPresentation(wsId, { name: finalName, patient_id: patientId })
+    if (created) {
+      const slides = await buildTemplateSlides(wsId, tpl, dossierId || null, finalName)
+      for (const s of slides) await addPresentationSlide(created.id, s)
+      toast.success(`Présentation créée — ${slides.length} diapositive(s) pré-remplies.`)
+    }
+    setBusy(false); setModal(null); reload()
+  }
+  // Mode Présenter — charge les diapos puis passe en plein écran.
+  const present = async (p, readySlides = null) => {
+    const slides = readySlides || await listPresentationSlides(p.id)
+    if (!slides.length) { toast.info('Ajoutez d\'abord des diapositives.'); return }
+    setModal({ kind: 'present', pres: p, slides })
   }
   const saveEdit = async () => {
     if (!form?.name.trim()) return
@@ -153,13 +171,13 @@ export default function Presentations() {
         subtitle="Créez et partagez des présentations visuelles"
       >
         <HelpButton />
-        <Tip label="Créer une présentation avec une diapo de titre déjà en place">
+        <Tip label="Galerie de modèles dentaires — le contenu se pré-remplit depuis le dossier patient">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.600"
-            onClick={() => openNew(true)}>
+            onClick={() => setModal({ kind: 'gallery' })}>
             <HiOutlineSparkles /> Démarrer depuis un template
           </Button>
         </Tip>
-        <PrimaryButton icon={FiPlus} onClick={() => openNew(false)}>Nouvelle présentation</PrimaryButton>
+        <PrimaryButton icon={FiPlus} onClick={openNew}>Nouvelle présentation</PrimaryButton>
       </PageHeader>
 
       {noSlides > 0 && (
@@ -262,6 +280,9 @@ export default function Presentations() {
                   <Text fontSize="2xs" color="gray.500"><FiClock style={{ display: 'inline' }} /> {ago(p.updated_at)}</Text>
                 </Box>
                 <HStack gap="0.5">
+                  <Tip label="Présenter en plein écran">
+                    <IconBtn I={FiPlay} label="Présenter" onClick={() => present(p)} />
+                  </Tip>
                   <Tip label="Voir les diapositives">
                     <IconBtn I={FiEye} label="Voir les diapositives" onClick={() => setModal({ kind: 'detail', pres: p })} />
                   </Tip>
@@ -277,6 +298,8 @@ export default function Presentations() {
                         onClick={() => setMenuFor(menuFor === p.id ? null : p.id)} />
                     </Tip>
                     <MenuDropdown open={menuFor === p.id} onClose={() => setMenuFor(null)} minW="210px">
+                        <MenuItem icon={FiPlay} label="Présenter"
+                          onClick={() => { setMenuFor(null); present(p) }} />
                         <MenuItem icon={FiEye} label="Voir les diapositives"
                           onClick={() => { setMenuFor(null); setModal({ kind: 'detail', pres: p }) }} />
                         <MenuItem icon={FiEdit2} label="Modifier (nom, patient, statut)…"
@@ -308,10 +331,10 @@ export default function Presentations() {
         </Card>
       )}
 
-      {/* ---- création / template ---- */}
+      {/* ---- création ---- */}
       <Modal open={modal?.kind === 'new'} onClose={() => setModal(null)}
-        title={form?.template ? 'Démarrer depuis un template' : 'Nouvelle présentation'}
-        subtitle={form?.template ? 'Une diapositive de titre sera créée automatiquement' : 'La présentation sera créée en brouillon'}
+        title="Nouvelle présentation"
+        subtitle="La présentation sera créée en brouillon"
         footer={<>
           <span />
           <PrimaryButton onClick={saveNew} disabled={!form?.name.trim() || busy}>
@@ -360,8 +383,20 @@ export default function Presentations() {
         </Field>
       </Modal>
 
+      {/* ---- galerie de modèles dentaires (façon Canva) ---- */}
+      <TemplateGalleryModal open={modal?.kind === 'gallery'} dossiers={dossiers} busy={busy}
+        onClose={() => setModal(null)} onCreate={createFromTemplate} />
+
+      {/* ---- mode Présenter (plein écran) — Échap revient au contexte ---- */}
+      {modal?.kind === 'present' && (
+        <PresentMode slides={modal.slides} title={modal.pres?.name}
+          onClose={() => setModal(modal.back || null)} />
+      )}
+
       {/* ---- détail : diapositives ---- */}
-      <DetailModal modal={modal} onClose={() => setModal(null)} onAdd={() => setModal({ kind: 'add', pres: modal.pres })} />
+      <DetailModal modal={modal} onClose={() => setModal(null)}
+        onAdd={() => setModal({ kind: 'add', pres: modal.pres })}
+        onPresent={(slides) => setModal({ kind: 'present', pres: modal.pres, slides, back: { kind: 'detail', pres: modal.pres } })} />
 
       {/* ---- ajouter une diapositive ---- */}
       <AddSlideModal modal={modal} wsId={wsId} onClose={() => setModal(null)} onDone={reload} />
@@ -438,7 +473,7 @@ export default function Presentations() {
 
 // ---- Détail : liste des diapositives -------------------------------------------
 
-function DetailModal({ modal, onClose, onAdd }) {
+function DetailModal({ modal, onClose, onAdd, onPresent }) {
   const p = modal?.pres
   const [slides, setSlides] = useState([])
   const [busy, setBusy] = useState(false)
@@ -454,12 +489,27 @@ function DetailModal({ modal, onClose, onAdd }) {
     setSlides((l) => l.filter((s) => s.id !== rmSlide))
     setBusy(false); setRmSlide(null)
   }
+  // Réordonne : échange la position de la diapo i avec sa voisine.
+  const move = async (i, d) => {
+    const j = i + d
+    if (j < 0 || j >= slides.length || busy) return
+    const a = slides[i], b = slides[j]
+    const next = [...slides]; next[i] = b; next[j] = a
+    setSlides(next)
+    setBusy(true)
+    await updatePresentationSlide(a.id, { position: b.position })
+    await updatePresentationSlide(b.id, { position: a.position })
+    setBusy(false)
+  }
   return (
     <Modal open={modal?.kind === 'detail'} onClose={onClose}
       title={p.name} subtitle={`${slides.length} diapositive(s) · modifiée ${ago(p.updated_at)}`}
       width="560px"
       footer={<>
-        <span />
+        <Button variant="outline" size="sm" disabled={!slides.length}
+          onClick={() => onPresent?.(slides)}>
+          <FiPlay /> Présenter
+        </Button>
         <PrimaryButton icon={FiPlus} onClick={onAdd}>Ajouter une diapositive</PrimaryButton>
       </>}>
       {!slides.length ? (
@@ -469,7 +519,8 @@ function DetailModal({ modal, onClose, onAdd }) {
       ) : (
         <VStack align="stretch" gap="2" maxH="400px" overflowY="auto">
           {slides.map((s, i) => (
-            <HStack key={s.id} border="1px solid" borderColor={C.cardBorder} borderRadius="md" px="3" py="2">
+            <HStack key={s.id} data-slide-title={s.title || s.type}
+              border="1px solid" borderColor={C.cardBorder} borderRadius="md" px="3" py="2">
               <Text fontSize="2xs" color="gray.400" w="16px">{i + 1}</Text>
               <Box w="56px" flexShrink={0}>
                 {s.photo?.storage_path ? (
@@ -494,6 +545,16 @@ function DetailModal({ modal, onClose, onAdd }) {
                 </Text>
               </Box>
               <Tag color="gray">{s.type}</Tag>
+              <VStack gap="0" flexShrink={0}>
+                <Box as="button" aria-label="Monter la diapositive" color="gray.400"
+                  fontSize="xs" cursor={i === 0 ? 'default' : 'pointer'}
+                  opacity={i === 0 ? 0.3 : 1} _hover={{ color: C.primary }}
+                  onClick={() => move(i, -1)}><FiChevronUp /></Box>
+                <Box as="button" aria-label="Descendre la diapositive" color="gray.400"
+                  fontSize="xs" cursor={i === slides.length - 1 ? 'default' : 'pointer'}
+                  opacity={i === slides.length - 1 ? 0.3 : 1} _hover={{ color: C.primary }}
+                  onClick={() => move(i, 1)}><FiChevronDown /></Box>
+              </VStack>
               <Tip label="Retirer cette diapositive">
                 <Box as="button" aria-label="Retirer la diapositive" color="gray.400" p="1"
                   cursor={busy ? 'wait' : 'pointer'} _hover={{ color: 'red.500' }}
@@ -632,6 +693,137 @@ function IconBtn({ I, label, onClick }) {
       cursor="pointer" _hover={{ color: C.primary }} onClick={onClick}>
       <I />
     </Box>
+  )
+}
+
+// ---- Galerie de modèles dentaires (façon Canva) --------------------------------
+// L'utilisateur choisit une maquette, un dossier patient optionnel, et les
+// diapositives sont pré-remplies avec les photos correspondant aux vues/étapes
+// cliniques prévues par le modèle (approche SmileCloud).
+
+// Génère les slides d'un modèle : associe chaque emplacement à la meilleure
+// photo du dossier (vue puis étape cliniques), texte indicatif si rien ne colle.
+async function buildTemplateSlides(wsId, tpl, dossierId, presName) {
+  const [photos, montages] = dossierId
+    ? await Promise.all([listPhotosByDossier(dossierId, { limit: 500 }), listMontages(wsId, { limit: 200 })])
+    : [[], []]
+  const patientMontages = (montages || []).filter((m) => m.dossier_id === dossierId)
+  const used = new Set()
+  const lbl = (p) => clinicalLabels(p)
+  const pick = (view, stage) => {
+    const cand = photos.filter((p) => !used.has(p.id))
+    const found = cand.find((x) => view && lbl(x).view === view && (!stage || lbl(x).stage === stage))
+      || cand.find((x) => view && lbl(x).view === view)
+      || cand.find((x) => stage && lbl(x).stage === stage)
+      || null
+    if (found) used.add(found.id)
+    return found
+  }
+  const out = []
+  const push = (fields) => out.push({ position: out.length, ...fields })
+  const photoSlide = (title, photo, hint) => photo
+    ? push({ type: 'photo', title, photo_id: photo.id })
+    : push({ type: 'text', title, text_content: hint || 'Ajoutez une photo du dossier patient pour compléter cette diapositive.' })
+  for (const s of tpl.slides) {
+    if (s.kind === 'title') push({ type: 'text', title: presName, text_content: tpl.desc })
+    else if (s.kind === 'text') push({ type: 'text', title: s.title, text_content: s.text })
+    else if (s.kind === 'montage') {
+      const m = patientMontages[0]
+      m ? push({ type: 'montage', title: s.title, montage_id: m.id })
+        : push({ type: 'text', title: s.title, text_content: 'Ajoutez un montage avant/après du dossier patient.' })
+    } else if (s.kind === 'all') {
+      BILAN_SLIDES.forEach(([view, title]) => photoSlide(title, pick(view), `Ajoutez la vue « ${title} ».`))
+    } else photoSlide(s.title, pick(s.view, s.stage))
+  }
+  return out
+}
+
+// Aperçu stylisé d'un modèle — fausse diapo colorée façon vignette Canva.
+function TemplatePreview({ tpl }) {
+  const ICONS = { smile: FiSmile, plan: FiFileText, compare: FiLayers, learn: FiBook, case: FiImage, lab: FiTool, grid: FiGrid }
+  const I = ICONS[tpl.preview] || FiMonitor
+  return (
+    <Box aspectRatio="16/10" borderRadius="md" overflow="hidden" position="relative"
+      bg={tpl.accent} p="10%">
+      <Box h="8%" w="62%" bg="rgba(255,255,255,0.85)" borderRadius="sm" mb="10%" />
+      <HStack gap="6%" h="52%">
+        <Center flex="1" h="100%" bg="rgba(255,255,255,0.22)" borderRadius="sm">
+          <Box as={I} color="rgba(255,255,255,0.9)" fontSize="lg" />
+        </Center>
+        <Center flex="1" h="100%" bg="rgba(255,255,255,0.14)" borderRadius="sm" />
+      </HStack>
+      <Box position="absolute" bottom="8%" left="10%" right="10%" h="6%"
+        bg="rgba(255,255,255,0.5)" borderRadius="sm" />
+    </Box>
+  )
+}
+
+const TPL_CATS = [
+  ['all', 'Tous les modèles'],
+  ['patient', 'Pour le patient'],
+  ['pro', 'Pro & laboratoire'],
+]
+
+function TemplateGalleryModal({ open, dossiers, busy, onClose, onCreate }) {
+  const [cat, setCat] = useState('all')
+  const [tpl, setTpl] = useState(null)
+  const [name, setName] = useState('')
+  const [dossierId, setDossierId] = useState('')
+  useEffect(() => {
+    if (open) { setCat('all'); setTpl(null); setName(''); setDossierId('') }
+  }, [open])
+  const list = PRESENTATION_TEMPLATES.filter((t) => cat === 'all' || t.cat === cat)
+  const dossierName = dossiers.find((d) => d.id === dossierId)?.name
+  return (
+    <Modal open={open} onClose={onClose} title="Choisir un modèle" width="880px"
+      subtitle="Les diapositives se pré-remplissent avec les photos du dossier patient"
+      footer={<>
+        <Text fontSize="xs" color="gray.500" mr="auto">
+          {tpl ? `${tpl.name} — ${tpl.slides.length} diapositive(s) prévues` : 'Choisissez un modèle'}
+        </Text>
+        <PrimaryButton onClick={() => onCreate(tpl, name, dossierId)} disabled={!tpl || busy}>
+          {busy ? 'Création…' : 'Créer la présentation'}
+        </PrimaryButton>
+      </>}>
+      <HStack gap="2" mb="4" flexWrap="wrap">
+        {TPL_CATS.map(([k, l]) => (
+          <Button key={k} size="xs" variant={cat === k ? 'solid' : 'outline'} borderRadius="full"
+            aria-pressed={cat === k} onClick={() => setCat(k)}>{l}</Button>
+        ))}
+      </HStack>
+      <SimpleGrid columns={{ base: 1, md: 3 }} gap="4" maxH="380px" overflowY="auto" pr="1">
+        {list.map((t) => (
+          <Box key={t.key} as="button" textAlign="left" cursor="pointer"
+            border="2px solid" borderColor={tpl?.key === t.key ? C.primary : 'transparent'}
+            borderRadius="lg" p="2" _hover={{ borderColor: tpl?.key === t.key ? C.primary : C.cardBorder }}
+            onClick={() => setTpl(t)} aria-pressed={tpl?.key === t.key}>
+            <TemplatePreview tpl={t} />
+            <HStack mt="2" justify="space-between">
+              <Text fontSize="xs" fontWeight="600" color={C.ink} isTruncated>{t.name}</Text>
+              <Tag color="gray" fontSize="2xs">{t.slides.length} diapos</Tag>
+            </HStack>
+            <Text fontSize="2xs" color="gray.500" lineClamp="1">{t.desc}</Text>
+          </Box>
+        ))}
+      </SimpleGrid>
+      {tpl && (
+        <HStack mt="4" gap="2" flexWrap="wrap">
+          <Input flex="1" minW="220px" fontSize="sm" autoFocus
+            placeholder={`Nom — ex. ${tpl.name.toLowerCase()} du cabinet`}
+            value={name} onChange={(e) => setName(e.target.value)} />
+          <Select w="260px" aria-label="Dossier patient" value={dossierId}
+            onChange={(e) => setDossierId(e.target.value)}>
+            <option value="">Sans patient (diapos vides)</option>
+            {dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </Select>
+        </HStack>
+      )}
+      {tpl && dossierName && (
+        <Text fontSize="2xs" color={C.primary} mt="2">
+          Les photos de « {dossierName} » seront placées automatiquement selon leurs vues et étapes cliniques.
+        </Text>
+      )}
+    </Modal>
   )
 }
 
