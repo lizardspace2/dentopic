@@ -32,6 +32,7 @@ import {
   fileInfo, ContextMenu,
 } from '../components/Explorer'
 import { photoUrl } from '../media'
+import { DOSSIER_PROJECT_TOOLS } from '../presentationTemplates'
 import { buildContactSheet, fetchImg } from './studio/engine'
 
 // Spécialités dentaires (comme le modal « Nouveau patient » de la concurrence)
@@ -715,6 +716,22 @@ function DossierDetail({ id }) {
         <Tag color="gray"><FiLayers style={{ marginRight: 4 }} />{montages.length} montages</Tag>
         <Tag color="gray"><FiFolder style={{ marginRight: 4 }} />{subs.length} sous-dossiers</Tag>
         {dossier && <Tag color="gray"><FiClock style={{ marginRight: 4 }} />{ago(dossier.updated_at)}</Tag>}
+      </HStack>
+
+      <Text fontSize="xs" fontWeight="600" color="gray.500" mb="2">PROJETS — lance un outil pré-rempli sur ce dossier</Text>
+      <HStack gap="3" mb="5" flexWrap="wrap">
+        {DOSSIER_PROJECT_TOOLS.map((t) => (
+          <Box key={t.key} as={Link} to={t.to(id)} w="172px" h="96px" borderRadius="lg"
+            p="3" display="flex" flexDirection="column" justifyContent="space-between"
+            bg={t.accent} _hover={{ transform: 'translateY(-2px)', boxShadow: 'md' }}
+            transition="all .15s">
+            <Box as={t.icon} color="rgba(255,255,255,0.9)" fontSize="lg" />
+            <Box>
+              <Text fontSize="xs" fontWeight="700" color="#ffffff" lineHeight="1.2">{t.label}</Text>
+              <Text fontSize="2xs" color="rgba(255,255,255,0.78)" isTruncated>{t.sub}</Text>
+            </Box>
+          </Box>
+        ))}
       </HStack>
 
       {subs.length > 0 && (

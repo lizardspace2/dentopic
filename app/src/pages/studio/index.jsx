@@ -839,6 +839,14 @@ export default function Studio() {
     })
     return () => { active = false }
   }, [searchParams, wsId, srcPhoto?.id, dossiers])
+  // /studio?montage=<dossierId> ou ?sheet=<dossierId> — carte « Projet » du dossier
+  const [routeDossier, setRouteDossier] = useState(null)
+  useEffect(() => {
+    const m = searchParams.get('montage'), sh = searchParams.get('sheet')
+    if (!wsId || (!m && !sh)) return
+    setRouteDossier(m || sh)
+    setModal(m ? 'montage' : 'sheet')
+  }, [searchParams, wsId])
 
   // ---- Montage avant / après ---------------------------------------------------------
 
@@ -2555,8 +2563,8 @@ export default function Studio() {
         label={fadeRef.current?.label} onApply={applyFade} />
       <OpenPhotoModal open={modal === 'calref'} onClose={() => setModal(null)} wsId={wsId} onPick={calibrateToRef} />
       <OpenPhotoModal open={modal === 'refpick'} onClose={() => setModal(null)} wsId={wsId} onPick={pickRefPhoto} />
-      <MontageModal open={modal === 'montage'} onClose={() => { setModal(null); setComparisonPhoto(null) }} wsId={wsId} onCreate={openMontage} sourcePhoto={srcPhoto} comparisonPhoto={comparisonPhoto} />
-      <SheetModal open={modal === 'sheet'} onClose={() => setModal(null)} wsId={wsId} onCompose={composeSheet} />
+      <MontageModal open={modal === 'montage'} onClose={() => { setModal(null); setComparisonPhoto(null) }} wsId={wsId} onCreate={openMontage} sourcePhoto={srcPhoto} comparisonPhoto={comparisonPhoto} initialDossierId={routeDossier} />
+      <SheetModal open={modal === 'sheet'} onClose={() => setModal(null)} wsId={wsId} onCompose={composeSheet} initialDossierId={routeDossier} />
       <ColorPickerModal open={!!pickColor} onClose={() => setPickColor(null)}
         color={pickColor ? opts[pickColor] : '#000000'}
         title={pickColor === 'bg' ? 'Sélecteur de couleurs (arrière-plan)' : 'Sélecteur de couleurs (premier plan)'}

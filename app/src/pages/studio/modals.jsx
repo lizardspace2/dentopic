@@ -241,7 +241,7 @@ const slotBox = {
   fontSize: 'xs', color: 'gray.400', overflow: 'hidden', position: 'relative',
 }
 
-export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, comparisonPhoto }) {
+export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, comparisonPhoto, initialDossierId }) {
   const [photos, setPhotos] = useState([])
   const [avant, setAvant] = useState(null)
   const [apres, setApres] = useState(null)
@@ -257,7 +257,7 @@ export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, compa
   useEffect(() => {
     if (!open || !wsId) return
     let active = true
-    setDossierId(sourcePhoto?.dossier_id || '')
+    setDossierId(initialDossierId || sourcePhoto?.dossier_id || '')
     setAvant(sourcePhoto || null)
     setApres(comparisonPhoto && comparisonPhoto.id !== sourcePhoto?.id && comparisonPhoto.dossier_id === sourcePhoto?.dossier_id ? comparisonPhoto : null)
     setLayout('side'); setLabels(true)
@@ -272,7 +272,7 @@ export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, compa
       .catch(() => { if (active) setError('Impossible de charger les photos. Réessayez.') })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [open, wsId, sourcePhoto, comparisonPhoto])
+  }, [open, wsId, sourcePhoto, comparisonPhoto, initialDossierId])
 
   const pick = (p) => {
     if (!avant) setAvant(p)
@@ -388,17 +388,22 @@ export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, compa
 // Cliquer une photo l'assigne au prochain emplacement vide ; cliquer un
 // emplacement occupé le libère. `onCompose(slots)` reçoit [{label, photo}].
 
-export function SheetModal({ open, onClose, wsId, onCompose }) {
+export function SheetModal({ open, onClose, wsId, onCompose, initialDossierId }) {
   const [photos, setPhotos] = useState([])
+  const [dossiers, setDossiers] = useState([])
+  const [dossierId, setDossierId] = useState('')
   const [slots, setSlots] = useState(SHEET_SLOTS.map((label) => ({ label, photo: null })))
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (open && wsId) {
-      listPhotos(wsId, { limit: 120 }).then(setPhotos)
+      listPhotos(wsId, { limit: 500 }).then(setPhotos)
+      listDossiers(wsId).then(setDossiers)
+      setDossierId(initialDossierId || '')
       setSlots(SHEET_SLOTS.map((label) => ({ label, photo: null })))
     }
-  }, [open, wsId])
+  }, [open, wsId, initialDossierId])
+  const pool = photos.filter((p) => !dossierId || p.dossier_id === dossierId)
 
   const filled = slots.filter((s) => s.photo).length
   const assign = (p) => {
@@ -464,8 +469,13 @@ export function SheetModal({ open, onClose, wsId, onCompose }) {
         <Text fontSize="2xs" color="gray.400" textAlign="center">
           Cliquez un emplacement occupé pour le libérer
         </Text>
+        <Select w="100%" aria-label="Dossier de la planche" value={dossierId}
+          onChange={(e) => setDossierId(e.target.value)}>
+          <option value="">Tous les dossiers</option>
+          {dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </Select>
         <SimpleGrid columns={{ base: 4, md: 6 }} gap="2" maxH="220px" overflowY="auto">
-          {photos.map((p) => {
+          {pool.map((p) => {
             const used = slots.some((s) => s.photo?.id === p.id)
             return (
               <Box key={p.id} cursor={used ? 'default' : 'pointer'} opacity={used ? 0.35 : 1}
@@ -474,9 +484,9 @@ export function SheetModal({ open, onClose, wsId, onCompose }) {
               </Box>
             )
           })}
-          {photos.length === 0 && (
+          {pool.length === 0 && (
             <Text fontSize="sm" color="gray.500" gridColumn="1/-1" textAlign="center" py="6">
-              Aucune photo — capturez ou importez d'abord.
+              {dossierId ? 'Aucune photo dans ce dossier.' : 'Aucune photo — capturez ou importez d\'abord.'}
             </Text>
           )}
         </SimpleGrid>

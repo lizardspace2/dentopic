@@ -1,5 +1,6 @@
 // Modèles de présentations dentaires — galerie façon Canva, contenu
 // auto-rempli depuis le dossier patient façon SmileCloud.
+import { FiGrid, FiLayers, FiMonitor, FiFileText } from 'react-icons/fi'
 //
 // Chaque diapo du plan :
 //   kind 'title'   → diapo texte de titre (nom de la présentation)
@@ -130,4 +131,22 @@ export const BILAN_SLIDES = [
   ['intraoral', 'Face à l\u2019écarteur'], ['right', 'Latérale droite'],
   ['left', 'Latérale gauche'], ['upper', 'Occlusale maxillaire'],
   ['lower', 'Occlusale mandibulaire'], ['detail', 'Secteur traité'],
+]
+
+// Cartes « Projets » du détail dossier — inspirées de l'écran Projects de
+// SmileCloud (Smile Design, Signature Design, Blueprint, Review, Compare).
+// Chaque carte lance un outil pré-rempli avec le dossier en contexte.
+export const DOSSIER_PROJECT_TOOLS = [
+  { key: 'pres-esthetique', icon: FiMonitor, accent: '#7c3aed',
+    label: 'Présentation du cas', sub: 'Diaporama pré-rempli',
+    to: (id) => `/presentations?tpl=esthetique&dossier=${id}` },
+  { key: 'pres-plan', icon: FiFileText, accent: '#0ea5e9',
+    label: 'Plan de traitement', sub: 'Expliquer les étapes au patient',
+    to: (id) => `/presentations?tpl=plan&dossier=${id}` },
+  { key: 'montage', icon: FiLayers, accent: '#059669',
+    label: 'Montage avant/après', sub: 'Comparer deux photos du dossier',
+    to: (id) => `/studio?montage=${id}` },
+  { key: 'sheet', icon: FiGrid, accent: '#d97706',
+    label: 'Planche clinique', sub: 'Les 8 vues sur une image',
+    to: (id) => `/studio?sheet=${id}` },
 ]

@@ -3,6 +3,7 @@
 // détail des diapositives, ajout/suppression de diapos, édition (nom, patient,
 // statut), duplication, archivage, partage par lien, corbeille (soft delete).
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
   FiPlus, FiType, FiMonitor, FiLayers, FiFileText, FiAlertCircle, FiEye,
@@ -64,6 +65,16 @@ export default function Presentations() {
     setPres(p); setSlideCounts(s); setDossiers(d)
   }
   useEffect(() => { reload() }, [wsId]) // eslint-disable-line
+
+  // /presentations?tpl=<key>&dossier=<id> — carte « Projet » d'un dossier patient
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    const tpl = searchParams.get('tpl')
+    if (!tpl) return
+    const t = PRESENTATION_TEMPLATES.find((x) => x.key === tpl)
+    setModal({ kind: 'gallery', initialTpl: t || null, initialDossier: searchParams.get('dossier') || '' })
+    setSearchParams({}, { replace: true })
+  }, [searchParams]) // eslint-disable-line
 
   const slideTotal = Object.values(slideCounts).reduce((a, b) => a + b, 0)
   const noSlides = pres.filter((p) => !slideCounts[p.id] && p.status !== 'archived').length
@@ -385,6 +396,7 @@ export default function Presentations() {
 
       {/* ---- galerie de modèles dentaires (façon Canva) ---- */}
       <TemplateGalleryModal open={modal?.kind === 'gallery'} dossiers={dossiers} busy={busy}
+        initialTpl={modal?.initialTpl} initialDossier={modal?.initialDossier}
         onClose={() => setModal(null)} onCreate={createFromTemplate} />
 
       {/* ---- mode Présenter (plein écran) — Échap revient au contexte ---- */}
@@ -764,14 +776,14 @@ const TPL_CATS = [
   ['pro', 'Pro & laboratoire'],
 ]
 
-function TemplateGalleryModal({ open, dossiers, busy, onClose, onCreate }) {
+function TemplateGalleryModal({ open, dossiers, busy, initialTpl, initialDossier, onClose, onCreate }) {
   const [cat, setCat] = useState('all')
   const [tpl, setTpl] = useState(null)
   const [name, setName] = useState('')
   const [dossierId, setDossierId] = useState('')
   useEffect(() => {
-    if (open) { setCat('all'); setTpl(null); setName(''); setDossierId('') }
-  }, [open])
+    if (open) { setCat('all'); setTpl(initialTpl || null); setName(''); setDossierId(initialDossier || '') }
+  }, [open]) // eslint-disable-line
   const list = PRESENTATION_TEMPLATES.filter((t) => cat === 'all' || t.cat === cat)
   const dossierName = dossiers.find((d) => d.id === dossierId)?.name
   return (

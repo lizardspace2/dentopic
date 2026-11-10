@@ -187,8 +187,12 @@ async function login(page) {
     await page.locator('button:has-text("Enregistrer")').last().click()
     await page.locator('text=Photo classée').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {})
     check('Classer complet → toast', await page.locator('text=Photo classée').count() >= 1)
-    await page.waitForTimeout(1500)
-    const unAfter = await page.locator('button').filter({ hasText: /Classer/ }).count()
+    // le rechargement (refetch + URLs signées) peut dépasser 1,5 s — on sonde
+    let unAfter = un2
+    for (let i = 0; i < 10 && unAfter !== un2 - 1; i++) {
+      await page.waitForTimeout(900)
+      unAfter = await page.locator('button').filter({ hasText: /Classer/ }).count()
+    }
     check('Photo complète sort du filtre À classer', unAfter === un2 - 1, `${un2} → ${unAfter}`)
     // restauration finale : on déclasse pour laisser l'état rejouable
     await page.goto(`${BASE}/collection?tab=photos`)

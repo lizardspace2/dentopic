@@ -1024,6 +1024,11 @@ export function deleteSocialPost(id) {
   return supabase.from('social_posts').delete().eq('id', id).then(({ error }) => !error)
 }
 
+export function getSocialPost(id) {
+  return supabase.from('social_posts').select('id,status').eq('id', id).single()
+    .then(({ data }) => data || null)
+}
+
 /** Démarre le flux OAuth via l'Edge Function (Meta natif ou agrégateur).
  *  Retourne { url } à ouvrir, ou { configured:false } si le serveur n'est pas
  *  configuré (le frontend bascule alors sur la connexion manuelle). */

@@ -403,9 +403,10 @@ async function presCard(page, name) {
   // favoris par étoile
   const star = page.locator('button[aria-label="Ajouter aux favorites"]').first();
   if (await star.count()) {
+    const favAvant = await page.locator('button[aria-label="Retirer des favorites"]').count();
     await star.click();
     await page.waitForTimeout(1500);
-    ok('étoile → favori basculé', await page.locator('button[aria-label="Retirer des favorites"]').count() >= 3);
+    ok('étoile → favori basculé', await page.locator('button[aria-label="Retirer des favorites"]').count() === favAvant + 1);
     // re-cliquer pour restaurer l'état seed (2 favorites)
     await page.locator('button[aria-label="Retirer des favorites"]').first().click();
     await page.waitForTimeout(1200);

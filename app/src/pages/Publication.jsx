@@ -18,7 +18,7 @@ import SocialIcon from '../components/SocialIcon'
 import { useApp } from '../context/AppContext'
 import {
   listSocialAccounts, connectSocialAccount, disconnectSocialAccount,
-  listSocialPosts, createSocialPost, updateSocialPost, deleteSocialPost,
+  listSocialPosts, createSocialPost, updateSocialPost, deleteSocialPost, getSocialPost,
   publishDuePosts, getWorkspaceSettings, saveWorkspaceSetting,
   listPhotos, listMontages, listVideoProjects, listDossiers, getPatient,
   socialOAuthStart, socialSyncAccounts, socialDisconnectAccount,
@@ -349,7 +349,7 @@ export default function Publication() {
 
           {tab === 'brouillons' ? (
             <DraftsPane drafts={posts.filter((p) => p.status !== 'published')} accounts={accounts}
-              onEdit={openDraft} onReload={reload} />
+              wsId={wsId} onEdit={openDraft} onReload={reload} />
           ) : tab === 'objectifs' ? (
             <VStack align="stretch" gap="2">
               <Text fontSize="xs" fontWeight="600" color={C.ink}>Objectifs de la semaine</Text>
@@ -407,8 +407,9 @@ export default function Publication() {
 
 // ---- Onglet brouillons : posts réels -------------------------------------------
 
-function DraftsPane({ drafts, accounts, onEdit, onReload }) {
+function DraftsPane({ drafts, accounts, wsId, onEdit, onReload }) {
   const [busy, setBusy] = useState(false)
+  const [rmPost, setRmPost] = useState(null)
   if (!drafts.length) {
     return (
       <VStack py="4" gap="2" align="center">
@@ -418,7 +419,6 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
       </VStack>
     )
   }
-  const [rmPost, setRmPost] = useState(null)
   const del = async () => {
     if (!rmPost) return
     setBusy(true)
@@ -460,13 +460,14 @@ function DraftsPane({ drafts, accounts, onEdit, onReload }) {
                 </Text>
               </Box>
               <VStack gap="0" align="center">
-              <Tip label="Publier maintenant (simulé — le vrai envoi nécessite l'OAuth du réseau)">
+              <Tip label="Publier maintenant">
                 <Box as="button" aria-label="Publier maintenant" color="gray.400" p="1"
                   cursor={busy ? 'wait' : 'pointer'} _hover={{ color: C.primary }}
                   onClick={async (e) => {
                     e.stopPropagation()
                     setBusy(true)
-                    await updateSocialPost(p.id, { status: 'published' })
+                    await updateSocialPost(p.id, { status: 'scheduled', scheduled_at: new Date().toISOString() })
+                    await publishDuePosts(wsId)
                     setBusy(false); onReload()
                   }}>
                   <FiSend />
@@ -632,6 +633,7 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
   const [dossierId, setDossierId] = useState('')
   const [accountId, setAccountId] = useState('')
   const [schedule, setSchedule] = useState('')
+  const [showSchedule, setShowSchedule] = useState(false)
   const [watermark, setWatermark] = useState(true)
   const [busy, setBusy] = useState(false)
   const [photos, setPhotos] = useState([])
@@ -654,46 +656,45 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
       setCaption(post.caption || '')
       setAccountId(post.account_id || '')
       setSchedule(post.scheduled_at ? post.scheduled_at.slice(0, 16) : '')
+      setShowSchedule(!!post.scheduled_at)
       setWatermark(post.watermark_enabled !== false)
       setDossierId('')
       setMediaId(post.photo_id || post.montage_id || post.video_id)
       setMediaTab(post.photo_id ? 'photos' : post.montage_id ? 'montages' : 'videos')
     } else {
       setKind('publication'); setCaption(''); setAccountId(accounts[0]?.id || '')
-      setSchedule(prefill ? toLocal(prefill) : ''); setWatermark(true)
+      setSchedule(prefill ? toLocal(prefill) : ''); setShowSchedule(!!prefill); setWatermark(true)
       setDossierId(''); setMediaId(null); setMediaTab('photos')
     }
   }, [open, post, prefill]) // eslint-disable-line
 
-  const save = async () => {
-    if (!mediaId) return
+  // mode : 'now' (envoi immédiat, défaut) | 'schedule' (programmé) | 'draft'
+  const submit = async (mode) => {
+    if (!mediaId || (mode === 'schedule' && !schedule)) return
     setBusy(true)
     let patientId = null
     if (dossierId) patientId = (await getPatient(dossierId))?.id || null
     const fields = {
       kind, caption: caption.trim() || null,
       account_id: accountId || null,
-      scheduled_at: schedule ? new Date(schedule).toISOString() : null,
+      scheduled_at: mode === 'now' ? new Date().toISOString()
+        : mode === 'schedule' ? new Date(schedule).toISOString() : null,
       watermark_enabled: watermark,
       patient_id: patientId,
       photo_id: mediaTab === 'photos' ? mediaId : null,
       montage_id: mediaTab === 'montages' ? mediaId : null,
       video_id: mediaTab === 'videos' ? mediaId : null,
+      status: mode === 'draft' ? 'draft' : 'scheduled',
     }
-    if (post) {
-      await updateSocialPost(post.id, {
-        ...fields, status: fields.scheduled_at ? 'scheduled' : 'draft',
-      })
-    } else {
-      await createSocialPost(wsId, fields)
+    const res = post
+      ? await updateSocialPost(post.id, fields)
+      : await createSocialPost(wsId, fields)
+    if (mode === 'now' && res?.id) {
+      await publishDuePosts(wsId)
+      const final = await getSocialPost(res.id)
+      if (final?.status === 'published') toast.success('Publication envoyée !')
+      else if (final?.status === 'failed') toast.error("L'envoi a échoué — vérifiez la connexion du réseau.")
     }
-    setBusy(false); onDone(); onClose()
-  }
-
-  const publishNow = async () => {
-    if (!post) return
-    setBusy(true)
-    await updateSocialPost(post.id, { status: 'published' })
     setBusy(false); onDone(); onClose()
   }
 
@@ -701,24 +702,31 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
 
   return (
     <Modal open={open} onClose={onClose}
-      title={post ? 'Modifier le brouillon' : 'Préparer un brouillon'}
-      subtitle="Le média, la légende et le patient sont conservés même sans réseau connecté"
+      title={post ? 'Modifier la publication' : 'Nouvelle publication'}
+      subtitle="Choisissez un média, écrivez la légende — c'est publié en un clic"
       width="620px"
       footer={<>
         <Text fontSize="2xs" color="gray.400">
-          {schedule ? 'Sera programmé à la date choisie' : 'Sera conservé en brouillon'}
+          {showSchedule
+            ? schedule
+              ? `Sera publié le ${new Date(schedule).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`
+              : 'Choisissez une date de publication'
+            : accountId
+              ? 'Sera publié immédiatement'
+              : 'Sera conservé en brouillon — choisissez un réseau pour publier'}
         </Text>
         <HStack gap="2">
-          {post && (
-            <Tip label="Marquer comme publié immédiatement (simulé sans OAuth)">
-              <Button variant="outline" size="sm" onClick={publishNow} disabled={busy}>
-                <FiSend /> Publier
-              </Button>
-            </Tip>
+          {(showSchedule || accountId) && (
+            <Button variant="ghost" size="sm" color="gray.500" onClick={() => submit('draft')} disabled={busy}>
+              Brouillon
+            </Button>
           )}
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <PrimaryButton onClick={save} disabled={!mediaId || busy}>
-            {busy ? 'Enregistrement…' : post ? 'Enregistrer' : 'Créer le brouillon'}
+          <PrimaryButton
+            icon={showSchedule ? FiClock : accountId ? FiSend : FiEdit3}
+            onClick={() => submit(showSchedule ? 'schedule' : accountId ? 'now' : 'draft')}
+            disabled={!mediaId || busy || (showSchedule && !schedule)}>
+            {busy ? 'Envoi…' : showSchedule ? 'Programmer' : accountId ? 'Publier maintenant' : 'Enregistrer le brouillon'}
           </PrimaryButton>
         </HStack>
       </>}>
@@ -806,10 +814,32 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
         </Field>
       </SimpleGrid>
 
-      <SimpleGrid columns={2} gap="3">
-        <Field label="Programmer (optionnel)">
-          <Input type="datetime-local" fontSize="sm" value={schedule}
-            onChange={(e) => setSchedule(e.target.value)} />
+      <HStack justify="space-between" align="center">
+        <HStack gap="2" cursor="pointer" onClick={() => setWatermark(!watermark)}>
+          <Center w="34px" h="18px" borderRadius="full" px="1"
+            bg={watermark ? C.primary : 'gray.300'} justify={watermark ? 'flex-end' : 'flex-start'}>
+            <Box w="14px" h="14px" borderRadius="full" bg="#fff" />
+          </Center>
+          <Text fontSize="xs" color={C.body}>Filigrane DentoPic {watermark ? 'activé' : 'désactivé'}</Text>
+        </HStack>
+        {!showSchedule && (
+          <Box as="button" fontSize="xs" fontWeight="600" color={C.primary} cursor="pointer"
+            display="inline-flex" alignItems="center" gap="4px"
+            onClick={() => setShowSchedule(true)}>
+            <FiClock /> Programmer pour plus tard
+          </Box>
+        )}
+      </HStack>
+      {showSchedule && (
+        <Box mt="2">
+          <HStack gap="2">
+            <Input type="datetime-local" fontSize="sm" value={schedule} flex="1"
+              onChange={(e) => setSchedule(e.target.value)} />
+            <Button size="sm" variant="ghost" color="gray.500" flexShrink={0}
+              onClick={() => { setShowSchedule(false); setSchedule('') }}>
+              Publier maintenant
+            </Button>
+          </HStack>
           {slots?.length > 0 && (
             <HStack gap="1" flexWrap="wrap" mt="1.5">
               {slots.map((s) => (
@@ -822,17 +852,8 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
               ))}
             </HStack>
           )}
-        </Field>
-        <Field label="Filigrane DentoPic">
-          <HStack h="34px" gap="2" cursor="pointer" onClick={() => setWatermark(!watermark)}>
-            <Center w="34px" h="18px" borderRadius="full" px="1"
-              bg={watermark ? C.primary : 'gray.300'} justify={watermark ? 'flex-end' : 'flex-start'}>
-              <Box w="14px" h="14px" borderRadius="full" bg="#fff" />
-            </Center>
-            <Text fontSize="xs" color={C.body}>{watermark ? 'Activé' : 'Désactivé'}</Text>
-          </HStack>
-        </Field>
-      </SimpleGrid>
+        </Box>
+      )}
     </Modal>
   )
 }
