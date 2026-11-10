@@ -12,7 +12,7 @@
 // diapo en miniature que le plein écran.
 import { useRef } from 'react'
 import { Box, Center, Text } from '@chakra-ui/react'
-import { FiImage, FiType, FiVideo } from 'react-icons/fi'
+import { FiImage, FiRotateCw, FiType, FiVideo } from 'react-icons/fi'
 import { usePhotoUrl } from '../media'
 
 export const LAYOUT_VERSION = 1
@@ -106,10 +106,23 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
     e.preventDefault(); e.stopPropagation()
     onSelect?.(el.id)
     const rect = ref.current.getBoundingClientRect()
-    drag.current = { id: el.id, mode, sx: e.clientX, sy: e.clientY, ox: el.x, oy: el.y, ow: el.w, oh: el.h, rw: rect.width, rh: rect.height }
+    drag.current = {
+      id: el.id, mode, sx: e.clientX, sy: e.clientY,
+      ox: el.x, oy: el.y, ow: el.w, oh: el.h, rw: rect.width, rh: rect.height,
+      // centre de l'élément en px — repère du geste de rotation
+      cx: rect.left + ((el.x + el.w / 2) / 100) * rect.width,
+      cy: rect.top + ((el.y + el.h / 2) / 100) * rect.height,
+    }
     const move = (ev) => {
       const d = drag.current
       if (!d) return
+      if (d.mode === 'rot') {
+        let ang = Math.atan2(ev.clientY - d.cy, ev.clientX - d.cx) * (180 / Math.PI) + 90
+        ang = ((ang % 360) + 360) % 360
+        const snapped = Math.round(ang / 15) * 15
+        patch(d.id, { rot: Math.abs(ang - snapped) <= 4 ? snapped : Math.round(ang) }, false)
+        return
+      }
       const dx = ((ev.clientX - d.sx) / d.rw) * 100
       const dy = ((ev.clientY - d.sy) / d.rh) * 100
       if (d.mode === 'move') {
@@ -140,16 +153,26 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
       {ordered.map((el) => (
         <Box key={el.id} position="absolute"
           left={`${el.x}%`} top={`${el.y}%`} w={`${el.w}%`} h={`${el.h}%`}
+          style={{ transform: el.rot ? `rotate(${el.rot}deg)` : undefined }}
           cursor={editing ? 'grab' : 'default'}
           outline={editing && sel === el.id ? '2px solid' : 'none'}
           outlineColor="blue.400" outlineOffset="1px" borderRadius="sm"
           onPointerDown={(e) => down(e, el, 'move')}>
           <ElemBody el={el} />
           {editing && sel === el.id && (
-            <Box position="absolute" right="-6px" bottom="-6px" w="12px" h="12px"
-              bg="blue.400" borderRadius="full" cursor="nwse-resize" zIndex="2"
-              border="2px solid #fff"
-              onPointerDown={(e) => down(e, el, 'resize')} />
+            <>
+              {/* poignée de rotation au-dessus de l'élément, façon Canva */}
+              <Center position="absolute" top="-24px" left="50%" style={{ transform: 'translateX(-50%)' }}
+                w="16px" h="16px" bg="blue.400" borderRadius="full" color="#fff"
+                fontSize="9px" cursor="grab" zIndex="2" border="1.5px solid #fff"
+                onPointerDown={(e) => down(e, el, 'rot')}>
+                <FiRotateCw />
+              </Center>
+              <Box position="absolute" right="-6px" bottom="-6px" w="12px" h="12px"
+                bg="blue.400" borderRadius="full" cursor="nwse-resize" zIndex="2"
+                border="2px solid #fff"
+                onPointerDown={(e) => down(e, el, 'resize')} />
+            </>
           )}
         </Box>
       ))}

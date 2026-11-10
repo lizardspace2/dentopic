@@ -10,7 +10,7 @@ import {
   FiMoreVertical, FiClock, FiLink, FiEdit2, FiTrash2, FiCheck, FiCopy,
   FiExternalLink, FiImage, FiVideo, FiArchive, FiX, FiAlertTriangle,
   FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiHeart, FiTool,
-  FiSquare,
+  FiSquare, FiRotateCcw, FiRotateCw,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
@@ -654,6 +654,16 @@ function ElementPanel({ el, busy, onPatch, onOrder, onDup, onDel, onBack, onPick
             onClick={() => onOrder(el.id, 1)}><FiChevronDown /> Avant</Button>
         </HStack>
       </Field>
+      <Field label={`Rotation ${el.rot ? `${Math.round(el.rot)}°` : ''}`}>
+        <HStack gap="1">
+          <Button size="xs" variant="outline" flex="1" fontSize="2xs"
+            onClick={() => set({ rot: (((el.rot || 0) - 15) % 360 + 360) % 360 })}>−15°</Button>
+          <Button size="xs" variant="outline" flex="1" fontSize="2xs" disabled={!el.rot}
+            onClick={() => set({ rot: 0 })}>Réinit.</Button>
+          <Button size="xs" variant="outline" flex="1" fontSize="2xs"
+            onClick={() => set({ rot: ((el.rot || 0) + 15) % 360 })}>+15°</Button>
+        </HStack>
+      </Field>
       <HStack gap="1.5">
         <Button size="xs" variant="outline" flex="1" disabled={busy}
           onClick={() => onDup(el.id)}><FiCopy /> Dupliquer</Button>
@@ -680,6 +690,8 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const [poolMode, setPoolMode] = useState('slide') // 'slide' | 'el-add' | 'el-swap'
   const [poolItems, setPoolItems] = useState([])
   const [selEl, setSelEl] = useState(null)        // id de l'élément sélectionné sur la toile
+  const [hist, setHist] = useState([])            // annuler : pile d'états d'éléments
+  const [future, setFuture] = useState([])        // rétablir
 
   const load = () => p && listPresentationSlides(p.id).then(setSlides)
   useEffect(() => {
@@ -690,7 +702,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const curEl = els.find((e) => e.id === selEl) || null
   useEffect(() => {
     setForm({ title: cur?.title || '', text: cur?.text_content || '' })
-    setSelEl(null)
+    setSelEl(null); setHist([]); setFuture([])
   }, [sel, cur?.id]) // eslint-disable-line
   useEffect(() => {
     if (!pool || !wsId) { setPoolItems([]); return }
@@ -701,6 +713,68 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
     }
     fns[pool]().then(setPoolItems)
   }, [pool, wsId])
+
+  // ---- éléments libres sur la diapo (persistés en JSON dans `notes`) --------
+  // commit=false → état local pendant le geste ; commit=true → historique +
+  // sauvegarde REST. Undo/redo mémorisent les états de la diapo courante.
+  const persistEls = (next) => {
+    if (!cur) return
+    const notes = layoutNotes(next)
+    setSlides((list) => list.map((x) => (x.id === cur.id ? { ...x, notes } : x)))
+    updatePresentationSlide(cur.id, { notes })
+  }
+  const applyEls = (next, commit) => {
+    if (!cur) return
+    if (!commit) {
+      setSlides((list) => list.map((x) => (x.id === cur.id ? { ...x, notes: layoutNotes(next) } : x)))
+      return
+    }
+    setHist((h) => [...h.slice(-49), els])
+    setFuture([])
+    persistEls(next)
+  }
+  const undo = () => {
+    if (!hist.length) return
+    setFuture((f) => [els, ...f])
+    persistEls(hist[hist.length - 1])
+    setHist((h) => h.slice(0, -1))
+  }
+  const redo = () => {
+    if (!future.length) return
+    setHist((h) => [...h, els])
+    persistEls(future[0])
+    setFuture((f) => f.slice(1))
+  }
+  const patchEl = (id, p_, commit) =>
+    applyEls(els.map((e) => (e.id === id ? { ...e, ...p_ } : e)), commit)
+  const addEl = (el) => { applyEls([...els, el], true); setSelEl(el.id) }
+  const delEl = (id) => { applyEls(els.filter((e) => e.id !== id), true); setSelEl(null) }
+  const dupEl = (id) => {
+    const e = els.find((x) => x.id === id)
+    if (!e) return
+    const { id: _i, ...rest } = e
+    addEl(newEl({ ...rest, x: Math.min(92, e.x + 4), y: Math.min(92, e.y + 4) }))
+  }
+  const orderEl = (id, d) => {
+    const o = [...els].sort((a, b) => (a.z ?? 0) - (b.z ?? 0))
+    const i = o.findIndex((e) => e.id === id); const j = i + d
+    if (j < 0 || j >= o.length) return
+    const zi = o[i].z ?? i; o[i].z = o[j].z ?? j; o[j].z = zi
+    applyEls(o, true)
+  }
+  // Ctrl+Z / Ctrl+Y (ou Ctrl+Maj+Z) — ignoré pendant la saisie dans un champ
+  // et quand l'éditeur est fermé.
+  useEffect(() => {
+    const key = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || modal?.kind !== 'detail') return
+      const tag = e.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo() }
+      else if (e.key.toLowerCase() === 'y') { e.preventDefault(); redo() }
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }) // eslint-disable-line
   if (!p) return null
 
   // Renumérote toutes les positions après un changement structurel.
@@ -773,31 +847,6 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
     setPool(null); await load(); setBusy(false)
   }
 
-  // ---- éléments libres sur la diapo (persistés en JSON dans `notes`) --------
-  // commit=false → état local pendant le geste ; commit=true → sauvegarde REST.
-  const applyEls = (next, commit) => {
-    if (!cur) return
-    const notes = layoutNotes(next)
-    setSlides((list) => list.map((x) => (x.id === cur.id ? { ...x, notes } : x)))
-    if (commit) updatePresentationSlide(cur.id, { notes })
-  }
-  const patchEl = (id, p, commit) =>
-    applyEls(els.map((e) => (e.id === id ? { ...e, ...p } : e)), commit)
-  const addEl = (el) => { applyEls([...els, el], true); setSelEl(el.id) }
-  const delEl = (id) => { applyEls(els.filter((e) => e.id !== id), true); setSelEl(null) }
-  const dupEl = (id) => {
-    const e = els.find((x) => x.id === id)
-    if (!e) return
-    const { id: _i, ...rest } = e
-    addEl(newEl({ ...rest, x: Math.min(92, e.x + 4), y: Math.min(92, e.y + 4) }))
-  }
-  const orderEl = (id, d) => {
-    const o = [...els].sort((a, b) => (a.z ?? 0) - (b.z ?? 0))
-    const i = o.findIndex((e) => e.id === id); const j = i + d
-    if (j < 0 || j >= o.length) return
-    const zi = o[i].z ?? i; o[i].z = o[j].z ?? j; o[j].z = zi
-    applyEls(o, true)
-  }
   const openPool = (kind, mode) => { setPool(kind); setPoolMode(mode) }
   const onPick = (m) => {
     const path = pool === 'photo' ? m.storage_path : m.export_url
@@ -852,6 +901,14 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
               <HStack mt="3" justify="space-between" flexWrap="wrap" gap="2">
                 {/* pose d'éléments sur la diapo, façon barre latérale Canva */}
                 <HStack gap="1">
+                  <Button size="xs" variant="outline" px="1.5" disabled={!hist.length}
+                    aria-label="Annuler" title="Annuler (Ctrl+Z)" onClick={undo}>
+                    <FiRotateCcw />
+                  </Button>
+                  <Button size="xs" variant="outline" px="1.5" disabled={!future.length}
+                    aria-label="Rétablir" title="Rétablir (Ctrl+Y)" onClick={redo}>
+                    <FiRotateCw />
+                  </Button>
                   {[
                     [FiType, 'Texte', () => addEl(newEl({ t: 'text', x: 10, y: 42, w: 80, h: 16, text: 'Nouveau texte', size: 6, color: '#f8fafc', align: 'center' }))],
                     [FiImage, 'Photo', () => openPool('photo', 'el-add')],
