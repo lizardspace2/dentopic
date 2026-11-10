@@ -88,7 +88,7 @@ async function presCard(page, name) {
   await page.locator('button:has-text("Démarrer depuis un template")').click();
   await page.waitForTimeout(600);
   ok('galerie de modèles ouverte',
-    await page.locator('text=Choisir un modèle').count() > 0
+    await page.locator('text=Créer un design').count() > 0
     && await page.locator('text=Cas esthétique sourire').count() > 0);
   // les 3 filtres de catégorie existent
   ok('galerie : catégories visibles',

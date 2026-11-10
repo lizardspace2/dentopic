@@ -445,7 +445,7 @@ export default function Presentations() {
       {/* ---- galerie de modèles dentaires (façon Canva) ---- */}
       <TemplateGalleryModal open={modal?.kind === 'gallery'} dossiers={dossiers} busy={busy}
         initialTpl={modal?.initialTpl} initialDossier={modal?.initialDossier}
-        onClose={() => setModal(null)} onCreate={createFromTemplate} />
+        onClose={() => setModal(null)} onCreate={createFromTemplate} onBlank={openNew} />
 
       {/* ---- mode Présenter (plein écran) — Échap revient au contexte ---- */}
       {modal?.kind === 'present' && (
@@ -1083,72 +1083,168 @@ function TemplatePreview({ tpl }) {
   )
 }
 
-const TPL_CATS = [
-  ['all', 'Tous les modèles'],
-  ['patient', 'Pour le patient'],
-  ['pro', 'Pro & laboratoire'],
+// ---- « Créer un design » — reproduction du modal d'accueil de Canva ---------
+// Sidebar de catégories à gauche, recherche en haut, actions rapides en
+// pastilles rondes, puis grande grille de cartes « Populaires ».
+
+const DESIGN_CATS = [
+  ['all', 'Pour vous', HiOutlineSparkles, '#8b5cf6'],
+  ['patient', 'Pour le patient', FiSmile, '#f59e0b'],
+  ['pro', 'Pro & laboratoire', FiTool, '#0d9488'],
 ]
 
-function TemplateGalleryModal({ open, dossiers, busy, initialTpl, initialDossier, onClose, onCreate }) {
+// Actions rapides : raccourcis vers un modèle ou le document vierge.
+const QUICK_ACTIONS = [
+  { icon: FiGrid, accent: '#334155', label: 'Bilan complet', tpl: 'bilan' },
+  { icon: FiLayers, accent: '#059669', label: 'Avant / Après', tpl: 'avant-apres' },
+  { icon: FiFileText, accent: '#0ea5e9', label: 'Plan de traitement', tpl: 'plan' },
+  { icon: FiMonitor, accent: '#7c3aed', label: 'Cas esthétique', tpl: 'esthetique' },
+  { icon: FiPlus, accent: '#64748b', label: 'Document vierge', blank: true },
+]
+
+// Carte format façon Canva : tuile icône colorée + nom + format.
+function DesignCard({ tpl, selected, onClick }) {
+  const ICONS = { smile: FiSmile, plan: FiFileText, compare: FiLayers, learn: FiBook, case: FiImage, lab: FiTool, grid: FiGrid }
+  const I = ICONS[tpl.preview] || FiMonitor
+  return (
+    <Box as="button" textAlign="left" cursor="pointer" role="button" aria-pressed={selected}
+      onClick={onClick}>
+      <Center aspectRatio="4/3" borderRadius="lg" bg="gray.50" border="2px solid"
+        borderColor={selected ? C.primary : 'transparent'}
+        _hover={{ borderColor: selected ? C.primary : 'gray.300' }}>
+        <Center w="44%" aspectRatio="1" borderRadius="22%" bg={tpl.accent} color="#fff"
+          fontSize="xl" boxShadow="sm">
+          <Box as={I} />
+        </Center>
+      </Center>
+      <Text fontSize="2xs" fontWeight="600" color={C.ink} mt="1.5" isTruncated>{tpl.name}</Text>
+      <Text fontSize="2xs" color="gray.400" isTruncated>Présentation · 16:9 · {tpl.slides.length} diapos</Text>
+    </Box>
+  )
+}
+
+function TemplateGalleryModal({ open, dossiers, busy, initialTpl, initialDossier, onClose, onCreate, onBlank }) {
   const [cat, setCat] = useState('all')
+  const [search, setSearch] = useState('')
   const [tpl, setTpl] = useState(null)
   const [name, setName] = useState('')
   const [dossierId, setDossierId] = useState('')
   useEffect(() => {
-    if (open) { setCat('all'); setTpl(initialTpl || null); setName(''); setDossierId(initialDossier || '') }
+    if (open) { setCat('all'); setSearch(''); setTpl(initialTpl || null); setName(''); setDossierId(initialDossier || '') }
   }, [open]) // eslint-disable-line
-  const list = PRESENTATION_TEMPLATES.filter((t) => cat === 'all' || t.cat === cat)
+  const needle = search.trim().toLowerCase()
+  const list = PRESENTATION_TEMPLATES
+    .filter((t) => cat === 'all' || t.cat === cat)
+    .filter((t) => !needle || `${t.name} ${t.desc}`.toLowerCase().includes(needle))
   const dossierName = dossiers.find((d) => d.id === dossierId)?.name
+  if (!open) return null
+  const quick = (a) => {
+    if (a.blank) { onBlank?.(); return }
+    setTpl(PRESENTATION_TEMPLATES.find((t) => t.key === a.tpl) || null)
+  }
   return (
-    <Modal open={open} onClose={onClose} title="Choisir un modèle" width="880px"
-      subtitle="Les diapositives se pré-remplissent avec les photos du dossier patient"
-      footer={<>
-        <Text fontSize="xs" color="gray.500" mr="auto">
-          {tpl ? `${tpl.name} — ${tpl.slides.length} diapositive(s) prévues` : 'Choisissez un modèle'}
-        </Text>
-        <PrimaryButton onClick={() => onCreate(tpl, name, dossierId)} disabled={!tpl || busy}>
-          {busy ? 'Création…' : 'Créer la présentation'}
-        </PrimaryButton>
-      </>}>
-      <HStack gap="2" mb="4" flexWrap="wrap">
-        {TPL_CATS.map(([k, l]) => (
-          <Button key={k} size="xs" variant={cat === k ? 'solid' : 'outline'} borderRadius="full"
-            aria-pressed={cat === k} onClick={() => setCat(k)}>{l}</Button>
-        ))}
-      </HStack>
-      <SimpleGrid columns={{ base: 1, md: 3 }} gap="4" maxH="380px" overflowY="auto" pr="1">
-        {list.map((t) => (
-          <Box key={t.key} as="button" textAlign="left" cursor="pointer"
-            border="2px solid" borderColor={tpl?.key === t.key ? C.primary : 'transparent'}
-            borderRadius="lg" p="2" _hover={{ borderColor: tpl?.key === t.key ? C.primary : C.cardBorder }}
-            onClick={() => setTpl(t)} aria-pressed={tpl?.key === t.key}>
-            <TemplatePreview tpl={t} />
-            <HStack mt="2" justify="space-between">
-              <Text fontSize="xs" fontWeight="600" color={C.ink} isTruncated>{t.name}</Text>
-              <Tag color="gray" fontSize="2xs">{t.slides.length} diapos</Tag>
-            </HStack>
-            <Text fontSize="2xs" color="gray.500" lineClamp="1">{t.desc}</Text>
+    <Box position="fixed" inset="0" zIndex="60" bg="blackAlpha.500" display="flex"
+      alignItems="center" justifyContent="center" p="4" onClick={onClose}>
+      <Box bg="white" borderRadius="xl" w="100%" maxW="1000px" h="85vh" display="flex"
+        flexDirection="column" overflow="hidden" boxShadow="xl"
+        onClick={(e) => e.stopPropagation()}>
+        {/* en-tête : titre + recherche + fermer (comme la capture Canva) */}
+        <HStack px="6" pt="5" pb="4" gap="4" flexShrink={0}>
+          <Text fontSize="lg" fontWeight="700" color={C.ink} flexShrink={0}>Créer un design</Text>
+          <Input flex="1" fontSize="sm" borderRadius="full" px="5" h="38px"
+            placeholder="Qu'aimeriez-vous créer ?"
+            value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Box as="button" aria-label="Fermer" color="gray.400" p="1.5" borderRadius="full"
+            cursor="pointer" _hover={{ color: 'gray.600', bg: 'gray.100' }} onClick={onClose}>
+            <FiX />
           </Box>
-        ))}
-      </SimpleGrid>
-      {tpl && (
-        <HStack mt="4" gap="2" flexWrap="wrap">
-          <Input flex="1" minW="220px" fontSize="sm" autoFocus
-            placeholder={`Nom — ex. ${tpl.name.toLowerCase()} du cabinet`}
-            value={name} onChange={(e) => setName(e.target.value)} />
-          <Select w="260px" aria-label="Dossier patient" value={dossierId}
-            onChange={(e) => setDossierId(e.target.value)}>
-            <option value="">Sans patient (diapos vides)</option>
-            {dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </Select>
         </HStack>
-      )}
-      {tpl && dossierName && (
-        <Text fontSize="2xs" color={C.primary} mt="2">
-          Les photos de « {dossierName} » seront placées automatiquement selon leurs vues et étapes cliniques.
-        </Text>
-      )}
-    </Modal>
+        <HStack flex="1" minH="0" align="stretch">
+          {/* sidebar catégories */}
+          <VStack w="170px" flexShrink={0} align="stretch" gap="0.5" px="4" pb="4" overflowY="auto">
+            {DESIGN_CATS.map(([k, label, I, accent]) => (
+              <HStack key={k} as="button" gap="2.5" px="2.5" py="2" borderRadius="lg"
+                cursor="pointer" textAlign="left" aria-pressed={cat === k}
+                bg={cat === k ? C.softBlue : 'transparent'}
+                _hover={{ bg: cat === k ? C.softBlue : 'gray.50' }}
+                onClick={() => setCat(k)}>
+                <Center w="20px" h="20px" borderRadius="md" bg={accent} color="#fff" fontSize="9px">
+                  <Box as={I} />
+                </Center>
+                <Text fontSize="xs" fontWeight={cat === k ? '600' : '400'} color={C.ink}>{label}</Text>
+              </HStack>
+            ))}
+            <Box mt="auto" pt="4">
+              <Text fontSize="2xs" color="gray.400" px="2.5">
+                Les diapos se pré-remplissent avec les photos du dossier patient.
+              </Text>
+            </Box>
+          </VStack>
+          {/* contenu : actions rapides + populaires */}
+          <Box flex="1" minW="0" overflowY="auto" px="6" pb="5">
+            <Text fontSize="xs" fontWeight="700" color={C.ink} mb="3">Actions rapides</Text>
+            <HStack gap="5" mb="6" flexWrap="wrap">
+              {QUICK_ACTIONS.map((a) => (
+                <VStack key={a.label} as="button" gap="1.5" cursor="pointer" w="64px"
+                  onClick={() => quick(a)}>
+                  <Center w="44px" h="44px" borderRadius="full" bg={a.accent} color="#fff"
+                    fontSize="md" _hover={{ transform: 'scale(1.06)' }} transition="transform .15s">
+                    <Box as={a.icon} />
+                  </Center>
+                  <Text fontSize="2xs" color={C.body} textAlign="center" lineHeight="1.2">{a.label}</Text>
+                </VStack>
+              ))}
+            </HStack>
+            <Text fontSize="xs" fontWeight="700" color={C.ink} mb="3">
+              {needle ? `Résultats pour « ${search.trim()} »` : 'Populaires'}
+            </Text>
+            <SimpleGrid columns={{ base: 2, md: 4 }} gap="4">
+              {list.map((t) => (
+                <DesignCard key={t.key} tpl={t} selected={tpl?.key === t.key}
+                  onClick={() => setTpl(t)} />
+              ))}
+            </SimpleGrid>
+            {!list.length && (
+              <Text fontSize="sm" color="gray.400" py="8" textAlign="center">
+                Aucun modèle ne correspond — essayez un autre mot.
+              </Text>
+            )}
+          </Box>
+        </HStack>
+        {/* pied : paramètres de création (visible dès qu'un modèle est choisi) */}
+        <HStack px="6" py="3" borderTop="1px solid" borderColor="gray.100"
+          justify="space-between" flexShrink={0} gap="3" flexWrap="wrap">
+          <HStack gap="2" flex="1" flexWrap="wrap">
+            {tpl ? (
+              <>
+                <Text fontSize="xs" color="gray.500" flexShrink={0}>
+                  <Text as="span" fontWeight="700" color={C.ink}>{tpl.name}</Text>
+                  {' '}— {tpl.slides.length} diapos prévues
+                </Text>
+                <Input w="230px" size="sm" fontSize="xs" autoFocus
+                  placeholder={`Nom — ex. ${tpl.name.toLowerCase()} du cabinet`}
+                  value={name} onChange={(e) => setName(e.target.value)} />
+                <Select w="220px" h="32px" fontSize="xs" aria-label="Dossier patient"
+                  value={dossierId} onChange={(e) => setDossierId(e.target.value)}>
+                  <option value="">Sans patient (diapos vides)</option>
+                  {dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </Select>
+              </>
+            ) : (
+              <Text fontSize="xs" color="gray.400">Choisissez un modèle ou une action rapide</Text>
+            )}
+          </HStack>
+          <PrimaryButton onClick={() => onCreate(tpl, name, dossierId)} disabled={!tpl || busy}>
+            {busy ? 'Création…' : 'Créer la présentation'}
+          </PrimaryButton>
+        </HStack>
+        {tpl && dossierName && (
+          <Text fontSize="2xs" color={C.primary} px="6" pb="3" flexShrink={0}>
+            Les photos de « {dossierName} » seront placées automatiquement selon leurs vues et étapes cliniques.
+          </Text>
+        )}
+      </Box>
+    </Box>
   )
 }
 
