@@ -10,7 +10,7 @@
 // Rendu identique partout : tailles de texte en `cqh` (% de la hauteur du
 // canevas via container queries) → la vignette du filmstrip affiche la même
 // diapo en miniature que le plein écran.
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Box, Center, Text } from '@chakra-ui/react'
 import { FiImage, FiRotateCw, FiType, FiVideo } from 'react-icons/fi'
 import { usePhotoUrl } from '../media'
@@ -119,6 +119,7 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
   const drag = useRef(null)
   const latest = useRef(els)
   latest.current = els
+  const [guides, setGuides] = useState({ v: null, h: null }) // lignes d'alignement (%)
   const ordered = [...els].sort((a, b) => (a.z ?? 0) - (b.z ?? 0))
 
   const patch = (id, p, commit) =>
@@ -135,6 +136,9 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
       // centre de l'élément en px — repère du geste de rotation
       cx: rect.left + ((el.x + el.w / 2) / 100) * rect.width,
       cy: rect.top + ((el.y + el.h / 2) / 100) * rect.height,
+      // cibles du magnétisme : bords + centres des autres éléments + canevas
+      xs: [0, 50, 100, ...els.filter((o) => o.id !== el.id).flatMap((o) => [o.x, o.x + o.w / 2, o.x + o.w])],
+      ys: [0, 50, 100, ...els.filter((o) => o.id !== el.id).flatMap((o) => [o.y, o.y + o.h / 2, o.y + o.h])],
     }
     const move = (ev) => {
       const d = drag.current
@@ -149,9 +153,25 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
       const dx = ((ev.clientX - d.sx) / d.rw) * 100
       const dy = ((ev.clientY - d.sy) / d.rh) * 100
       if (d.mode === 'move') {
+        let nx = d.ox + dx
+        let ny = d.oy + dy
+        // magnétisme : accroche bord/centre de l'élément sur bord/centre des
+        // autres ou du canevas (seuil ~8 px), ligne de guide affichée
+        const th = (8 / d.rw) * 100
+        let gv = null
+        let gh = null
+        for (const r of [nx, nx + d.ow / 2, nx + d.ow]) {
+          const hit = d.xs.find((v) => Math.abs(v - r) <= th)
+          if (hit != null) { nx += hit - r; gv = hit; break }
+        }
+        for (const r of [ny, ny + d.oh / 2, ny + d.oh]) {
+          const hit = d.ys.find((v) => Math.abs(v - r) <= th)
+          if (hit != null) { ny += hit - r; gh = hit; break }
+        }
+        setGuides({ v: gv, h: gh })
         patch(d.id, {
-          x: Math.max(0, Math.min(100 - d.ow, d.ox + dx)),
-          y: Math.max(0, Math.min(100 - d.oh, d.oy + dy)),
+          x: Math.max(0, Math.min(100 - d.ow, nx)),
+          y: Math.max(0, Math.min(100 - d.oh, ny)),
         }, false)
       } else {
         patch(d.id, {
@@ -165,6 +185,7 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
       window.removeEventListener('pointerup', up)
       if (drag.current) onEls?.(latest.current, true)
       drag.current = null
+      setGuides({ v: null, h: null })
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -199,6 +220,15 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
           )}
         </Box>
       ))}
+      {/* lignes de guide magnétiques pendant le déplacement */}
+      {guides.v != null && (
+        <Box position="absolute" top="0" bottom="0" left={`${guides.v}%`} w="1px"
+          bg="#ec4899" zIndex="5" pointerEvents="none" />
+      )}
+      {guides.h != null && (
+        <Box position="absolute" left="0" right="0" top={`${guides.h}%`} h="1px"
+          bg="#ec4899" zIndex="5" pointerEvents="none" />
+      )}
       {!ordered.length && emptyHint && (
         <Center h="100%" flexDirection="column" gap="2" color="#475569">
           <Box as={emptyHint.icon || FiType} fontSize="3xl" />
