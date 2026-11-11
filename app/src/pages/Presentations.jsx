@@ -10,7 +10,7 @@ import {
   FiMoreVertical, FiClock, FiLink, FiEdit2, FiTrash2, FiCheck, FiCopy,
   FiExternalLink, FiImage, FiVideo, FiArchive, FiX, FiAlertTriangle,
   FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiHeart, FiTool,
-  FiSquare, FiRotateCcw, FiRotateCw, FiMapPin,
+  FiSquare, FiRotateCcw, FiRotateCw, FiMapPin, FiDownload, FiFile,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
@@ -33,6 +33,7 @@ import { PRESENTATION_TEMPLATES, BILAN_SLIDES } from '../presentationTemplates'
 import { clinicalLabels } from '../clinical'
 import PresentMode from '../components/PresentMode'
 import SlideElements, { slideElements, slideBg, layoutNotes, newEl, SHAPE_DEFS, SHAPE_CSS } from '../components/SlideElements'
+import { exportPresentation } from '../exportSlides'
 
 const TABS = ['Toutes', 'Brouillons', 'Récentes', 'Archivées']
 const SLIDE_TYPES = [
@@ -368,6 +369,8 @@ export default function Presentations() {
                           onClick={() => duplicate(p)} />
                         <MenuItem icon={FiLink} label="Partager par lien…"
                           onClick={() => { setMenuFor(null); setModal({ kind: 'share', pres: p }) }} />
+                        <MenuItem icon={FiDownload} label="Exporter (PDF, PPTX, PNG…)…"
+                          onClick={() => { setMenuFor(null); setModal({ kind: 'export', pres: p }) }} />
                         {p.status === 'archived' ? (
                           <MenuItem icon={FiArchive} label="Restaurer"
                             onClick={() => archive(p, false)} />
@@ -458,7 +461,12 @@ export default function Presentations() {
       <EditorModal modal={modal} wsId={wsId} onClose={() => setModal(null)}
         onAdd={(insertAt) => setModal({ kind: 'add', pres: modal.pres, insertAt,
           back: { kind: 'detail', pres: modal.pres, focus: insertAt } })}
+        onExport={() => setModal({ kind: 'export', pres: modal.pres,
+          back: { kind: 'detail', pres: modal.pres } })}
         onPresent={(slides) => setModal({ kind: 'present', pres: modal.pres, slides, back: { kind: 'detail', pres: modal.pres } })} />
+
+      {/* ---- export multi-formats ---- */}
+      <ExportModal modal={modal} onClose={() => setModal(modal?.back || null)} />
 
       {/* ---- ajouter une diapositive ---- */}
       <AddSlideModal modal={modal} wsId={wsId}
@@ -749,7 +757,7 @@ function ElementPanel({ el, busy, onPatch, onOrder, onDup, onDel, onBack, onPick
   )
 }
 
-function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
+function EditorModal({ modal, wsId, onClose, onAdd, onPresent, onExport }) {
   const p = modal?.pres
   const [slides, setSlides] = useState([])
   const [sel, setSel] = useState(0)
@@ -978,6 +986,14 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
         <Text fontSize="2xs" color="gray.400" mr="auto" display={{ base: 'none', md: 'block' }}>
           Glissez les vignettes pour réordonner · « + » insère une diapo à cette position
         </Text>
+        <Button variant="outline" size="sm" disabled={!slides.length}
+          onClick={() => onExport?.()}>
+          <FiDownload /> Exporter
+        </Button>
+        <Button variant="outline" size="sm" disabled={!slides.length}
+          onClick={onExport}>
+          <FiDownload /> Exporter
+        </Button>
         <Button variant="outline" size="sm" disabled={!slides.length}
           onClick={() => onPresent?.(slides)}>
           <FiPlay /> Présenter
@@ -1387,6 +1403,69 @@ function AddSlideModal({ modal, wsId, onClose, onDone }) {
         <Input fontSize="sm" placeholder="Titre affiché sur la diapositive" value={title}
           onChange={(e) => setTitle(e.target.value)} />
       </Field>
+    </Modal>
+  )
+}
+
+// ---- Export multi-formats -----------------------------------------------------
+// Chaque diapositive est rasterisée en image HD 1920×1080 (rendu identique à
+// l'écran), puis assemblée selon le format choisi.
+
+const EXPORT_FORMATS = [
+  ['pdf',  'PDF',          'Document 16:9 — une diapo par page. Idéal patient, labo ou dossier clinique.', '#dc2626', FiFileText],
+  ['pptx', 'PowerPoint',   '.pptx — rouvrable dans PowerPoint, Keynote ou Google Slides.',                '#ea580c', FiMonitor],
+  ['docx', 'Word',         '.docx — une diapo par page, à joindre à un courrier ou un compte rendu.',     '#2563eb', FiFile],
+  ['png',  'Images PNG',   'HD 1920×1080, sans perte — ZIP si plusieurs diapos.',                          '#0d9488', FiImage],
+  ['jpg',  'Images JPG',   'Plus léger — envoi par e-mail, réseaux sociaux.',                              '#7c3aed', FiImage],
+  ['webp', 'Images WebP',  'Format web moderne — le plus compact.',                                        '#0f172a', FiImage],
+]
+
+function ExportModal({ modal, onClose }) {
+  const p = modal?.pres
+  const [busy, setBusy] = useState(null) // format en cours de génération
+  const [step, setStep] = useState('')
+  const run = async (fmt) => {
+    if (busy) return
+    setBusy(fmt)
+    try {
+      const slides = await listPresentationSlides(p.id)
+      if (!slides.length) { toast('Aucune diapositive à exporter'); return }
+      await exportPresentation(p, slides, fmt,
+        (done, total) => setStep(`Rendu des diapositives ${done}/${total}…`))
+      toast('Export téléchargé')
+      onClose?.()
+    } catch (e) {
+      console.error('export', e)
+      toast("Échec de l'export — réessayez")
+    } finally { setBusy(null); setStep('') }
+  }
+  return (
+    <Modal open={modal?.kind === 'export'} onClose={onClose}
+      title="Exporter la présentation"
+      subtitle={p ? `${p.name} — chaque diapositive est rendue en HD 1920×1080` : ''}>
+      <SimpleGrid columns={2} gap="2.5">
+        {EXPORT_FORMATS.map(([fmt, label, desc, color, I]) => (
+          <HStack key={fmt} as="button" textAlign="left" gap="3" p="3" align="start"
+            border="1px solid" borderColor={C.cardBorder} borderRadius="lg"
+            cursor={busy ? 'wait' : 'pointer'} opacity={busy && busy !== fmt ? 0.5 : 1}
+            _hover={{ borderColor: C.primary, bg: C.softBlue }}
+            onClick={() => run(fmt)} aria-label={`Exporter en ${label}`}>
+            <Center w="38px" h="38px" borderRadius="md" flexShrink={0}
+              bg={color} color="#fff" fontSize="md">
+              <I />
+            </Center>
+            <Box minW="0">
+              <Text fontSize="sm" fontWeight="600">
+                {busy === fmt ? (step || 'Génération…') : label}
+              </Text>
+              <Text fontSize="2xs" color="gray.500" lineHeight="1.35">{desc}</Text>
+            </Box>
+          </HStack>
+        ))}
+      </SimpleGrid>
+      <Text fontSize="2xs" color="gray.400" mt="3">
+        Le fichier est généré dans le navigateur et téléchargé directement — aucune donnée patient n'est envoyée à un service tiers.
+      </Text>
     </Modal>
   )
 }
