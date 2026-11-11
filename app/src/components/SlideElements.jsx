@@ -101,6 +101,20 @@ function ElemBody({ el }) {
   if (el.t === 'video') {
     return <Box as="video" src={el.url} w="100%" h="100%" objectFit="contain" controls={false} muted />
   }
+  if (el.t === 'marker') {
+    // Pastille numérotée (repère FDI) — cercle vrai quel que soit le ratio
+    // de la zone : on s'appuie sur la hauteur de l'élément.
+    return (
+      <Center h="100%" mx="auto" style={{ aspectRatio: '1' }}>
+        <Center w="100%" h="100%" borderRadius="full" color="#fff" fontWeight="700"
+          bg={el.fill || '#ef4444'} border="2px solid #fff"
+          boxShadow="0 1px 6px rgba(0,0,0,0.5)" fontSize={`${(el.h || 16) * 0.42}cqh`}
+          userSelect="none">
+          {el.label || '?'}
+        </Center>
+      </Center>
+    )
+  }
   if (el.t === 'shape') {
     const kind = el.shape || 'rect'
     return (

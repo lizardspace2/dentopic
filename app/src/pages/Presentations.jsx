@@ -10,7 +10,7 @@ import {
   FiMoreVertical, FiClock, FiLink, FiEdit2, FiTrash2, FiCheck, FiCopy,
   FiExternalLink, FiImage, FiVideo, FiArchive, FiX, FiAlertTriangle,
   FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiHeart, FiTool,
-  FiSquare, FiRotateCcw, FiRotateCw,
+  FiSquare, FiRotateCcw, FiRotateCw, FiMapPin,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
@@ -575,6 +575,18 @@ function ShapeGlyph({ kind, color = 'gray.600', w = '24px', h = '24px' }) {
   return <Box w={w} h={h} bg={color} flexShrink={0} style={SHAPE_CSS[kind] || {}} />
 }
 
+// Une dent du schéma FDI — pose le repère à son clic.
+function ToothBtn({ n, onPick }) {
+  return (
+    <Center as="button" w="26px" h="24px" fontSize="2xs" borderRadius="sm"
+      border="1px solid" borderColor="gray.200" color="gray.600" cursor="pointer"
+      _hover={{ bg: C.softBlue, borderColor: C.primary, color: C.primary }}
+      onClick={() => onPick(n)}>
+      {n}
+    </Center>
+  )
+}
+
 // Pastille couleur cliquable (éléments + fonds de diapo).
 function ColorSwatch({ value, cur, onPick }) {
   return (
@@ -594,6 +606,20 @@ const BG_GRADS = [
   ['Clair', 'linear-gradient(135deg,#f8fafc,#cbd5e1)'],
 ]
 
+// Schéma FDI — quadrant droit/gauche, adulte puis dentition lactéale.
+// Chaque ligne = une arcade : [quadrant droit décroissant | quadrant gauche croissant]
+const FDI_ROWS = {
+  adulte: [
+    [[18, 17, 16, 15, 14, 13, 12, 11], [21, 22, 23, 24, 25, 26, 27, 28]],
+    [[48, 47, 46, 45, 44, 43, 42, 41], [31, 32, 33, 34, 35, 36, 37, 38]],
+  ],
+  lactéale: [
+    [[55, 54, 53, 52, 51], [61, 62, 63, 64, 65]],
+    [[85, 84, 83, 82, 81], [71, 72, 73, 74, 75]],
+  ],
+}
+const MARKER_COLORS = ['#ef4444', '#3b82f6', '#0d9488', '#f59e0b', '#ffffff']
+
 function sizeKeyOf(el) {
   const v = el.size || 5
   return Object.entries(EL_SIZE_CQH).reduce((best, [k, x]) => (Math.abs(x - v) < Math.abs(EL_SIZE_CQH[best] - v) ? k : best), 'md')
@@ -610,7 +636,7 @@ function ElementPanel({ el, busy, onPatch, onOrder, onDup, onDel, onBack, onPick
           ‹ Diapositive
         </Button>
         <Tag color="gray">
-          {el.t === 'text' ? 'Texte' : el.t === 'img' ? 'Image' : el.t === 'shape' ? 'Forme' : 'Vidéo'}
+          {el.t === 'text' ? 'Texte' : el.t === 'img' ? 'Image' : el.t === 'shape' ? 'Forme' : el.t === 'marker' ? 'Repère' : 'Vidéo'}
         </Tag>
       </HStack>
       {el.t === 'text' && (
@@ -680,6 +706,18 @@ function ElementPanel({ el, busy, onPatch, onOrder, onDup, onDel, onBack, onPick
           )}
         </>
       )}
+      {el.t === 'marker' && (
+        <>
+          <Field label="Repère (FDI, lettre…)">
+            <Input size="sm" fontSize="xs" value={el.label || ''}
+              onChange={(e) => onPatch(el.id, { label: e.target.value }, false)}
+              onBlur={() => onPatch(el.id, {}, true)} />
+          </Field>
+          <HStack gap="1.5">
+            {MARKER_COLORS.map((c) => <Swatch key={c} value={c} cur={el.fill} onPick={(v) => set({ fill: v })} />)}
+          </HStack>
+        </>
+      )}
       <Field label="Ordre de superposition">
         <HStack gap="1">
           <Button size="xs" variant="outline" flex="1" fontSize="2xs" disabled={busy}
@@ -725,6 +763,10 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const [poolItems, setPoolItems] = useState([])
   const [selEl, setSelEl] = useState(null)        // id de l'élément sélectionné sur la toile
   const [shapeOpen, setShapeOpen] = useState(false) // menu des formes
+  const [repOpen, setRepOpen] = useState(false)   // menu des repères FDI
+  const [repDent, setRepDent] = useState('adulte')  // 'adulte'|'lactéale'
+  const [repColor, setRepColor] = useState('#ef4444')
+  const [repLabel, setRepLabel] = useState('')      // repère libre (A, B, ★…)
   const [hist, setHist] = useState([])            // annuler : pile d'états d'éléments
   const [future, setFuture] = useState([])        // rétablir
 
@@ -737,7 +779,7 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
   const curEl = els.find((e) => e.id === selEl) || null
   useEffect(() => {
     setForm({ title: cur?.title || '', text: cur?.text_content || '' })
-    setSelEl(null); setHist([]); setFuture([]); setShapeOpen(false)
+    setSelEl(null); setHist([]); setFuture([]); setShapeOpen(false); setRepOpen(false)
   }, [sel, cur?.id]) // eslint-disable-line
   useEffect(() => {
     if (!pool || !wsId) { setPoolItems([]); return }
@@ -892,7 +934,12 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
     setPool(null); await load(); setBusy(false)
   }
 
-  const openPool = (kind, mode) => { setPool(kind); setPoolMode(mode); setShapeOpen(false) }
+  const openPool = (kind, mode) => { setPool(kind); setPoolMode(mode); setShapeOpen(false); setRepOpen(false) }
+  const addMarker = (label, fill) => {
+    if (!label) return
+    addEl(newEl({ t: 'marker', label: String(label), x: 42, y: 40, w: 10, h: 17, fill: fill || repColor }))
+    setRepLabel('')
+  }
   const addShape = (k) => {
     addEl(newEl({
       t: 'shape', shape: k,
@@ -968,7 +1015,8 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
                     [FiType, 'Texte', () => addEl(newEl({ t: 'text', x: 10, y: 42, w: 80, h: 16, text: 'Nouveau texte', size: 6, color: '#f8fafc', align: 'center' }))],
                     [FiImage, 'Photo', () => openPool('photo', 'el-add')],
                     [FiLayers, 'Montage', () => openPool('montage', 'el-add')],
-                    [FiSquare, 'Forme', () => { setShapeOpen(!shapeOpen); setPool(null) }],
+                    [FiSquare, 'Forme', () => { setShapeOpen(!shapeOpen); setRepOpen(false); setPool(null) }],
+                    [FiMapPin, 'Repère', () => { setRepOpen(!repOpen); setShapeOpen(false); setPool(null) }],
                   ].map(([I, l, fn]) => (
                     <Button key={l} size="xs" variant="outline" fontSize="2xs" onClick={fn}>
                       <FiPlus /><Box as={I} />{l}
@@ -1085,6 +1133,51 @@ function EditorModal({ modal, wsId, onClose, onAdd, onPresent }) {
                     <Text fontSize="2xs" color="gray.500">{l}</Text>
                   </VStack>
                 ))}
+              </HStack>
+            </Box>
+          )}
+
+          {/* menu des repères : schéma FDI + pastille libre */}
+          {repOpen && (
+            <Box mt="3" border="1px solid" borderColor={C.cardBorder} borderRadius="md" p="2.5">
+              <HStack justify="space-between" mb="2" flexWrap="wrap" gap="2">
+                <Text fontSize="2xs" fontWeight="600" color="gray.500">
+                  Repère de dent — cliquez sur le schéma FDI
+                </Text>
+                <HStack gap="1">
+                  {[['adulte', 'Adulte'], ['lactéale', 'Lactéale']].map(([k, l]) => (
+                    <Button key={k} size="xs" fontSize="2xs" px="2"
+                      variant={repDent === k ? 'solid' : 'outline'}
+                      onClick={() => setRepDent(k)}>{l}</Button>
+                  ))}
+                </HStack>
+              </HStack>
+              {/* schéma dentaire : chaque arcade = quadrant droit | gauche */}
+              <VStack gap="1" align="stretch">
+                {FDI_ROWS[repDent].map(([qR, qL], ri) => (
+                  <HStack key={ri} gap="1" justify="center">
+                    {qR.map((n) => (
+                      <ToothBtn key={n} n={n} onPick={addMarker} />
+                    ))}
+                    <Box w="10px" />
+                    {qL.map((n) => (
+                      <ToothBtn key={n} n={n} onPick={addMarker} />
+                    ))}
+                  </HStack>
+                ))}
+              </VStack>
+              <HStack mt="2.5" gap="2" flexWrap="wrap">
+                <Input w="110px" h="28px" fontSize="xs" placeholder="Autre : A, B, ★…"
+                  aria-label="Repère libre" value={repLabel}
+                  onChange={(e) => setRepLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && repLabel.trim()) addMarker(repLabel.trim()) }} />
+                <Button size="xs" fontSize="2xs" disabled={!repLabel.trim()}
+                  onClick={() => addMarker(repLabel.trim())}>Ajouter</Button>
+                <HStack gap="1" ml="auto">
+                  {MARKER_COLORS.map((c) => (
+                    <ColorSwatch key={c} value={c} cur={repColor} onPick={setRepColor} />
+                  ))}
+                </HStack>
               </HStack>
             </Box>
           )}
