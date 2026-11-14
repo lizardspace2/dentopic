@@ -6,7 +6,7 @@ import { Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack } from '@c
 import {
   FiPlus, FiFolder, FiFolderPlus, FiEye, FiLink, FiEdit2, FiTrash2,
   FiAlertTriangle, FiCheck, FiImage, FiLayers, FiX, FiCopy,
-  FiExternalLink,
+  FiExternalLink, FiFilter,
 } from 'react-icons/fi'
 import {
   Card, Tag, EmptyPane, SectionLabel, PageHeader, HelpButton,
@@ -50,6 +50,7 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
   const [copied, setCopied] = useState(false)
   const patientFilter = globalPatient
   const [itemSort, setItemSort] = useState('recent')
+  const [itemsFiltersOpen, setItemsFiltersOpen] = useState(false)
   const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [selectedPhotos, setSelectedPhotos] = useState([])
   const [viewFilter, setViewFilter] = useState('')
@@ -65,6 +66,11 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
       const second = new Date(b.photo?.created_at || b.montage?.created_at || b.created_at)
       return itemSort === 'oldest' ? first - second : second - first
     })
+  const itemFilterCount = [favoritesOnly, viewFilter, stageFilter, itemSort !== 'recent'].filter(Boolean).length
+  const resetItemFilters = () => {
+    setFavoritesOnly(false); setViewFilter(''); setStageFilter('')
+    setItemSort('recent'); setSelectedPhotos([])
+  }
 
   const reload = async () => {
     if (!wsId) return
@@ -230,14 +236,10 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
 
           <HStack my="3" gap="2" color="gray.500">
             <Text fontSize="xs">Trier par</Text>
-            <Box as="button" cursor="pointer" onClick={() => setSort('recent')}>
-              <Tag color={sort === 'recent' ? 'blue' : 'gray'}>Récentes</Tag>
-            </Box>
-            <Box as="button" cursor="pointer" fontSize="xs"
-              color={sort === 'name' ? C.primary : 'gray.500'} fontWeight={sort === 'name' ? '700' : '400'}
-              onClick={() => setSort('name')}>
-              A→Z
-            </Box>
+            <Button size="xs" variant={sort === 'recent' ? 'solid' : 'outline'} borderRadius="full"
+              aria-pressed={sort === 'recent'} onClick={() => setSort('recent')}>Récentes</Button>
+            <Button size="xs" variant={sort === 'name' ? 'solid' : 'outline'} borderRadius="full"
+              aria-pressed={sort === 'name'} onClick={() => setSort('name')}>A→Z</Button>
             <Box flex="1" />
             {testCount > 0 && (
               <Tip label={`${testCount} collection(s) de test/démo — mettre à la corbeille`}>
@@ -352,26 +354,66 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
                 )}
               </VStack>
 
-              <HStack mb="3" gap="2" flexWrap="wrap">
-                <Select aria-label="Ordre des photos" value={itemSort} onChange={(e) => setItemSort(e.target.value)}>
-                  <option value="recent">Plus récentes d’abord</option>
-                  <option value="oldest">Chronologie du traitement</option>
-                </Select>
-                <Button size="xs" variant="outline" aria-pressed={favoritesOnly}
-                  onClick={() => setFavoritesOnly((v) => !v)}>
-                  {favoritesOnly ? 'Afficher tout' : 'Photos favorites'}
+              <HStack mb="2" gap="2" flexWrap="wrap">
+                <Button size="xs" variant={itemsFiltersOpen ? 'solid' : 'outline'} borderRadius="full"
+                  aria-expanded={itemsFiltersOpen} onClick={() => setItemsFiltersOpen((v) => !v)}>
+                  <HStack gap="1"><FiFilter /><Text>Filtres{itemFilterCount ? ` (${itemFilterCount})` : ''}</Text></HStack>
                 </Button>
                 <Text fontSize="xs" color={C.body}>{visibleItems.length} affiché(s)</Text>
               </HStack>
-              <HStack gap="2" mb="3" flexWrap="wrap">
-                {[[viewFilter, setViewFilter, CLINICAL_VIEWS, 'Toutes les vues'],
-                  [stageFilter, setStageFilter, CLINICAL_STAGES, 'Toutes les étapes']].map(([value, change, options, label]) => (
-                  <Select key={label} aria-label={label} value={value} onChange={(e) => { change(e.target.value); setSelectedPhotos([]) }}>
-                    <option value="">{label}</option>
-                    {options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}
-                  </Select>
-                ))}
-              </HStack>
+              {itemFilterCount > 0 && (
+                <HStack gap="2" mb="2" flexWrap="wrap">
+                  {itemSort !== 'recent' && (
+                    <Button size="xs" variant="outline" borderRadius="full" onClick={() => setItemSort('recent')}>
+                      Tri : Chronologie ×
+                    </Button>
+                  )}
+                  {favoritesOnly && (
+                    <Button size="xs" variant="outline" borderRadius="full" onClick={() => setFavoritesOnly(false)}>
+                      Favorites ×
+                    </Button>
+                  )}
+                  {viewFilter && (
+                    <Button size="xs" variant="outline" borderRadius="full"
+                      onClick={() => { setViewFilter(''); setSelectedPhotos([]) }}>
+                      Vue : {CLINICAL_VIEWS.find(([id]) => id === viewFilter)?.[1] || viewFilter} ×
+                    </Button>
+                  )}
+                  {stageFilter && (
+                    <Button size="xs" variant="outline" borderRadius="full"
+                      onClick={() => { setStageFilter(''); setSelectedPhotos([]) }}>
+                      Étape : {CLINICAL_STAGES.find(([id]) => id === stageFilter)?.[1] || stageFilter} ×
+                    </Button>
+                  )}
+                  <Button size="xs" variant="plain" onClick={resetItemFilters}>Tout effacer</Button>
+                </HStack>
+              )}
+              {itemsFiltersOpen && (
+                <Box mb="3" p="3" border="1px solid" borderColor={C.cardBorder} borderRadius="md">
+                  <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400" mb="1.5">TRI</Text>
+                  <HStack gap="1.5" flexWrap="wrap" mb="2.5">
+                    {[['recent', 'Plus récentes d’abord'], ['oldest', 'Chronologie du traitement']].map(([k, l]) => (
+                      <Button key={k} size="xs" variant={itemSort === k ? 'solid' : 'outline'} borderRadius="full"
+                        aria-pressed={itemSort === k} onClick={() => setItemSort(k)}>{l}</Button>
+                    ))}
+                    <Button size="xs" variant={favoritesOnly ? 'solid' : 'outline'} borderRadius="full"
+                      aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly((v) => !v)}>
+                      Photos favorites
+                    </Button>
+                  </HStack>
+                  <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400" mb="1.5">ÉTIQUETTES CLINIQUES</Text>
+                  <HStack gap="2" flexWrap="wrap">
+                    {[[viewFilter, setViewFilter, CLINICAL_VIEWS, 'Toutes les vues'],
+                      [stageFilter, setStageFilter, CLINICAL_STAGES, 'Toutes les étapes']].map(([value, change, options, label]) => (
+                      <Select key={label} aria-label={label} h="30px" w="auto" px="3" fontSize="xs" borderRadius="full"
+                        value={value} onChange={(e) => { change(e.target.value); setSelectedPhotos([]) }}>
+                        <option value="">{label}</option>
+                        {options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}
+                      </Select>
+                    ))}
+                  </HStack>
+                </Box>
+              )}
               <Box p="3" mb="3" bg={C.greenBg} border="1px solid" borderColor={C.greenBorder} borderRadius="md">
                 <Text fontSize="xs" fontWeight="700" color={C.greenText} mb="2">Classer les photos · Vue / Étape</Text>
                 <Button size="xs" variant="outline" disabled={busy || !visibleItems.some((it) => it.photo_id)}

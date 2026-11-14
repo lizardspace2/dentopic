@@ -10,7 +10,7 @@ import {
   FiMoreVertical, FiClock, FiLink, FiEdit2, FiTrash2, FiCheck, FiCopy,
   FiExternalLink, FiImage, FiVideo, FiArchive, FiX, FiAlertTriangle,
   FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiHeart, FiTool,
-  FiSquare, FiRotateCcw, FiRotateCw, FiMapPin, FiDownload, FiFile,
+  FiSquare, FiRotateCcw, FiRotateCw, FiMapPin, FiDownload, FiFile, FiFilter,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
@@ -36,6 +36,7 @@ import SlideElements, { slideElements, slideBg, layoutNotes, newEl, SHAPE_DEFS, 
 import { exportPresentation } from '../exportSlides'
 
 const TABS = ['Toutes', 'Brouillons', 'Récentes', 'Archivées']
+const SORT_OPTS = [['recent', 'Plus récent'], ['name', 'Nom A→Z'], ['slides', 'Plus de diapos']]
 const SLIDE_TYPES = [
   ['photo', 'Photo', FiImage],
   ['montage', 'Montage avant/après', FiLayers],
@@ -60,6 +61,7 @@ export default function Presentations() {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [onlyEmpty, setOnlyEmpty] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   const reload = async () => {
     if (!wsId) return
@@ -80,12 +82,18 @@ export default function Presentations() {
     setSearchParams({}, { replace: true })
   }, [searchParams]) // eslint-disable-line
 
-  const slideTotal = Object.values(slideCounts).reduce((a, b) => a + b, 0)
   const noSlides = pres.filter((p) => !slideCounts[p.id] && p.status !== 'archived').length
   const draftCount = pres.filter((p) => p.status === 'draft').length
   const testCount = pres.filter((p) => isTestName(p.name)).length
 
   const week = Date.now() - 7 * 86400000
+  const archivedCount = pres.filter((p) => p.status === 'archived').length
+  const tabCounts = {
+    'Toutes': pres.length - archivedCount,
+    'Brouillons': draftCount,
+    'Récentes': pres.filter((p) => new Date(p.updated_at) > week && p.status !== 'archived').length,
+    'Archivées': archivedCount,
+  }
   const list = pres
     .filter((p) => onlyEmpty ? (!slideCounts[p.id] && p.status !== 'archived')
       : tab === 'Toutes' ? p.status !== 'archived'
@@ -98,6 +106,9 @@ export default function Presentations() {
       : sort === 'name'
       ? a.name.localeCompare(b.name, 'fr')
       : new Date(b.updated_at) - new Date(a.updated_at))
+
+  const activeCount = [tab !== 'Toutes', onlyEmpty, sort !== 'recent'].filter(Boolean).length
+  const resetFilters = () => { setTab('Toutes'); setOnlyEmpty(false); setSort('recent') }
 
   // ---- actions ---------------------------------------------------------------
 
@@ -244,62 +255,86 @@ export default function Presentations() {
         </HStack>
       )}
 
-      <HStack gap="2" mb="4" mt="4">
-        <Tip label="Présentations affichées — cliquer pour tout réafficher (onglet « Toutes », sans filtre)">
-          <Tag color={onlyEmpty || tab !== 'Toutes' || q ? 'gray' : 'blue'} cursor="pointer"
-            onClick={() => { setTab('Toutes'); setQ(''); setOnlyEmpty(false) }}>
-            <FiMonitor style={{ marginRight: 4 }} />{list.length} présentation(s)
-          </Tag>
-        </Tip>
-        <Tip label="Total de diapositives — cliquer pour trier par nombre de diapositives">
-          <Tag color={sort === 'slides' ? 'blue' : 'gray'} cursor="pointer"
-            onClick={() => setSort(sort === 'slides' ? 'recent' : 'slides')}>
-            <FiLayers style={{ marginRight: 4 }} />{slideTotal} diapositive(s)
-          </Tag>
-        </Tip>
-        {draftCount > 0 && (
-          <Tip label="Présentations en brouillon — cliquer pour les afficher">
-            <Tag color={tab === 'Brouillons' ? 'amber' : 'gray'} cursor="pointer"
-              onClick={() => { setTab('Brouillons'); setOnlyEmpty(false) }}>
-              <FiFileText style={{ marginRight: 4 }} />{draftCount} brouillon(s)
-            </Tag>
-          </Tip>
-        )}
-        {noSlides > 0 && (
-          <Tip label="Présentations vides (aucune diapositive) — cliquer pour les afficher / tout afficher">
-            <Tag color={onlyEmpty ? 'amber' : 'gray'} cursor="pointer"
-              onClick={() => setOnlyEmpty(!onlyEmpty)}>
-              <FiAlertCircle style={{ marginRight: 4 }} />{noSlides} sans diapo
-            </Tag>
-          </Tip>
-        )}
-        {testCount > 0 && (
-          <Tip label="Présentations de test/démo — mettre à la corbeille">
-            <Text fontSize="xs" color={C.amberText} cursor="pointer" onClick={() => setModal({ kind: 'clean' })}>
-              <FiAlertTriangle style={{ display: 'inline' }} /> Nettoyer ({testCount})
-            </Text>
-          </Tip>
-        )}
-      </HStack>
-
-      <HStack gap="2" mb="5" flexWrap="wrap">
-        <Box flex="1" minW="200px">
-          <SearchInput w="100%" placeholder="Rechercher une présentation…"
-            value={q} onChange={(e) => setQ(e.target.value)} />
-        </Box>
-        <HStack gap="1.5">
-          {TABS.map((t) => (
-            <Button key={t} size="xs" variant={tab === t ? 'solid' : 'outline'} borderRadius="full"
-              aria-pressed={tab === t} onClick={() => setTab(t)}>{t}</Button>
-          ))}
+      {/* recherche + filtres repliables — façon photothèque : barre simple,
+          les filtres se déplient via « Filtres » et les actifs restent
+          visibles en cartouches amovibles */}
+      <Card p="3" mb="5" mt="4">
+        <HStack gap="2" flexWrap="wrap">
+          <Box flex="1" minW="200px">
+            <SearchInput w="100%" placeholder="Rechercher une présentation…"
+              value={q} onChange={(e) => setQ(e.target.value)} />
+          </Box>
+          <Button size="sm" variant={filtersOpen ? 'solid' : 'outline'} borderRadius="full"
+            aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)}>
+            <HStack gap="1"><FiFilter /><Text>Filtres{activeCount ? ` (${activeCount})` : ''}</Text></HStack>
+          </Button>
         </HStack>
-        <Select h="30px" w="auto" px="3" fontSize="xs" borderRadius="full" aria-label="Trier les présentations"
-          value={sort} onChange={(e) => setSort(e.target.value)}>
-          <option value="recent">Tri : Plus récent</option>
-          <option value="slides">Tri : Plus de diapos</option>
-          <option value="name">Tri : Nom A→Z</option>
-        </Select>
-      </HStack>
+        {activeCount > 0 && (
+          <HStack mt="2" gap="2" flexWrap="wrap">
+            {tab !== 'Toutes' && (
+              <Button size="xs" variant="outline" borderRadius="full" onClick={() => setTab('Toutes')}>
+                {tab} ×
+              </Button>
+            )}
+            {onlyEmpty && (
+              <Button size="xs" variant="outline" borderRadius="full" onClick={() => setOnlyEmpty(false)}>
+                Sans diapositive ×
+              </Button>
+            )}
+            {sort !== 'recent' && (
+              <Button size="xs" variant="outline" borderRadius="full" onClick={() => setSort('recent')}>
+                Tri : {SORT_OPTS.find(([k]) => k === sort)?.[1]} ×
+              </Button>
+            )}
+            <Button size="xs" variant="plain" onClick={resetFilters}>Tout effacer</Button>
+          </HStack>
+        )}
+        {filtersOpen && (
+          <Box mt="3" pt="3" borderTop="1px solid" borderColor={C.cardBorder}>
+            <HStack gap="6" flexWrap="wrap" align="start">
+              <Box>
+                <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400" mb="1.5">STATUT</Text>
+                <HStack gap="1.5" flexWrap="wrap">
+                  {TABS.map((t) => (
+                    <Button key={t} size="xs" variant={tab === t ? 'solid' : 'outline'} borderRadius="full"
+                      aria-pressed={tab === t} onClick={() => setTab(t)}>
+                      {t} ({tabCounts[t]})
+                    </Button>
+                  ))}
+                </HStack>
+              </Box>
+              <Box>
+                <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400" mb="1.5">TRI</Text>
+                <HStack gap="1.5" flexWrap="wrap">
+                  {SORT_OPTS.map(([k, l]) => (
+                    <Button key={k} size="xs" variant={sort === k ? 'solid' : 'outline'} borderRadius="full"
+                      aria-pressed={sort === k} onClick={() => setSort(k)}>{l}</Button>
+                  ))}
+                </HStack>
+              </Box>
+              {(noSlides > 0 || testCount > 0) && (
+                <Box>
+                  <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400" mb="1.5">AUTRES</Text>
+                  <HStack gap="1.5" flexWrap="wrap">
+                    {noSlides > 0 && (
+                      <Button size="xs" variant={onlyEmpty ? 'solid' : 'outline'} borderRadius="full"
+                        aria-pressed={onlyEmpty} onClick={() => setOnlyEmpty(!onlyEmpty)}>
+                        Sans diapositive ({noSlides})
+                      </Button>
+                    )}
+                    {testCount > 0 && (
+                      <Button size="xs" variant="outline" borderRadius="full" color={C.amberText}
+                        onClick={() => setModal({ kind: 'clean' })}>
+                        <FiAlertTriangle /> Nettoyer les tests ({testCount})
+                      </Button>
+                    )}
+                  </HStack>
+                </Box>
+              )}
+            </HStack>
+          </Box>
+        )}
+      </Card>
 
       <SimpleGrid columns={{ base: 1, md: 4 }} gap="5">
         {list.map((p) => {

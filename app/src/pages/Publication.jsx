@@ -5,7 +5,7 @@ import {
   FiBell, FiPlus, FiZap, FiShare2, FiEdit3,
   FiChevronLeft, FiChevronRight, FiCalendar, FiCheck, FiSend,
   FiImage, FiLayers, FiVideo, FiTrash2,
-  FiClock, FiAlertCircle,
+  FiClock, FiAlertCircle, FiX, FiFilter,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
@@ -44,29 +44,6 @@ const nextSlotDate = (s) => {
   return d
 }
 
-// Journées santé/dentaire — dates fixes annuelles + sourire (1er vendredi d'octobre)
-const HEALTH_DAYS = [
-  [2, 4, 'Journée mondiale contre le cancer'],
-  [3, 20, 'Journée mondiale de la santé bucco-dentaire'],
-  [4, 7, 'Journée mondiale de la santé'],
-  [5, 12, 'Journée internationale des infirmières'],
-  [5, 31, 'Journée mondiale sans tabac'],
-  [10, 10, 'Journée mondiale de la santé mentale'],
-  [11, 14, 'Journée mondiale du diabète'],
-]
-function upcomingEvents(n = 3) {
-  const now = new Date()
-  const out = []
-  for (const y of [now.getFullYear(), now.getFullYear() + 1]) {
-    for (const [m, d, t] of HEALTH_DAYS) out.push({ date: new Date(y, m - 1, d), label: t })
-    const o = new Date(y, 9, 1)
-    o.setDate(1 + ((5 - o.getDay() + 7) % 7))
-    out.push({ date: o, label: 'Journée mondiale du sourire' })
-  }
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return out.filter((e) => e.date >= start).sort((a, b) => a.date - b.date).slice(0, n)
-}
-
 const STATUS_META = {
   draft: { color: 'gray', label: 'Brouillon' },
   scheduled: { color: 'blue', label: 'Programmé' },
@@ -99,16 +76,17 @@ export default function Publication() {
   const location = useLocation()
   const navigate = useNavigate()
   const [view, setView] = useState('week')
-  const [tab, setTab] = useState('moments')
   const [accounts, setAccounts] = useState([])
   const [posts, setPosts] = useState([])
   const [slots, setSlots] = useState([])
   const [notify, setNotify] = useState(false)
   const [cursor, setCursor] = useState(() => new Date())
   const [kindFilter, setKindFilter] = useState('all')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [modal, setModal] = useState(null) // 'connect' | 'draft'
   const [editPost, setEditPost] = useState(null)
   const [prefill, setPrefill] = useState(null) // Date pré-remplie (clic « + » sur un jour)
+  const [showGuide, setShowGuide] = useState(false)
 
   const reload = async () => {
     if (!wsId) return
@@ -176,7 +154,6 @@ export default function Publication() {
   const calTitle = view === 'week'
     ? `Semaine du ${mon.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`
     : cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
-  const events = upcomingEvents(3)
 
   return (
     <Box w="100%" px="6" py="6">
@@ -185,7 +162,9 @@ export default function Publication() {
         title="Programmation"
         subtitle="Planifiez vos publications sur les réseaux sociaux."
       >
-        <HelpButton />
+        <Tip label={showGuide ? 'Masquer le guide de première publication' : 'Afficher le guide de première publication'}>
+          <HelpButton active={showGuide} onClick={() => setShowGuide((v) => !v)} />
+        </Tip>
         <Tip label={notify ? 'Notifications activées — cliquer pour désactiver' : 'Recevoir une alerte quand une publication est publiée ou échoue'}>
           <Button variant={notify ? 'solid' : 'outline'} size="sm" borderRadius="md"
             color={notify ? '#ffffff' : 'gray.600'} bg={notify ? C.primary : 'transparent'}
@@ -205,14 +184,21 @@ export default function Publication() {
             <FiZap /> Campagne IA
           </Button>
         </Tip>
+        <Tip label={accounts.length ? `${accounts.length} réseau(x) connecté(s) — gérer` : 'Lier un compte Instagram / Facebook / TikTok / LinkedIn'}>
+          <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={() => setModal('connect')}>
+            <FiShare2 /> Réseaux{accounts.length > 0 && ` (${accounts.length})`}
+          </Button>
+        </Tip>
         <PrimaryButton icon={FiPlus} onClick={() => openDraft()}>Nouvelle publication</PrimaryButton>
       </HStack>
 
-      {!steps.every((s) => s.done) && (
+      {showGuide && (
       <Card p="5" mb="5" bg={C.softBlue} borderColor={C.softBlueBorder}>
         <HStack gap="2" mb="3">
           <Box as={FiShare2} color={C.primary} fontSize="sm" />
-          <Text fontSize="sm" fontWeight="600" color={C.ink}>Publier pour la première fois</Text>
+          <Text fontSize="sm" fontWeight="600" color={C.ink} flex="1">Publier pour la première fois</Text>
+          <Button variant="ghost" size="xs" px="1" color="gray.500" aria-label="Masquer le guide"
+            onClick={() => setShowGuide(false)}><FiX /></Button>
         </HStack>
         <VStack align="stretch" gap="1.5" mb="4">
           {steps.map((s, i) => (
@@ -253,12 +239,25 @@ export default function Publication() {
             <Button variant="outline" size="xs" onClick={() => setCursor(new Date())}>Aujourd'hui</Button>
             <Button variant="ghost" size="xs" px="1" onClick={() => shift(1)} aria-label="Période suivante"><FiChevronRight /></Button>
             <Text fontSize="lg" fontWeight="700" color={C.ink} flex="1" textAlign="center">{calTitle}</Text>
-            <Select h="30px" w="auto" px="3" fontSize="xs" borderRadius="full" value={kindFilter} aria-label="Filtrer par type de contenu"
-              onChange={(e) => setKindFilter(e.target.value)}>
-              <option value="all">Type : Tous</option>
-              {KINDS.map(([k, l]) => <option key={k} value={k}>Type : {l}</option>)}
-            </Select>
+            {kindFilter !== 'all' && (
+              <Button size="xs" variant="outline" borderRadius="full" onClick={() => setKindFilter('all')}>
+                Type : {KINDS.find(([k]) => k === kindFilter)?.[1]} ×
+              </Button>
+            )}
+            <Button size="xs" variant={filtersOpen ? 'solid' : 'outline'} borderRadius="full"
+              aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)}>
+              <HStack gap="1"><FiFilter /><Text>Filtres{kindFilter !== 'all' ? ' (1)' : ''}</Text></HStack>
+            </Button>
           </HStack>
+          {filtersOpen && (
+            <HStack gap="1.5" mb="3" flexWrap="wrap">
+              <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400">TYPE</Text>
+              {[['all', 'Tous'], ...KINDS].map(([k, l]) => (
+                <Button key={k} size="xs" variant={kindFilter === k ? 'solid' : 'outline'} borderRadius="full"
+                  aria-pressed={kindFilter === k} onClick={() => setKindFilter(k)}>{l}</Button>
+              ))}
+            </HStack>
+          )}
 
           {view === 'week' ? (
           <SimpleGrid columns={8} gap="0" border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
@@ -332,68 +331,13 @@ export default function Publication() {
         </Box>
 
         <Card w="270px" flexShrink={0} p="4">
-          <HStack gap="4" mb="3" borderBottom="1px solid" borderColor="gray.100" pb="2">
-            {[['objectifs', 'Objectifs'], ['moments', 'Moments'], ['brouillons', 'Brouillons']].map(([k, label]) => (
-              <Text
-                key={k} fontSize="xs" pb="1" cursor="pointer"
-                fontWeight={tab === k ? '600' : '400'}
-                color={tab === k ? C.primary : 'gray.500'}
-                borderBottom={tab === k ? '2px solid' : 'none'}
-                borderColor={C.primary}
-                onClick={() => setTab(k)}
-              >
-                {label}{k === 'brouillons' && drafts.length > 0 ? ` (${drafts.length})` : ''}
-              </Text>
-            ))}
+          <HStack justify="space-between" mb="3" borderBottom="1px solid" borderColor="gray.100" pb="2">
+            <Text fontSize="xs" fontWeight="600" color={C.ink}>
+              Brouillons{drafts.length > 0 ? ` (${drafts.length})` : ''}
+            </Text>
           </HStack>
-
-          {tab === 'brouillons' ? (
-            <DraftsPane drafts={posts.filter((p) => p.status !== 'published')} accounts={accounts}
-              wsId={wsId} onEdit={openDraft} onReload={reload} />
-          ) : tab === 'objectifs' ? (
-            <VStack align="stretch" gap="2">
-              <Text fontSize="xs" fontWeight="600" color={C.ink}>Objectifs de la semaine</Text>
-              {[['3 publications', drafts.length + scheduled.length >= 3],
-                ['1 réseau connecté', accounts.length > 0],
-                ['1 publication programmée', scheduled.length > 0]].map(([l, done]) => (
-                <HStack key={l} gap="2">
-                  <Center w="14px" h="14px" borderRadius="full" bg={done ? C.greenBg : 'gray.100'} color={done ? C.greenText : 'gray.400'} fontSize="2xs">
-                    <FiCheck />
-                  </Center>
-                  <Text fontSize="2xs" color={done ? C.body : 'gray.500'}>{l}</Text>
-                </HStack>
-              ))}
-            </VStack>
-          ) : (
-            <>
-              <Text fontSize="xs" fontWeight="600" color={C.ink} mb="1">Meilleurs moments</Text>
-              <Text fontSize="2xs" color="gray.500" mb="2">Créneaux de publication par défaut (Réglages → Réseaux sociaux).</Text>
-              {slots.length ? (
-                <VStack align="stretch" gap="1" mb="3">
-                  {slots.slice(0, 5).map((s) => (
-                    <HStack key={`${s.day}-${s.time}`} bg={C.softBlue} borderRadius="md" px="2" py="1" gap="2">
-                      <Box as={FiClock} color={C.primary} fontSize="2xs" />
-                      <Text fontSize="2xs" color={C.body}>{['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'][s.day]} · {s.time}</Text>
-                    </HStack>
-                  ))}
-                </VStack>
-              ) : (
-                <Text fontSize="2xs" color="gray.400" mb="3">Aucun créneau défini — ajoutez-en dans Réglages → Réseaux sociaux.</Text>
-              )}
-              <Text fontSize="xs" fontWeight="600" color={C.ink} mb="2">Événements à venir</Text>
-              <VStack align="stretch" gap="2">
-                {events.map((e) => (
-                  <HStack key={e.label} bg={C.softBlue} borderRadius="md" px="2" py="1.5" gap="2">
-                    <Text fontSize="2xs" color={C.primary} fontWeight="600" whiteSpace="nowrap">
-                      {e.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                    </Text>
-                    <Text fontSize="2xs" color={C.body} isTruncated flex="1">{e.label}</Text>
-                    <Box as={FiCalendar} color={C.primary} fontSize="2xs" />
-                  </HStack>
-                ))}
-              </VStack>
-            </>
-          )}
+          <DraftsPane drafts={posts.filter((p) => p.status !== 'published')} accounts={accounts}
+            wsId={wsId} onEdit={openDraft} onReload={reload} />
         </Card>
       </HStack>
 

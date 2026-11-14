@@ -1,30 +1,6 @@
-// Données statiques de la page Acquisition : textes du guide et catalogue des sources.
-import { FiCamera, FiFolder, FiMonitor, FiSmartphone, FiUpload, FiVideo, FiWifi, FiSettings, FiLayers, FiHardDrive } from 'react-icons/fi'
+// Données statiques de la page Acquisition : catalogue des sources.
+import { FiCamera, FiMonitor, FiSmartphone, FiUpload, FiVideo, FiWifi, FiLayers } from 'react-icons/fi'
 import { MdOutlineSdCard } from 'react-icons/md'
-
-// Étapes du guide « Comprendre l'acquisition » (textes repris de l'original)
-export const HELP_STEPS = [
-  {
-    icon: FiFolder, title: 'Tout part du dossier',
-    desc: "Chaque photo est rangée dans un dossier. Ouvrez le dossier du cas (ou créez-le) : c'est lui la destination — le menu latéral sert uniquement à naviguer.",
-  },
-  {
-    icon: FiCamera, title: "Ouvrez le dossier, lancez l'acquisition",
-    desc: 'Dans la page du dossier : « Ajouter des photos » importe vos fichiers existants, « Capture » démarre une session live (QR smartphone, tablette, caméra bridge).',
-  },
-  {
-    icon: FiMonitor, title: 'Source → destination en un coup d’œil',
-    desc: 'Pendant une session, la pilule dans la barre du haut indique d’où viennent les photos et où elles se rangent, avec le compteur de clichés reçus.',
-  },
-  {
-    icon: FiUpload, title: 'Import en masse',
-    desc: '« Import routé » groupe automatiquement vos fichiers en sous-dossiers (date EXIF, préfixe de nom). « Planifier » prépare une séance de capture à venir.',
-  },
-  {
-    icon: FiSettings, title: 'Réglages → Appareils',
-    desc: 'La connexion des caméras (bridge Wi-Fi, FTP, carte SD) et du réseau se configure dans Réglages → Appareils — séparément de l’acquisition quotidienne.',
-  },
-]
 
 // Catalogue des sources d'acquisition — `modal` = popup de configuration associée
 export const SOURCE_DEFS = [

@@ -9,7 +9,6 @@ import {
   FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiClock, FiFolder,
   FiMonitor, FiSmartphone, FiUpload, FiEdit3, FiSettings, FiPlay,
 } from 'react-icons/fi'
-import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, ago, isTestName,
 } from '../../components/ui'
@@ -23,7 +22,7 @@ import {
 } from '../../api'
 import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind, CONN_SELECT, LIAISON_DEFS } from './constants'
 import {
-  GuideModal, SourceModal, DossierModal, MobileModal, CameraModal,
+  SourceModal, DossierModal, MobileModal, CameraModal,
   FtpModal, WatchModal, ImportModal, NewAcqModal, DeviceCaptureModal,
 } from './modals'
 import PhotoImg from '../../components/PhotoImg'
@@ -300,8 +299,8 @@ export default function Acquisition() {
 
   // Un seul état pour la modal ouverte — tout reste sur la route
   const [modal, setModal] = useState(null)
-  const [helpStep, setHelpStep] = useState(null)
   const [checklistHidden, setChecklistHidden] = useState(() => localStorage.getItem('dentopic.acq.checklist') === '1')
+  const [q, setQ] = useState('')
   const [dragging, setDragging] = useState(false)
   // Protocole de prise de vues : étapes attendues + étape active pour taguer les photos
   const [protoSteps, setProtoSteps] = useState([])
@@ -374,14 +373,6 @@ export default function Acquisition() {
     const t = d.dossiers.find((x) => x.id === routeDossierId)
     if (t) { setTarget(t); setModal('new') }
   }, [routeDossierId, d.dossiers, target])
-
-  // Guide au premier passage (comme l'original)
-  useEffect(() => {
-    if (!localStorage.getItem('dentopic.acq.guide')) {
-      setHelpStep(0)
-      localStorage.setItem('dentopic.acq.guide', '1')
-    }
-  }, [])
 
   // ---- Actions ----------------------------------------------------------------
 
@@ -470,11 +461,6 @@ export default function Acquisition() {
       onDrop={(e) => { e.preventDefault(); setDragging(false); setModal('import') }}
     >
       <PageHeader title="Dossiers photo" subtitle="Créez un dossier patient et importez vos photos.">
-        <Tip label="Guide interactif — relire les étapes">
-          <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={() => setHelpStep(0)}>
-            <HiOutlineSparkles /> Aide
-          </Button>
-        </Tip>
         <Tip label="QR code — l'app envoie les photos ici">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={() => setModal('mobile')}>
             <FiSmartphone /> Capturer depuis mobile
@@ -485,7 +471,8 @@ export default function Acquisition() {
         </Tip>
       </PageHeader>
 
-      <SearchInput placeholder="Rechercher un dossier ou un patient…" w="100%" />
+      <SearchInput placeholder="Rechercher un dossier ou un patient…" w="100%"
+        value={q} onChange={(e) => setQ(e.target.value)} />
 
       {/* ---- Flux : DÉPART → DentoPic → ARRIVÉE (une carte épurée) ---- */}
       <Card px="5" py="4" my="5">
@@ -681,7 +668,10 @@ export default function Acquisition() {
 
       {/* ---- Dossiers ---- */}
       <VStack align="stretch" gap="3">
-        {d.dossiers.slice(0, 10).map((ds) => (
+        {d.dossiers
+          .filter((ds) => !q || [ds.name, ds.patient_dossier_number, ds.first_name, ds.last_name]
+            .filter(Boolean).join(' ').toLowerCase().includes(q.trim().toLowerCase()))
+          .slice(0, 10).map((ds) => (
           <Card key={ds.id} px="4" py="3" _hover={{ borderColor: 'blue.300' }} cursor="pointer"
             onClick={() => setTarget(ds)}>
             <HStack gap="3">
@@ -694,10 +684,15 @@ export default function Acquisition() {
             </HStack>
           </Card>
         ))}
+        {q && !d.dossiers.some((ds) => [ds.name, ds.patient_dossier_number, ds.first_name, ds.last_name]
+          .filter(Boolean).join(' ').toLowerCase().includes(q.trim().toLowerCase())) && (
+          <Text fontSize="sm" color="gray.500" textAlign="center" py="4">
+            Aucun dossier ne correspond à « {q} ».
+          </Text>
+        )}
       </VStack>
 
       {/* ---- Modals : tout se configure en popup ---- */}
-      <GuideModal step={helpStep} onStep={setHelpStep} onClose={() => setHelpStep(null)} />
       <SourceModal open={modal === 'source'} onClose={close} source={source} devices={d.devices} rooms={d.rooms} onPick={pickSource} />
       <DossierModal open={modal === 'dossier'} onClose={close} dossiers={d.dossiers} target={target}
         onPick={(ds) => { setTarget(ds); close() }} onCreate={createDest} />

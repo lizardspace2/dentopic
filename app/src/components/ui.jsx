@@ -114,9 +114,11 @@ export function PageHeader({ icon, iconBg, iconColor, title, subtitle, children 
 
 // ---- Boutons standards ---------------------------------------------------------
 
-export function HelpButton() {
+export function HelpButton({ active = false, ...rest }) {
   return (
-    <Button variant="outline" size="sm" borderRadius="md" color="gray.600">
+    <Button variant="outline" size="sm" borderRadius="md"
+      color={active ? C.primary : 'gray.600'} bg={active ? C.softBlue : 'transparent'}
+      aria-pressed={active} {...rest}>
       <FiHelpCircle /> Aide
     </Button>
   )

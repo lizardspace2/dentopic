@@ -14,7 +14,7 @@ import {
 } from '../../components/ui'
 import { C } from '../../theme'
 import {
-  HELP_STEPS, SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS, devKind,
+  SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS, devKind,
   DEVICE_SOURCES, LIAISON_DEFS, CONN_SELECT,
 } from './constants'
 
@@ -67,39 +67,7 @@ function DeviceRow({ dev, rooms = [], selected, onClick }) {
   )
 }
 
-// ---- 1. Guide « Comprendre l'acquisition » ------------------------------------
-
-export function GuideModal({ step, onStep, onClose }) {
-  const s = step != null ? HELP_STEPS[step] : null
-  return (
-    <Modal
-      open={step != null} onClose={onClose} title="Comprendre l'acquisition" width="430px"
-      footer={
-        <>
-          <Text fontSize="xs" color="gray.500">Étape {(step ?? 0) + 1} / {HELP_STEPS.length}</Text>
-          <PrimaryButton onClick={() => (step < HELP_STEPS.length - 1 ? onStep(step + 1) : onClose())}>
-            {step < HELP_STEPS.length - 1 ? 'Suivant' : "C'est parti"} <FiArrowRight />
-          </PrimaryButton>
-        </>
-      }
-    >
-      {s && (
-        <>
-          <HStack gap="0" mb="5" mt="1">
-            {HELP_STEPS.map((_, i) => (
-              <Box key={i} flex="1" h="4px" bg={i <= step ? C.primary : 'gray.200'} borderRadius="full" mr={i < HELP_STEPS.length - 1 ? 1 : 0} />
-            ))}
-          </HStack>
-          <IconTile icon={s.icon} size="44px" iconSize="20px" mb="3" />
-          <Text fontSize="lg" fontWeight="700" color={C.ink} mb="2">{s.title}</Text>
-          <Text fontSize="sm" color={C.body} lineHeight="1.6">{s.desc}</Text>
-        </>
-      )}
-    </Modal>
-  )
-}
-
-// ---- 2. Source d'acquisition (clic sur DÉPART) --------------------------------
+// ---- 1. Source d'acquisition (clic sur DÉPART) --------------------------------
 
 export function SourceModal({ open, onClose, source, devices, rooms = [], onPick }) {
   // Répartition des appareils par type de source — badges « n sources » comme la caméra
@@ -145,7 +113,7 @@ export function SourceModal({ open, onClose, source, devices, rooms = [], onPick
   )
 }
 
-// ---- 3. Dossier de destination (clic sur ARRIVÉE) ------------------------------
+// ---- 2. Dossier de destination (clic sur ARRIVÉE) ------------------------------
 
 export function DossierModal({ open, onClose, dossiers, target, onPick, onCreate }) {
   const [q, setQ] = useState('')
@@ -193,7 +161,7 @@ export function DossierModal({ open, onClose, dossiers, target, onPick, onCreate
   )
 }
 
-// ---- 4. Capture mobile (QR) -----------------------------------------------------
+// ---- 3. Capture mobile (QR) -----------------------------------------------------
 
 export function MobileModal({ open, onClose, target, onStart }) {
   const [token, setToken] = useState(null)
@@ -245,7 +213,7 @@ export function MobileModal({ open, onClose, target, onStart }) {
   )
 }
 
-// ---- 5. Appareil photo : choix + ajout -------------------------------------------
+// ---- 4. Appareil photo : choix + ajout -------------------------------------------
 
 export function CameraModal({ open, onClose, devices, rooms = [], selectedId, onPick, onCreate }) {
   const [adding, setAdding] = useState(false)
@@ -334,7 +302,7 @@ export function CameraModal({ open, onClose, devices, rooms = [], selectedId, on
   )
 }
 
-// ---- 6. FTP : liste des sources enregistrées + formulaire ---------------------------
+// ---- 5. FTP : liste des sources enregistrées + formulaire ---------------------------
 // Comme la caméra : une source FTP enregistrée reste réutilisable — on la retrouve
 // dans la liste (badge dans SourceModal), on clique pour la reprendre, ✎ pour éditer.
 
@@ -425,7 +393,7 @@ export function FtpModal({ open, onClose, devices = [], rooms = [], selectedId, 
   )
 }
 
-// ---- 7. Dossier surveillé : liste + formulaire ---------------------------------------
+// ---- 6. Dossier surveillé : liste + formulaire ---------------------------------------
 
 export function WatchModal({ open, onClose, devices = [], rooms = [], selectedId, onPick, onSave }) {
   const [editing, setEditing] = useState(null)
@@ -516,7 +484,7 @@ export function WatchModal({ open, onClose, devices = [], rooms = [], selectedId
   )
 }
 
-// ---- 7b. « Nouvel appareil » façon concurrent : tuiles source + salle + liaison -------
+// ---- 6b. « Nouvel appareil » façon concurrent : tuiles source + salle + liaison -------
 
 const STATUS_DEFS = [
   ['offline', 'Hors ligne'],
@@ -678,7 +646,7 @@ export function DeviceModal({ open, onClose, rooms = [], device, onSave }) {
   )
 }
 
-// ---- 8. Import de photos : drop zone + liste + destination --------------------------
+// ---- 7. Import de photos : drop zone + liste + destination --------------------------
 
 export function ImportModal({ open, onClose, target, onImport }) {
   const [files, setFiles] = useState([])
@@ -740,7 +708,7 @@ export function ImportModal({ open, onClose, target, onImport }) {
   )
 }
 
-// ---- 8b. « Depuis cet appareil » : capture live via getUserMedia ---------------------
+// ---- 7b. « Depuis cet appareil » : capture live via getUserMedia ---------------------
 // Sur le smartphone du praticien → caméra avant/arrière ; sur le poste → webcam.
 // Chaque cliché part immédiatement vers la destination (dossier + session active).
 // Repli : <input capture> natif si getUserMedia est indisponible ou refusé.
@@ -899,7 +867,7 @@ export function DeviceCaptureModal({ open, onClose, target, onCapture }) {
   )
 }
 
-// ---- 9. Nouvelle acquisition : destination + mode + démarrage ------------------------
+// ---- 8. Nouvelle acquisition : destination + mode + démarrage ------------------------
 
 export function NewAcqModal({ open, onClose, target, source, devices, onPickDest, onPickSource, onStart }) {
   const modes = SOURCE_DEFS.filter((s) => ['mobile', 'device', 'camera', 'import'].includes(s.key))
