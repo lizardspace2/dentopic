@@ -2349,7 +2349,7 @@ export default function Studio() {
   return (
     <Flex h="100%" direction="column" bg={S.bg} color={S.fg} overflow="hidden">
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={openFile} />
-      <Box px="4" pt="3" flexShrink="0">
+      <Box px="6" pt="6" flexShrink="0" bg={C.pageBg}>
         <PageHeader icon={FiLayers} title="Studio"
           subtitle="Éditeur photo — retouche, calques et montages avant/après." />
       </Box>
