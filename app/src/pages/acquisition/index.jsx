@@ -38,10 +38,11 @@ const connLabel = (v) => CONN_SELECT.find(([k]) => k === v)?.[1] || v
 const liaisonLabel = (v) => LIAISON_DEFS.find((l) => l.key === v)?.label || v
 
 /** Infobulle INTERACTIVE : reste ouverte au survol du contenu (icônes cliquables). */
-function HoverTip({ label, tipW = 300, children, ...rest }) {
+function HoverTip({ label, tipW = 300, disabled = false, children, ...rest }) {
   const ref = useRef(null)
   const timer = useRef(null)
   const [tip, setTip] = useState(null)
+  useEffect(() => { if (disabled) setTip(null) }, [disabled])
   const show = () => {
     clearTimeout(timer.current)
     if (!ref.current) return
@@ -59,7 +60,7 @@ function HoverTip({ label, tipW = 300, children, ...rest }) {
     <Box ref={ref} position="relative" display="inline-flex" {...rest}
       onMouseEnter={show} onMouseLeave={hide}>
       {children}
-      {tip && createPortal(
+      {tip && !disabled && createPortal(
         <Box position="fixed" {...tip.style} bg="var(--tip-bg)" color="var(--tip-fg)"
           fontSize="2xs" px="3" py="2.5" borderRadius="lg" boxShadow="var(--tip-shadow)"
           border="1px solid" borderColor="var(--tip-border)"
@@ -487,7 +488,7 @@ export default function Acquisition() {
               onPick={pickSource} />
           }
             tipW={300} flex="1" minW="0">
-            <Box cursor="pointer" onClick={() => setModal('source')}>
+            <Box cursor="pointer" w="100%" onClick={() => setModal('source')}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!source} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">DÉPART</Text>
@@ -508,7 +509,7 @@ export default function Acquisition() {
             </Box>
           </HoverTip>
 
-          <Center flexDirection="column" gap="1" flexShrink={0} alignSelf="center">
+          <Center flexDirection="column" gap="1" flexShrink={0} alignSelf="center" pt="3">
             <HStack bg={C.softBlue} borderRadius="full" px="3" py="1" gap="1.5">
               <Box w="9px" h="9px" borderRadius="full" bg={C.primary} />
               <Text fontSize="2xs" color={C.primary} fontWeight="700">DentoPic</Text>
@@ -524,8 +525,8 @@ export default function Acquisition() {
               onNew={() => setModal('new')}
               onPick={(ds) => setTarget(ds)} />
           }
-            tipW={300} flex="1" minW="0">
-            <Box cursor="pointer" onClick={() => setDestOpen((v) => !v)}>
+            tipW={300} flex="1" minW="0" disabled={destOpen}>
+            <Box cursor="pointer" w="100%" onClick={() => setDestOpen((v) => !v)}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!target} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">ARRIVÉE</Text>
