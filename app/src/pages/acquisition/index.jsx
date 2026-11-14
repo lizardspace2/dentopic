@@ -1,13 +1,12 @@
 // Route /acquisition — flux « source → DentoPic → dossier ».
 // Toutes les actions (source, destination, config appareil, FTP, import, session)
 // se font en popups sans quitter la route — voir ./modals.jsx.
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Box, Button, Center, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiChevronRight, FiClock, FiFolder,
-  FiFolderPlus, FiMonitor, FiUpload, FiEdit3, FiSettings, FiPlay,
+  FiFolderPlus, FiMonitor,
 } from 'react-icons/fi'
 import {
   Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, ago, isTestName,
@@ -18,275 +17,19 @@ import {
   listCaptureDevices, listDossiers, listActiveSessions,
   createCaptureSession, endCaptureSession, createDossier,
   createCaptureDevice, updateCaptureDevice, importPhotos, countSessionPhotos,
-  listProtocolSteps, listPhotosByDossier, listRooms, devicePhotoStats,
+  listProtocolSteps, listPhotosByDossier, listRooms,
 } from '../../api'
-import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind, CONN_SELECT, LIAISON_DEFS } from './constants'
+import { sourceLabel, sourceIcon, devKind } from './constants'
 import {
   SourceModal, DossierModal, MobileModal, CameraModal,
   FtpModal, WatchModal, ImportModal, NewAcqModal, DeviceCaptureModal,
 } from './modals'
-import PhotoImg from '../../components/PhotoImg'
 
 // Petit point de statut : vert = configuré, ambre = à configurer
 function StatusDot({ ok }) {
   return <Box w="8px" h="8px" borderRadius="full" bg={ok ? '#22c55e' : '#f59e0b'} flexShrink={0} />
 }
 
-// ---- Infobulles riches DÉPART / ARRIVÉE (comme l'ancien projet) ----------------
-
-const connLabel = (v) => CONN_SELECT.find(([k]) => k === v)?.[1] || v
-const liaisonLabel = (v) => LIAISON_DEFS.find((l) => l.key === v)?.label || v
-
-/** Infobulle INTERACTIVE : reste ouverte au survol du contenu (icônes cliquables). */
-function HoverTip({ label, tipW = 300, disabled = false, children, ...rest }) {
-  const ref = useRef(null)
-  const timer = useRef(null)
-  const [tip, setTip] = useState(null)
-  useEffect(() => { if (disabled) setTip(null) }, [disabled])
-  const show = () => {
-    clearTimeout(timer.current)
-    if (!ref.current) return
-    const r = ref.current.getBoundingClientRect()
-    const x = Math.min(Math.max(r.left + r.width / 2, 8 + tipW / 2), window.innerWidth - 8 - tipW / 2)
-    const below = r.bottom + 320 <= window.innerHeight || r.top < 320
-    setTip({
-      style: below
-        ? { left: x, top: r.bottom + 8, transform: 'translateX(-50%)' }
-        : { left: x, top: r.top - 8, transform: 'translate(-50%,-100%)' },
-    })
-  }
-  const hide = () => { timer.current = setTimeout(() => setTip(null), 160) }
-  return (
-    <Box ref={ref} position="relative" display="inline-flex" {...rest}
-      onMouseEnter={show} onMouseLeave={hide}>
-      {children}
-      {tip && !disabled && createPortal(
-        <Box position="fixed" {...tip.style} bg="var(--tip-bg)" color="var(--tip-fg)"
-          fontSize="2xs" px="3" py="2.5" borderRadius="lg" boxShadow="var(--tip-shadow)"
-          border="1px solid" borderColor="var(--tip-border)"
-          w={`${tipW}px`} textAlign="left" zIndex="9999"
-          onMouseEnter={show} onMouseLeave={hide}>
-          {label}
-        </Box>,
-        document.body,
-      )}
-    </Box>
-  )
-}
-
-/** Icône d'action cliquable dans une infobulle. */
-function TipAction({ icon, label, onClick }) {
-  return (
-    <HStack as="button" gap="1.5" px="2" py="1.5" borderRadius="md" cursor="pointer"
-      bg="var(--tip-tile)" _hover={{ bg: 'var(--tip-hover)' }}
-      onClick={(e) => { e.stopPropagation(); onClick?.() }}
-      aria-label={label} title={label} flex="1" justify="center">
-      <Box as={icon} fontSize="xs" color="var(--tip-accent)" />
-      <Text fontSize="2xs" color="var(--tip-fg)" fontWeight="600">{label}</Text>
-    </HStack>
-  )
-}
-
-/** Rangée de 3-4 miniatures dans une bulle. */
-function TipThumbs({ photos }) {
-  if (!photos?.length) return null
-  return (
-    <HStack gap="1.5" pt="0.5">
-      {photos.slice(0, 4).map((p) => (
-        <Box key={p.id} w="52px" borderRadius="sm" overflow="hidden">
-          <PhotoImg storagePath={p.storage_path} ratio="1/1" iconSize="12px" />
-        </Box>
-      ))}
-      {photos.length > 4 && (
-        <Text fontSize="2xs" color="var(--tip-muted)" pl="1">+{photos.length - 4}</Text>
-      )}
-    </HStack>
-  )
-}
-
-function TipRow({ k, v }) {
-  if (!v) return null
-  return (
-    <HStack justify="space-between" gap="4" fontSize="2xs">
-      <Text color="var(--tip-muted)" flexShrink={0}>{k}</Text>
-      <Text color="var(--tip-fg)" fontWeight="600" textAlign="right" isTruncated maxW="190px">{v}</Text>
-    </HStack>
-  )
-}
-
-/** Ligne cliquable dans une bulle (choix d'une source / d'un dossier). */
-function TipPickRow({ icon, title, sub, right, onClick }) {
-  return (
-    <HStack gap="2" px="1.5" py="1" mx="-1.5" borderRadius="md" cursor="pointer"
-      role="button" aria-label={title}
-      _hover={{ bg: 'var(--tip-hover)' }} onClick={(e) => { e.stopPropagation(); onClick?.() }}>
-      {icon && (
-        <Center w="6" h="6" borderRadius="md" bg="var(--tip-tile)" flexShrink={0}>
-          <Box as={icon} color="var(--tip-accent)" fontSize="xs" />
-        </Center>
-      )}
-      <Box flex="1" minW="0">
-        <Text fontSize="2xs" color="var(--tip-fg)" fontWeight="600" isTruncated>{title}</Text>
-        {sub && <Text fontSize="2xs" color="var(--tip-muted)" isTruncated>{sub}</Text>}
-      </Box>
-      {right}
-    </HStack>
-  )
-}
-
-function TipCard({ title, icon, badge, children }) {
-  return (
-    <VStack align="stretch" gap="1.5" py="0.5" minW="220px">
-      <HStack gap="2" pb="1" borderBottom="1px solid" borderColor="var(--tip-border)">
-        <Box as={icon} color="var(--tip-accent)" fontSize="sm" />
-        <Text fontWeight="700" color="var(--tip-fg)" fontSize="xs" flex="1" isTruncated>{title}</Text>
-        {badge}
-      </HStack>
-      {children}
-    </VStack>
-  )
-}
-
-/** Bulle détaillée et interactive de la source DÉPART :
- *  type, appareil, connexion, salle, FTP/dossier + photos reçues
- *  (vignettes) + icônes d'action (changer / configurer / nouvelle acquisition). */
-function SourceTip({ source, devices, rooms, stats, received, sessionActive, onChange, onConfigure, onNew, onPick }) {
-  // État vide : catalogue complet des sources — chaque ligne choisit directement.
-  if (!source) {
-    return (
-      <TipCard title="Choisir la source" icon={FiUpload}
-        badge={<Text fontSize="2xs" color="var(--tip-accent)" flexShrink={0}>Départ</Text>}>
-        <Text fontSize="2xs" color="var(--tip-muted)">D'où viennent les photos :</Text>
-        {SOURCE_DEFS.map((def) => (
-          <TipPickRow key={def.key} icon={def.icon} title={def.label} sub={def.hint}
-            right={<Box as={FiArrowRight} color="var(--tip-faint)" fontSize="xs" flexShrink={0} />}
-            onClick={() => onPick?.(def)} />
-        ))}
-        {devices.length > 0 && (
-          <>
-            <Text fontSize="2xs" color="var(--tip-faint)" pt="1" fontWeight="700" letterSpacing="0.06em">
-              APPAREILS CONFIGURÉS ({devices.length})
-            </Text>
-            {devices.slice(0, 3).map((dev) => (
-              <TipPickRow key={dev.id} icon={FiMonitor} title={dev.name}
-                sub={connLabel(dev.metadata?.conn || dev.connection_type)}
-                right={
-                  <HStack gap="1" flexShrink={0}>
-                    <Box w="5px" h="5px" borderRadius="full" bg={dev.status === 'online' ? 'var(--tip-ok)' : 'var(--tip-faint)'} />
-                  </HStack>
-                }
-                onClick={() => onPick?.({ key: devKind(dev), deviceId: dev.id, label: dev.name })} />
-            ))}
-            {devices.length > 3 && <Text fontSize="2xs" color="var(--tip-muted)" pl="1">+{devices.length - 3} autre(s)</Text>}
-          </>
-        )}
-        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
-          <TipAction icon={FiEdit3} label="Choisir" onClick={onChange} />
-          <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
-        </HStack>
-      </TipCard>
-    )
-  }
-  const dev = source.deviceId ? devices.find((x) => x.id === source.deviceId) : null
-  const room = dev?.room_id ? rooms.find((r) => r.id === dev.room_id) : null
-  const m = dev?.metadata || {}
-  const online = dev?.status === 'online'
-  const photoN = dev ? stats?.count : null
-  return (
-    <TipCard title={source.label || sourceLabel(source.key)} icon={sourceIcon(source.key)}
-      badge={
-        <HStack gap="1" flexShrink={0}>
-          <Box w="6px" h="6px" borderRadius="full" bg={dev ? (online ? 'var(--tip-ok)' : 'var(--tip-warn)') : 'var(--tip-accent)'} />
-          <Text fontSize="2xs" color={dev ? (online ? 'var(--tip-ok)' : 'var(--tip-warn)') : 'var(--tip-accent)'}>
-            {dev ? (online ? 'En ligne' : 'Hors ligne') : 'Prêt'}
-          </Text>
-        </HStack>
-      }>
-      <TipRow k="Type de source" v={sourceLabel(source.key)} />
-      {dev && <TipRow k="Connexion" v={connLabel(m.conn || dev.connection_type)} />}
-      {dev?.manufacturer && <TipRow k="Fabricant" v={dev.manufacturer} />}
-      {dev?.model && <TipRow k="Modèle" v={dev.model} />}
-      {room && <TipRow k="Salle" v={`${room.name}${room.location ? ` — ${room.location}` : ''}`} />}
-      {m.ftp?.host && <TipRow k="Hôte FTP" v={`${m.ftp.host}${m.ftp.port ? ':' + m.ftp.port : ''}`} />}
-      {m.ftp?.path && <TipRow k="Chemin FTP" v={m.ftp.path} />}
-      {m.ftp?.user && <TipRow k="Utilisateur" v={m.ftp.user} />}
-      {m.watch?.path && <TipRow k="Dossier surveillé" v={m.watch.path} />}
-      {m.watch?.grouping && <TipRow k="Regroupement" v={m.watch.grouping === 'prefix' ? 'Préfixe du nom' : 'Date EXIF'} />}
-      {m.liaison && <TipRow k="Liaison (bridge)" v={liaisonLabel(m.liaison)} />}
-      {m.interop && <TipRow k="Interopérabilité" v="Activée" />}
-      {photoN != null && <TipRow k="Photos reçues" v={`${photoN} au total`} />}
-      {sessionActive && <TipRow k="Session" v={`en direct — ${received} reçue(s)`} />}
-      {!dev && (
-        <Text fontSize="2xs" color="var(--tip-muted)">
-          {SOURCE_DEFS.find((s) => s.key === source.key)?.hint || ''}
-        </Text>
-      )}
-      <TipThumbs photos={stats?.latest} />
-      <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
-        <TipAction icon={FiEdit3} label="Changer" onClick={onChange} />
-        <TipAction icon={FiSettings} label="Configurer" onClick={onConfigure} />
-        <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
-      </HStack>
-    </TipCard>
-  )
-}
-
-/** Bulle détaillée et interactive du dossier ARRIVÉE :
- *  patient, n°, spécialités, dates + vignettes des dernières photos
- *  + icônes (ouvrir le dossier / changer / nouvelle acquisition). */
-function DestTip({ target, photoCount, photos, dossiers = [], onOpen, onChange, onNew, onPick }) {
-  // État vide : dossiers récents — un clic choisit la destination directement.
-  if (!target) {
-    const recent = [...dossiers]
-      .sort((a, b) => new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0))
-      .slice(0, 5)
-    return (
-      <TipCard title="Choisir la destination" icon={FiFolder}
-        badge={<Text fontSize="2xs" color="var(--tip-accent)" flexShrink={0}>Arrivée</Text>}>
-        <Text fontSize="2xs" color="var(--tip-muted)">
-          Les photos seront rangées dans ce dossier :
-        </Text>
-        {recent.map((ds) => (
-          <TipPickRow key={ds.id} icon={FiFolder} title={ds.name}
-            sub={ds.updated_at ? `Modifié ${ago(ds.updated_at)}` : undefined}
-            right={<Box as={FiArrowRight} color="var(--tip-faint)" fontSize="xs" flexShrink={0} />}
-            onClick={() => onPick?.(ds)} />
-        ))}
-        {dossiers.length > 5 && (
-          <Text fontSize="2xs" color="var(--tip-muted)" pl="1">+{dossiers.length - 5} autre(s) dossier(s)</Text>
-        )}
-        {dossiers.length === 0 && (
-          <Text fontSize="2xs" color="var(--tip-muted)">Aucun dossier — créez-en un pour commencer.</Text>
-        )}
-        <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
-          <TipAction icon={FiFolder} label="Parcourir" onClick={onChange} />
-          <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
-        </HStack>
-      </TipCard>
-    )
-  }
-  const patient = [target.first_name, target.last_name].filter(Boolean).join(' ')
-  const specs = Array.isArray(target.specialties) ? target.specialties.join(', ') : target.specialties
-  return (
-    <TipCard title={target.name} icon={FiFolder}
-      badge={<Text fontSize="2xs" color="var(--tip-accent)" flexShrink={0}>Destination</Text>}>
-      {patient && <TipRow k="Patient" v={patient} />}
-      {target.patient_dossier_number && <TipRow k="N° dossier" v={target.patient_dossier_number} />}
-      {target.birth_date && <TipRow k="Naissance" v={new Date(target.birth_date).toLocaleDateString('fr-FR')} />}
-      {specs && <TipRow k="Spécialité(s)" v={specs} />}
-      {target.description && <TipRow k="Notes" v={target.description} />}
-      {photoCount != null && <TipRow k="Photos" v={`${photoCount} photo(s)`} />}
-      {target.created_at && <TipRow k="Créé" v={ago(target.created_at)} />}
-      {target.updated_at && <TipRow k="Modifié" v={ago(target.updated_at)} />}
-      <TipThumbs photos={photos} />
-      <HStack gap="1.5" pt="1.5" borderTop="1px solid" borderColor="var(--tip-border)">
-        <TipAction icon={FiFolder} label="Ouvrir" onClick={onOpen} />
-        <TipAction icon={FiEdit3} label="Changer" onClick={onChange} />
-        <TipAction icon={FiPlay} label="Capturer" onClick={onNew} />
-      </HStack>
-    </TipCard>
-  )
-}
 
 export default function Acquisition() {
   const { workspace, session } = useApp()
@@ -305,9 +48,6 @@ export default function Acquisition() {
   const [protoSteps, setProtoSteps] = useState([])
   const [activeStep, setActiveStep] = useState(null)
   const [stepCounts, setStepCounts] = useState({})
-  const [photoCount, setPhotoCount] = useState(null) // nb photos du dossier cible
-  const [destPhotos, setDestPhotos] = useState([])   // vignettes du dossier cible (bulle)
-  const [srcStats, setSrcStats] = useState(null)     // photos reçues par l'appareil source (bulle)
 
   const active = d.active[0]
 
@@ -357,10 +97,8 @@ export default function Acquisition() {
   // Compte des photos déjà taguées par étape dans le dossier cible
   useEffect(() => {
     const did = target?.id || active?.dossier_id
-    if (!did) { setStepCounts({}); setPhotoCount(null); setDestPhotos([]); return }
+    if (!did) { setStepCounts({}); return }
     listPhotosByDossier(did).then((ph) => {
-      setPhotoCount(ph.length)
-      setDestPhotos(ph.slice(0, 4))
       const c = {}
       ph.forEach((p) => { if (p.protocol_step_id) c[p.protocol_step_id] = (c[p.protocol_step_id] || 0) + 1 })
       setStepCounts(c)
@@ -368,10 +106,6 @@ export default function Acquisition() {
   }, [target?.id, active?.dossier_id, received])
 
   // Photos déjà reçues par l'appareil source (bulle DÉPART)
-  useEffect(() => {
-    if (!wsId || !source?.deviceId) { setSrcStats(null); return }
-    devicePhotoStats(wsId, source.deviceId).then(setSrcStats)
-  }, [wsId, source?.deviceId, received])
 
   // « Capturer » depuis une carte dossier : pré-sélectionne la destination + ouvre la modal
   useEffect(() => {
@@ -479,15 +213,7 @@ export default function Acquisition() {
       {/* ---- Flux : DÉPART → DentoPic → ARRIVÉE (une carte épurée) ---- */}
       <Card px="5" py="4" my="5">
         <HStack gap="5" align="stretch">
-          <HoverTip label={
-            <SourceTip source={source} devices={d.devices} rooms={d.rooms}
-              stats={srcStats} received={received} sessionActive={!!active}
-              onChange={() => setModal('source')}
-              onConfigure={() => setModal(source ? (SOURCE_DEFS.find((s) => s.key === source.key)?.modal || 'source') : 'source')}
-              onNew={() => setModal('new')}
-              onPick={pickSource} />
-          }
-            tipW={300} flex="1" minW="0">
+          <Box flex="1" minW="0">
             <Box cursor="pointer" w="100%" onClick={() => setModal('source')}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!source} />
@@ -507,7 +233,7 @@ export default function Acquisition() {
                 <Box as={FiChevronDown} color="gray.300" />
               </HStack>
             </Box>
-          </HoverTip>
+          </Box>
 
           <Center flexDirection="column" gap="1" flexShrink={0} alignSelf="center" pt="3">
             <HStack bg={C.softBlue} borderRadius="full" px="3" py="1" gap="1.5">
@@ -517,15 +243,7 @@ export default function Acquisition() {
             <Box as={FiArrowRight} color={C.primary} fontSize="sm" />
           </Center>
 
-          <HoverTip label={
-            <DestTip target={target} photoCount={photoCount} photos={destPhotos}
-              dossiers={d.dossiers}
-              onOpen={() => target && navigate(`/dossier-patient/dossier/${target.id}`)}
-              onChange={() => setDestOpen((v) => !v)}
-              onNew={() => setModal('new')}
-              onPick={(ds) => setTarget(ds)} />
-          }
-            tipW={300} flex="1" minW="0" disabled={destOpen}>
+          <Box flex="1" minW="0">
             <Box cursor="pointer" w="100%" onClick={() => setDestOpen((v) => !v)}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!target} />
@@ -545,7 +263,7 @@ export default function Acquisition() {
                 <Box as={destOpen ? FiChevronDown : FiChevronRight} color="gray.300" />
               </HStack>
             </Box>
-          </HoverTip>
+          </Box>
         </HStack>
 
         {/* ---- Dropdown : toutes les destinations ---- */}
