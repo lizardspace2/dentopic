@@ -205,7 +205,7 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
   return (
     <Box w="100%">
       <PageHeader
-        icon={FiFolder} iconBg={C.amberBg} iconColor={C.amberText}
+        icon={FiFolder}
         title="Collections"
         subtitle="Organisez vos photos et montages en collections thématiques"
       >

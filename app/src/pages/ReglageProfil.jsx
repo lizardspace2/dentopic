@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Box, Center, Circle, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
 import { FiUser } from 'react-icons/fi'
-import { Field, Select, PrimaryButton, toast } from '../components/ui'
+import { Field, Select, PrimaryButton, PageHeader, toast } from '../components/ui'
 import { ReglageNav } from '../components/ReglageNav'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
@@ -39,7 +39,7 @@ export default function ReglageProfil() {
   return (
     <Box w="100%" px="6" py="6">
       <ReglageNav />
-      <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink} mb="8">Profil</Text>
+      <PageHeader icon={FiUser} title="Profil" />
 
       <Center mb="2">
         <Circle size="96px" bg="gray.100" color="gray.400">

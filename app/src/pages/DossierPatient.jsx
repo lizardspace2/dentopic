@@ -257,7 +257,7 @@ function DossierGrid() {
   return (
     <Box w="100%" px="6" py="6">
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={onImportFiles} />
-      <PageHeader title="Dossier patient" subtitle="Gérez les dossiers sans informations personnelles.">
+      <PageHeader icon={FiFolder} title="Dossier patient" subtitle="Gérez les dossiers sans informations personnelles.">
         <Tip label="Dossiers mis à la corbeille — restauration possible">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={openTrash}>
             <FiTrash2 /> Corbeille <Tag color="gray">{d?.trash ?? 0}</Tag>

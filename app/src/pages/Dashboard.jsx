@@ -4,8 +4,9 @@ import { Link } from 'react-router-dom'
 import {
   FiFolder, FiCamera, FiLayers, FiUsers, FiMonitor, FiFileText, FiCheckCircle,
   FiAlertTriangle, FiClock, FiTrendingUp, FiStar, FiImage, FiFilm, FiChevronRight,
+  FiHome,
 } from 'react-icons/fi'
-import { Card, Tag, PrimaryButton } from '../components/ui'
+import { Card, Tag, PrimaryButton, IconTile } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
 import { useApp } from '../context/AppContext'
@@ -95,9 +96,12 @@ export default function Dashboard() {
           </Link>
         </HStack>
       </HStack>
-      <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink} mb="4">
-        Tableau de bord
-      </Text>
+      <HStack gap="3" mb="4">
+        <IconTile icon={FiHome} />
+        <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
+          Tableau de bord
+        </Text>
+      </HStack>
 
       <SimpleGrid columns={{ base: 2, md: 5 }} gap="4" mb="5">
         <StatCard icon={FiImage} label="Photos" value={d?.totalPhotos ?? '…'}

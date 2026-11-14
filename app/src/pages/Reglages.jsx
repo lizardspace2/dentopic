@@ -1,6 +1,6 @@
 import { Box, HStack, SimpleGrid, Text } from '@chakra-ui/react'
 import { Link } from 'react-router-dom'
-import { FiChevronRight } from 'react-icons/fi'
+import { FiChevronRight, FiSettings } from 'react-icons/fi'
 import { Card, SectionLabel, PageHeader, IconTile } from '../components/ui'
 import { REGLAGE_SECTIONS } from '../components/ReglageNav'
 import { C } from '../theme'
@@ -8,7 +8,7 @@ import { C } from '../theme'
 export default function Reglages() {
   return (
     <Box w="100%" px="6" py="6">
-      <PageHeader title="Réglages"
+      <PageHeader icon={FiSettings} title="Réglages"
         subtitle="Compte, cabinet, abonnement et diffusion" />
 
       {REGLAGE_SECTIONS.map((sec) => (

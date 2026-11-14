@@ -59,7 +59,7 @@ export default function ReglagePro() {
     <Box w="100%" px="6" py="6">
       <ReglageNav />
       <PageHeader
-        icon={FaCrown} iconBg="amber.100" iconColor="amber.500"
+        icon={FaCrown}
         title="Passer Pro" subtitle="Débloquez toutes les fonctionnalités de DentoPic"
       >
       </PageHeader>

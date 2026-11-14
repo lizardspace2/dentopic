@@ -3,7 +3,7 @@ import { Box, Button, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui
 import {
   FiMapPin, FiMonitor, FiPlus, FiTrash2, FiWifi, FiEdit2,
 } from 'react-icons/fi'
-import { Card, Tag, IconTile, PrimaryButton, Tip, Field, ConfirmModal } from '../components/ui'
+import { Card, Tag, IconTile, PageHeader, PrimaryButton, Tip, Field, ConfirmModal } from '../components/ui'
 import { ReglageNav } from '../components/ReglageNav'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
@@ -77,12 +77,9 @@ export default function ReglageAppareils() {
   return (
     <Box w="100%" px="6" py="6">
       <ReglageNav />
-      <HStack justify="space-between" mb="6">
-        <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
-          Appareils
-        </Text>
+      <PageHeader icon={FiMonitor} title="Appareils">
         <PrimaryButton icon={FiPlus} onClick={() => setDevModal('new')}>Ajouter</PrimaryButton>
-      </HStack>
+      </PageHeader>
 
       <VStack align="stretch" gap="6">
         {/* ---- Salles : localisation des appareils ---- */}

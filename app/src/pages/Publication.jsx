@@ -171,7 +171,7 @@ export default function Publication() {
   return (
     <Box w="100%" px="6" py="6">
       <PageHeader
-        icon={FiCalendar} iconBg={C.greenBg} iconColor={C.greenText}
+        icon={FiCalendar}
         title="Programmation"
         subtitle="Planifiez vos publications sur les réseaux sociaux."
       >
