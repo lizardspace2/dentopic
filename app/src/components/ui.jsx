@@ -40,9 +40,17 @@ export function Tag({ color = 'purple', children, ...rest }) {
 
 // ---- Cartes & panneaux ------------------------------------------------------
 
-export function Card({ children, ...rest }) {
+export function Card({ children, onClick, _hover, ...rest }) {
   return (
-    <Box bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="xl" {...rest}>
+    <Box
+      bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="xl"
+      boxShadow={C.cardShadow}
+      transition="box-shadow .2s ease, transform .2s ease, border-color .2s ease"
+      cursor={onClick ? 'pointer' : undefined}
+      _hover={onClick ? { boxShadow: C.cardShadowHover, transform: 'translateY(-1px)', ..._hover } : _hover}
+      onClick={onClick}
+      {...rest}
+    >
       {children}
     </Box>
   )

@@ -1,19 +1,23 @@
 /* ---- Palette : variables claires (défaut) ---------------------------------- */
 
 :root {
-  --c-primary: #4f8fe8;
-  --c-primary-hover: #3f7fd8;
+  --c-primary: #2563eb;
+  --c-primary-hover: #1d4ed8;
   --c-navy: #1e293b;
   --c-ink: #111827;
   --c-body: #374151;
   --c-muted: #6b7280;
 
-  --c-page-bg: #f5f7fa;
+  --c-page-bg: #f8fafc;
   --c-sidebar-bg: #f7f9fc;
   --c-card-border: #e5e7eb;
-  --c-soft-blue: #eff4fe;
-  --c-soft-blue-border: #cfe4fa;
-  --c-nav-active: #eef2fb;
+  --c-soft-blue: #eff6ff;
+  --c-soft-blue-border: #bfdbfe;
+  --c-nav-active: #e8f0fe;
+
+  /* Ombres douces multi-couches (soft-ui) */
+  --c-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.05);
+  --c-card-shadow-hover: 0 4px 12px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.05);
 
   --c-green-bg: #e9fbf0;
   --c-green-border: #bbf0d2;
@@ -60,8 +64,8 @@
 html[data-theme='dark'] {
   color-scheme: dark;
 
-  --c-primary: #5b9bec;
-  --c-primary-hover: #4f8fe8;
+  --c-primary: #3b82f6;
+  --c-primary-hover: #60a5fa;
   --c-navy: #3b4d68;
   --c-ink: #f2f5f9;
   --c-body: #c4cdd9;
@@ -73,6 +77,9 @@ html[data-theme='dark'] {
   --c-soft-blue: #16233c;
   --c-soft-blue-border: #2b4a78;
   --c-nav-active: #1a2434;
+
+  --c-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.28);
+  --c-card-shadow-hover: 0 4px 14px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.3);
 
   --c-green-bg: #0f2a1c;
   --c-green-border: #1d4d33;
@@ -152,6 +159,13 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* Anneau de focus visible — exigé par le style soft-ui (accessibilité) :
+   les resets CSS/Chakra masquent l'outline par défaut. */
+:focus-visible {
+  outline: 2px solid var(--c-primary);
+  outline-offset: 2px;
 }
 
 input,

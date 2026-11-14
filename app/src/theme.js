@@ -20,6 +20,8 @@ export const C = {
   pageBg: v('page-bg'), // fond de page
   sidebarBg: v('sidebar-bg'), // fond sidebar
   cardBorder: v('card-border'),
+  cardShadow: v('card-shadow'), // ombre douce des cartes
+  cardShadowHover: v('card-shadow-hover'), // ombre cartes cliquables au survol
   softBlue: v('soft-blue'), // pastille icône / survol actif
   softBlueBorder: v('soft-blue-border'),
   navActive: v('nav-active'),
