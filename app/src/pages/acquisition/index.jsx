@@ -486,13 +486,13 @@ export default function Acquisition() {
               onNew={() => setModal('new')}
               onPick={pickSource} />
           }
-            tipW={300}>
-            <Box flex="1" cursor="pointer" onClick={() => setModal('source')}>
+            tipW={300} flex="1" minW="0">
+            <Box cursor="pointer" onClick={() => setModal('source')}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!source} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">DÉPART</Text>
               </HStack>
-              <HStack gap="3" p="3" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
+              <HStack gap="3" px="4" py="3.5" h="100%" align="center" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
                 _hover={{ borderColor: 'blue.300', bg: C.softBlue }}>
                 <IconTile icon={source ? sourceIcon(source.key) : FiMonitor} />
                 <Box flex="1" minW="0">
@@ -524,13 +524,13 @@ export default function Acquisition() {
               onNew={() => setModal('new')}
               onPick={(ds) => setTarget(ds)} />
           }
-            tipW={300}>
-            <Box flex="1" cursor="pointer" onClick={() => setDestOpen((v) => !v)}>
+            tipW={300} flex="1" minW="0">
+            <Box cursor="pointer" onClick={() => setDestOpen((v) => !v)}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!target} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">ARRIVÉE</Text>
               </HStack>
-              <HStack gap="3" p="3" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
+              <HStack gap="3" px="4" py="3.5" h="100%" align="center" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
                 _hover={{ borderColor: 'blue.300', bg: C.softBlue }}>
                 <IconTile icon={FiFolder} />
                 <Box flex="1" minW="0">
