@@ -6,7 +6,7 @@ import { Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack } from '@c
 import { Link } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
 import {
-  FiArrowRight, FiCamera, FiCheck, FiExternalLink, FiFolder, FiFolderPlus,
+  FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiChevronRight, FiExternalLink, FiFolder, FiFolderPlus,
   FiHardDrive, FiMonitor, FiPlus, FiRefreshCw, FiSmartphone, FiUpload, FiVideo, FiWifi,
 } from 'react-icons/fi'
 import {
@@ -15,7 +15,7 @@ import {
 import { C } from '../../theme'
 import {
   SOURCE_DEFS, CONNECTION_TYPES, BRAND_PRESETS, devKind,
-  DEVICE_SOURCES, LIAISON_DEFS, CONN_SELECT,
+  DEVICE_SOURCES, LIAISON_DEFS, CONN_SELECT, sourceIcon, sourceLabel,
 } from './constants'
 
 // ---- Petits morceaux partagés ------------------------------------------------
@@ -869,52 +869,111 @@ export function DeviceCaptureModal({ open, onClose, target, onCapture }) {
 
 // ---- 8. Nouvelle acquisition : destination + mode + démarrage ------------------------
 
-export function NewAcqModal({ open, onClose, target, source, devices, onPickDest, onPickSource, onStart }) {
+export function NewAcqModal({ open, onClose, target, source, devices, rooms = [], onPickDest, onPickSource, onPickDevice, onStart }) {
   const modes = SOURCE_DEFS.filter((s) => ['mobile', 'device', 'camera', 'import'].includes(s.key))
+  const cams = devices.filter((x) => devKind(x) === 'camera')
+  const [departOpen, setDepartOpen] = useState(true)
+  const [camOpen, setCamOpen] = useState(false)
+  // DÉPART replié dès qu'une source est choisie — l'utilisateur avance vers ARRIVÉE
+  useEffect(() => { if (open) setDepartOpen(!source) }, [open, source])
+  const pickMode = (m) => {
+    if (m.key === 'camera') { setCamOpen((v) => !v); return }
+    onPickSource(m)
+  }
   return (
     <Modal open={open} onClose={onClose}
-      title="Nouvelle acquisition" subtitle="Choisissez le dossier de destination, puis la source des photos." width="560px">
-      <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400" mb="2">DESTINATION</Text>
-      <Card px="4" py="3" mb="4" cursor="pointer" _hover={{ borderColor: 'blue.300' }} onClick={onPickDest}>
-        <HStack gap="3">
-          <IconTile icon={FiFolder} />
-          <Text fontSize="sm" fontWeight="600" color={C.ink} flex="1" isTruncated>
-            {target?.name || 'Sélectionner un dossier patient'}
-          </Text>
-          <Box as={FiArrowRight} color="gray.300" />
-        </HStack>
-      </Card>
+      title="Nouvelle acquisition" subtitle="Choisissez la source des photos, puis le dossier de destination." width="560px">
+      <HStack align="flex-start" gap="3">
+        <Box flex="1" minW="0">
+          <HStack mb="2" gap="2">
+            <Box w="8px" h="8px" borderRadius="full" bg={source ? '#22c55e' : '#f59e0b'} />
+            <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">DÉPART</Text>
+          </HStack>
+          <HStack gap="3" p="3" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
+            cursor="pointer" _hover={{ borderColor: 'blue.300', bg: C.softBlue }}
+            onClick={() => setDepartOpen((v) => !v)}>
+            <IconTile icon={source ? sourceIcon(source.key) : FiMonitor} />
+            <Box flex="1" minW="0">
+              <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>
+                {source ? source.label || sourceLabel(source.key) : 'Choisir la source'}
+              </Text>
+              <Text fontSize="2xs" color="gray.500">
+                {source ? 'Source sélectionnée' : 'Mobile, webcam, boîtier, import…'}
+              </Text>
+            </Box>
+            <Box as={departOpen ? FiChevronDown : FiChevronRight} color="gray.300" />
+          </HStack>
+        </Box>
 
-      <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400" mb="2">MODE D'ACQUISITION</Text>
-      <SimpleGrid columns={3} gap="3" mb="4">
-        {modes.map((m) => (
-          <Card key={m.key} p="3" cursor="pointer" textAlign="center"
-            borderColor={source?.key === m.key ? C.primary : C.cardBorder}
-            bg={source?.key === m.key ? C.softBlue : undefined}
-            _hover={{ borderColor: C.primary }}
-            onClick={() => onPickSource(m)}>
-            <Center w="36px" h="36px" mx="auto" mb="2" borderRadius="lg" bg={C.softBlue} color={C.primary}>
-              <Box as={m.icon} />
-            </Center>
-            <Text fontSize="xs" fontWeight="600" color={C.ink}>{m.label}</Text>
-            <Text fontSize="2xs" color="gray.500" mt="0.5">{m.hint}</Text>
-          </Card>
-        ))}
-      </SimpleGrid>
+        <Center flexDirection="column" gap="1" flexShrink={0} alignSelf="center" pt="5">
+          <HStack bg={C.softBlue} borderRadius="full" px="3" py="1" gap="1.5">
+            <Box w="9px" h="9px" borderRadius="full" bg={C.primary} />
+            <Text fontSize="2xs" color={C.primary} fontWeight="700">DentoPic</Text>
+          </HStack>
+          <Box as={FiArrowRight} color={C.primary} fontSize="sm" />
+        </Center>
 
-      {devices.map((dev) => (
-        <DeviceRow key={dev.id} dev={dev} selected={source?.deviceId === dev.id}
-          onClick={() => onPickSource({ key: 'camera', deviceId: dev.id })} />
-      ))}
-      <Link to="/reglage/appareils" style={{ textDecoration: 'none' }}>
-        <HStack mt="2" gap="2" color={C.primary} cursor="pointer">
-          <FiPlus />
-          <Box>
-            <Text fontSize="xs" fontWeight="600">Connecter un appareil</Text>
-            <Text fontSize="2xs" color="gray.500">Canon, Nikon, FTP, dossier surveillé — dans Réglages → Appareils</Text>
-          </Box>
-        </HStack>
-      </Link>
+        <Box flex="1" minW="0">
+          <HStack mb="2" gap="2">
+            <Box w="8px" h="8px" borderRadius="full" bg={target ? '#22c55e' : '#f59e0b'} />
+            <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">ARRIVÉE</Text>
+          </HStack>
+          <HStack gap="3" p="3" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
+            cursor="pointer" _hover={{ borderColor: 'blue.300', bg: C.softBlue }} onClick={onPickDest}>
+            <IconTile icon={FiFolder} />
+            <Box flex="1" minW="0">
+              <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>
+                {target?.name || 'Sélectionner un dossier patient'}
+              </Text>
+              <Text fontSize="2xs" color="gray.500">
+                {target ? 'Destination sélectionnée' : 'Cliquer pour choisir'}
+              </Text>
+            </Box>
+            <Box as={FiChevronRight} color="gray.300" />
+          </HStack>
+        </Box>
+      </HStack>
+
+      {departOpen && (
+        <Box mt="4">
+          <SimpleGrid columns={2} gap="2.5">
+            {modes.map((m) => {
+              const active = source?.key === m.key || (m.key === 'camera' && camOpen)
+              return (
+                <HStack key={m.key} p="3" gap="3" borderRadius="lg" border="1px solid"
+                  borderColor={active ? C.primary : C.cardBorder}
+                  bg={active ? C.softBlue : undefined} cursor="pointer"
+                  _hover={{ borderColor: C.primary }}
+                  onClick={() => pickMode(m)}>
+                  <IconTile icon={m.icon} />
+                  <Box flex="1" minW="0">
+                    <Text fontSize="xs" fontWeight="600" color={C.ink}>{m.label}</Text>
+                    <Text fontSize="2xs" color="gray.500">{m.hint}</Text>
+                  </Box>
+                  {m.key === 'camera' && <Box as={camOpen ? FiChevronDown : FiChevronRight} color="gray.300" />}
+                </HStack>
+              )
+            })}
+          </SimpleGrid>
+          {camOpen && (
+            <VStack align="stretch" gap="1.5" mt="3" maxH="200px" overflowY="auto">
+              {cams.map((dev) => (
+                <DeviceRow key={dev.id} dev={dev} rooms={rooms} selected={source?.deviceId === dev.id}
+                  onClick={() => onPickDevice(dev)} />
+              ))}
+              {cams.length === 0 && (
+                <Text fontSize="xs" color="gray.500" px="3" py="1">Aucun boîtier connecté.</Text>
+              )}
+              <Link to="/reglage/appareils" style={{ textDecoration: 'none' }}>
+                <HStack px="3" py="2" gap="3" cursor="pointer" _hover={{ bg: C.softBlue }} borderRadius="lg">
+                  <IconTile icon={FiPlus} />
+                  <Text fontSize="sm" color={C.primary} fontWeight="500">Connecter un appareil</Text>
+                </HStack>
+              </Link>
+            </VStack>
+          )}
+        </Box>
+      )}
 
       <Button mt="5" w="100%" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }} onClick={onStart}>
         Démarrer la session

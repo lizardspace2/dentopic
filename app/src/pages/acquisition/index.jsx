@@ -313,6 +313,9 @@ export default function Acquisition() {
   const active = d.active[0]
 
   const close = () => setModal(null)
+  // `dossierBack` : modal à rouvrir après le choix/annulation de destination
+  const [dossierBack, setDossierBack] = useState(null)
+  const openDossier = (back = null) => { setDossierBack(back); setModal('dossier') }
 
   const reload = async () => {
     if (!wsId) return
@@ -516,12 +519,12 @@ export default function Acquisition() {
             <DestTip target={target} photoCount={photoCount} photos={destPhotos}
               dossiers={d.dossiers}
               onOpen={() => target && navigate(`/dossier-patient/dossier/${target.id}`)}
-              onChange={() => setModal('dossier')}
+              onChange={() => openDossier()}
               onNew={() => setModal('new')}
               onPick={(ds) => setTarget(ds)} />
           }
             tipW={300}>
-            <Box flex="1" cursor="pointer" onClick={() => setModal('dossier')}>
+            <Box flex="1" cursor="pointer" onClick={() => openDossier()}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!target} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">ARRIVÉE</Text>
@@ -691,8 +694,8 @@ export default function Acquisition() {
 
       {/* ---- Modals : tout se configure en popup ---- */}
       <SourceModal open={modal === 'source'} onClose={close} source={source} devices={d.devices} rooms={d.rooms} onPick={pickSource} />
-      <DossierModal open={modal === 'dossier'} onClose={close} dossiers={d.dossiers} target={target}
-        onPick={(ds) => { setTarget(ds); close() }} onCreate={createDest} />
+      <DossierModal open={modal === 'dossier'} onClose={() => setModal(dossierBack)} dossiers={d.dossiers} target={target}
+        onPick={(ds) => { setTarget(ds); setModal(dossierBack) }} onCreate={createDest} />
       <MobileModal open={modal === 'mobile'} onClose={close} target={target} onStart={startSession} />
       <CameraModal open={modal === 'camera'} onClose={close}
         devices={d.devices.filter((x) => devKind(x) === 'camera')}
@@ -719,7 +722,10 @@ export default function Acquisition() {
       <ImportModal open={modal === 'import'} onClose={close} target={target} onImport={doImport} />
       <DeviceCaptureModal open={modal === 'device'} onClose={close} target={target} onCapture={doImport} />
       <NewAcqModal open={modal === 'new'} onClose={close} target={target} source={source} devices={d.devices}
-        onPickDest={() => setModal('dossier')} onPickSource={pickSource} onStart={startSession} />
+        rooms={d.rooms}
+        onPickDest={() => openDossier('new')} onPickSource={pickSource}
+        onPickDevice={(dev) => setSource({ key: 'camera', deviceId: dev.id, label: dev.name })}
+        onStart={startSession} />
     </Box>
   )
 }
