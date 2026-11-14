@@ -6,7 +6,7 @@ import {
   FiAlertTriangle, FiClock, FiTrendingUp, FiStar, FiImage, FiFilm, FiChevronRight,
   FiHome,
 } from 'react-icons/fi'
-import { Card, Tag, PrimaryButton, IconTile } from '../components/ui'
+import { Card, Tag, PrimaryButton, PageHeader } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
 import { useApp } from '../context/AppContext'
@@ -86,17 +86,12 @@ export default function Dashboard() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <HStack justify="space-between" mb="4">
-        <HStack gap="3">
-          <IconTile icon={FiHome} />
-          <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
-            Tableau de bord
-          </Text>
-        </HStack>
+      <PageHeader icon={FiHome} title="Tableau de bord"
+        subtitle="L'activité du cabinet en un coup d'œil.">
         <Link to="/acquisition">
           <PrimaryButton icon={FiCamera}>Nouvelle acquisition <FiChevronRight /></PrimaryButton>
         </Link>
-      </HStack>
+      </PageHeader>
 
       <SimpleGrid columns={{ base: 2, md: 5 }} gap="4" mb="5">
         <StatCard icon={FiImage} label="Photos" value={d?.totalPhotos ?? '…'}
