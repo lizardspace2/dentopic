@@ -172,7 +172,7 @@ export default function Publication() {
     <Box w="100%" px="6" py="6">
       <PageHeader
         icon={FiCalendar}
-        title="Programmation"
+        title="Publication"
         subtitle="Planifiez vos publications sur les réseaux sociaux."
       >
         <Tip label={showGuide ? 'Masquer le guide de première publication' : 'Afficher le guide de première publication'}>

@@ -268,8 +268,8 @@ export default function Phototheque({ CollectionsComponent }) {
     <Box w="100%" px="6" py="6">
       <input ref={importRef} type="file" accept="image/*" multiple hidden
         onChange={(e) => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) importInto(f, importTarget.current) }} />
-      <PageHeader icon={FiFolder} title="Collection · Photothèque clinique"
-        subtitle="Retrouvez une photo, un patient ou une collection, sans déplacer les originaux." />
+      <PageHeader icon={FiFolder} title="Collection"
+        subtitle="Photothèque clinique — retrouvez une photo, un patient ou une collection, sans déplacer les originaux." />
       {/* barre de recherche + cartouches — façon comparateurs de vols :
           les filtres avancés se déplient via « Filtres », les filtres
           actifs restent visibles sous forme de cartouches amovibles */}

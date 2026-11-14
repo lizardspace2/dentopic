@@ -135,7 +135,7 @@ export default function Recherche() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <PageHeader icon={FiSearch} title="Recherche multicritères"
+      <PageHeader icon={FiSearch} title="Recherche"
         subtitle="Retrouvez dossiers, photos, montages et cas cliniques." />
 
       {/* barre compacte + panneau de filtres dépliable — cartouches des

@@ -86,8 +86,8 @@ export default function Dashboard() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <PageHeader icon={FiHome} title="Tableau de bord"
-        subtitle="L'activité du cabinet en un coup d'œil.">
+      <PageHeader icon={FiHome} title="Accueil"
+        subtitle="Tableau de bord — l'activité du cabinet en un coup d'œil.">
         <Link to="/acquisition">
           <PrimaryButton icon={FiCamera}>Nouvelle acquisition <FiChevronRight /></PrimaryButton>
         </Link>

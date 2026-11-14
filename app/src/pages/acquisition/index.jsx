@@ -460,7 +460,7 @@ export default function Acquisition() {
       onDragLeave={() => setDragging(false)}
       onDrop={(e) => { e.preventDefault(); setDragging(false); setModal('import') }}
     >
-      <PageHeader icon={FiCamera} title="Dossiers photo" subtitle="Créez un dossier patient et importez vos photos.">
+      <PageHeader icon={FiCamera} title="Acquisition photo" subtitle="Créez un dossier patient et importez vos photos.">
         <Tip label="QR code — l'app envoie les photos ici">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={() => setModal('mobile')}>
             <FiSmartphone /> Capturer depuis mobile

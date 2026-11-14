@@ -21,7 +21,7 @@ const NAV = [
   { to: '/collection', label: 'Collection', icon: FiFolder },
   { to: '/publication', label: 'Publication', icon: FiCalendar },
   { to: '/presentations', label: 'Présentations', icon: FiMonitor },
-  { to: '/reglage', label: 'Réglage', icon: FiSettings },
+  { to: '/reglage', label: 'Réglages', icon: FiSettings },
 ]
 
 const TOP_ICONS = [FiBell, FiHelpCircle, FiEye] // + toggle thème + réglages
