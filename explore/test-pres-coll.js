@@ -152,26 +152,18 @@ async function presCard(page, name) {
     ok('« Tout afficher » restaure la liste', await page.locator(`text=${B}`).count() > 0);
   }
 
-  // ---- puces de synthèse ----------------------------------------------------------
-  await page.locator('text=/diapositive\\(s\\)$/').last().click(); // puce total diapos → tri slides
+  // ---- filtres repliables : statuts + tri dans le panneau ----------------------------
+  ok('vue par défaut : statuts masqués', await page.locator('button:has-text("Brouillons (")').count() === 0);
+  await page.locator('button:has-text("Filtres")').first().click();
   await page.waitForTimeout(500);
-  ok('puce « diapositive(s) » bascule le tri', true); // pas d'erreur = OK visuel difficile
-  const draftChip = page.locator('text=/brouillon\\(s\\)/').last();
-  if (await draftChip.count()) {
-    await draftChip.click();
-    await page.waitForTimeout(500);
-    ok('puce « brouillon(s) » → onglet Brouillons',
-      await page.locator(`text=${A}`).count() > 0);
-  }
-  await page.locator('text=/présentation\\(s\\)$/').last().click(); // puce total → reset
-  await page.waitForTimeout(500);
-
-  // ---- onglets ------------------------------------------------------------------
+  ok('panneau Filtres : STATUT + TRI',
+    await page.getByText('STATUT', { exact: true }).count() > 0
+    && await page.getByText('TRI', { exact: true }).count() > 0);
   for (const t of ['Brouillons', 'Récentes', 'Archivées', 'Toutes']) {
-    await page.locator(`text="${t}"`).first().click();
+    await page.locator(`button:has-text("${t} (")`).first().click();
     await page.waitForTimeout(400);
   }
-  ok('4 onglets cliqués sans erreur', true);
+  ok('4 statuts cliqués sans erreur', true);
 
   // ---- recherche ------------------------------------------------------------------
   await page.locator('input[placeholder*="Rechercher une présentation"]').fill('Alpha');
@@ -181,13 +173,12 @@ async function presCard(page, name) {
   await page.locator('input[placeholder*="Rechercher une présentation"]').fill('');
   await page.waitForTimeout(600);
 
-  // ---- select tri ------------------------------------------------------------------
-  const sortSel = page.locator('select').first();
-  await sortSel.selectOption('name');
-  await page.waitForTimeout(400);
-  const names = await page.locator('p,span,div').allTextContents().then(() => null).catch(() => null);
-  ok('tri « Nom A→Z » appliqué (pas d\'erreur)', true);
-  await sortSel.selectOption('recent');
+  // ---- tri (puces du panneau Filtres) --------------------------------------------------
+  await page.getByRole('button', { name: 'Nom A→Z', exact: true }).click();
+  await page.waitForTimeout(500);
+  ok('tri « Nom A→Z » → cartouche amovible',
+    await page.locator('button:has-text("Tri : Nom A→Z ×")').count() > 0);
+  await page.getByRole('button', { name: 'Plus récent', exact: true }).click();
   await page.waitForTimeout(400);
 
   // ---- clic carte → modale détail ----------------------------------------------------
@@ -275,14 +266,14 @@ async function presCard(page, name) {
   ok('statut « archived » en base', presDb?.some((r) => r.status === 'archived'),
     presDb?.map((r) => r.status).join(','));
   // remise en brouillon via Archivées → Restaurer pour la suite des tests
-  await page.locator('text=Archivées').first().click();
+  await page.locator('button:has-text("Archivées (")').first().click();
   await page.waitForTimeout(700);
   const cardC2 = await presCard(page, C1);
   await cardC2.locator('button[aria-label="Plus d\'actions"]').click();
   await page.waitForTimeout(400);
   await page.getByText('Restaurer', { exact: true }).last().click();
   await page.waitForTimeout(1200);
-  await page.locator('text=Toutes').first().click();
+  await page.locator('button:has-text("Toutes (")').first().click();
   await page.waitForTimeout(700);
   ok('restaurée en brouillon', await page.locator(`text=${C1}`).count() > 0);
 
@@ -300,7 +291,7 @@ async function presCard(page, name) {
   await page.getByText('Archiver', { exact: true }).last().click();
   await page.waitForTimeout(1200);
   ok('archivée : absente de « Toutes »', await page.locator(`text=${B}`).count() === 0);
-  await page.locator('text=Archivées').first().click();
+  await page.locator('button:has-text("Archivées (")').first().click();
   await page.waitForTimeout(700);
   ok('archivée : présente dans « Archivées »', await page.locator(`text=${B}`).count() > 0);
   // Restaurer depuis le menu
@@ -310,7 +301,7 @@ async function presCard(page, name) {
   ok('menu : « Restaurer » sur archivée', await page.locator('text=Restaurer').count() > 0);
   await page.getByText('Restaurer', { exact: true }).last().click();
   await page.waitForTimeout(1200);
-  await page.locator('text=Toutes').first().click();
+  await page.locator('button:has-text("Toutes (")').first().click();
   await page.waitForTimeout(700);
   ok('restaurée : de retour dans « Toutes »', await page.locator(`text=${B}`).count() > 0);
 
@@ -362,7 +353,7 @@ async function presCard(page, name) {
   ok('carte mise à la corbeille', (await page.locator(`text=${C1}`).count()) < before);
 
   // ---- nettoyage des tests ----------------------------------------------------------------
-  const clean = page.locator('text=/Nettoyer \\(/').first();
+  const clean = page.locator('button:has-text("Nettoyer les tests")').first();
   if (await clean.count()) {
     await clean.click();
     await page.waitForTimeout(700);
@@ -466,7 +457,7 @@ async function presCard(page, name) {
   await ourCard.locator('[aria-label="Voir le détail"]').click();
   await page.waitForTimeout(900);
   ok('détail ouvert sur la collection', await page.locator(`text=${colName}`).count() >= 2
-    && await page.locator('select[aria-label="Ordre des photos"]').count() > 0);
+    && await page.locator('button:has-text("Filtres")').last().count() > 0);
 
   // ---- ajout d'éléments -------------------------------------------------------------------
   const addEmptyBtn = page.locator('button:has-text("Ajouter des éléments")');
@@ -493,18 +484,22 @@ async function presCard(page, name) {
   await page.waitForTimeout(2000);
   ok('2 éléments ajoutés au détail', await page.locator('text=/2 élément\\(s\\)/').first().count() > 0);
 
-  // ---- panneau détail : filtres + tri -----------------------------------------------------
+  // ---- panneau détail : filtres + tri (panneau « Filtres ») --------------------------------
   const detail = page.locator('div').filter({ hasText: 'DÉTAIL' }).last();
-  ok('détail : select ordre des photos', await page.locator('select[aria-label="Ordre des photos"]').count() > 0);
-  await page.locator('select[aria-label="Ordre des photos"]').selectOption('oldest');
+  await page.locator('button:has-text("Filtres")').last().click();
   await page.waitForTimeout(500);
-  await page.locator('select[aria-label="Ordre des photos"]').selectOption('recent');
+  ok('détail : puces de tri visibles', await page.locator('button:has-text("Chronologie du traitement")').count() > 0);
+  await page.locator('button:has-text("Chronologie du traitement")').click();
+  await page.waitForTimeout(500);
+  ok('détail : cartouche tri amovible', await page.locator('button:has-text("Tri : Chronologie ×")').count() > 0);
+  await page.locator('button:has-text("Plus récentes d’abord")').click();
+  await page.waitForTimeout(400);
   ok('détail : bouton « Photos favorites »', await page.locator('button:has-text("Photos favorites")').count() > 0);
   await page.locator('button:has-text("Photos favorites")').click();
   await page.waitForTimeout(500);
   const favShown = await page.locator('text=/\\d+ affiché\\(s\\)/').first().textContent();
   ok('filtre favorites applique un sous-ensemble', /[0-2] affiché/.test(favShown || ''), favShown);
-  await page.locator('button:has-text("Afficher tout")').click();
+  await page.locator('button:has-text("Tout effacer")').last().click();
   await page.waitForTimeout(500);
   ok('détail : filtre « Toutes les vues »', await page.locator('select[aria-label="Toutes les vues"]').count() > 0);
   ok('détail : filtre « Toutes les étapes »', await page.locator('select[aria-label="Toutes les étapes"]').count() > 0);

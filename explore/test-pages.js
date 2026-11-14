@@ -104,30 +104,21 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   await closeModal(page);
 
   // ============================ ACQUISITION ============================
-  // Forcer l'état « première visite » : le flag peut avoir été posé en passant
-  // par la carte « Acquisition » de l'accueil.
   await page.goto(BASE + '/acquisition', { waitUntil: 'networkidle', timeout: 30000 });
-  await page.evaluate(() => localStorage.removeItem('dentopic.acq.guide'));
-  await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(2000);
 
-  // Le guide s'auto-ouvre à la 1ʳᵉ visite (localStorage vierge)
-  const guideOpen = await page.locator('text=Comprendre l\'acquisition').count();
-  if (guideOpen) {
-    ok('Acquisition : guide auto-ouvert 1ʳᵉ visite', true);
-    for (let i = 0; i < 4; i++) { await page.locator('button:has-text("Suivant")').click(); await page.waitForTimeout(300) }
-    ok('Acquisition : guide étape 5/5 atteinte', await page.locator('text=Étape 5 / 5').count() > 0);
-    await page.locator('button:has-text("C\'est parti")').click(); await page.waitForTimeout(400);
-  } else {
-    ok('Acquisition : guide auto-ouvert 1ʳᵉ visite', false, 'localStorage déjà rempli ?');
-  }
-  // Bouton Aide → rouvre le guide
-  await page.locator('button:has-text("Aide")').click(); await page.waitForTimeout(500);
-  ok('Acquisition : Aide rouvre le guide', await page.locator('text=Comprendre l\'acquisition').count() > 0);
-  for (let i = 0; i < 4 && await page.locator('button:has-text("Suivant")').count(); i++) {
-    await page.locator('button:has-text("Suivant")').click(); await page.waitForTimeout(300);
-  }
-  await page.locator('button:has-text("C\'est parti")').click(); await page.waitForTimeout(300);
+  // Le tutoriel « Comprendre l'acquisition » a été supprimé de l'UI
+  ok('Acquisition : pas de guide auto-ouvert', await page.locator('text=Comprendre l\'acquisition').count() === 0);
+  ok('Acquisition : pas de bouton Aide mort', await page.locator('button:has-text("Aide")').count() === 0);
+
+  // Recherche : filtre la liste des dossiers
+  await page.locator('input[placeholder*="Rechercher un dossier"]').fill('dupont');
+  await page.waitForTimeout(700);
+  ok('Acquisition : recherche « dupont » filtre les dossiers',
+    await page.locator('text=TEST Dupont Martin').count() > 0
+    && await page.locator('text=TEST Durand Claire').count() === 0);
+  await page.locator('input[placeholder*="Rechercher un dossier"]').fill('');
+  await page.waitForTimeout(600);
 
   ok('Acquisition : carte DÉPART', await page.locator('text=DÉPART').count() > 0);
   ok('Acquisition : carte ARRIVÉE', await page.locator('text=ARRIVÉE').count() > 0);
@@ -290,19 +281,23 @@ fs.writeFileSync(FIX, makePNG(400, 300, [70, 130, 220]));
   await page.locator('input[placeholder*="Rechercher par n°"]').fill('');
   await page.waitForTimeout(600);
 
-  // tri par nom
-  await page.locator('select').first().selectOption('name');
+  // tri + spécialité regroupés dans le panneau « Filtres »
+  await page.locator('button', { hasText: /^Filtres/ }).first().click(); await page.waitForTimeout(500);
+  ok('Dossiers : panneau Filtres (TRI + SPÉCIALITÉ)',
+    await page.getByText('TRI', { exact: true }).count() > 0
+    && await page.getByText('SPÉCIALITÉ', { exact: true }).count() > 0);
+  await page.getByRole('button', { name: 'Nom A→Z', exact: true }).click();
   await page.waitForTimeout(600);
   ok('Dossiers : tri « Nom A→Z » sans erreur', errorsAt() === 0);
-  await page.locator('select').first().selectOption('recent');
+  ok('Dossiers : cartouche tri amovible', await page.locator('button:has-text("Tri : Nom A→Z ×")').count() > 0);
+  await page.locator('button:has-text("Tri : Nom A→Z ×")').click(); await page.waitForTimeout(400);
 
-  // puces de spécialité présentes (filtre) — déplier le panneau « Spécialité »
-  await page.locator('button', { hasText: /^Spécialité/ }).first().click(); await page.waitForTimeout(400);
   ok('Dossiers : puces de spécialité visibles', await page.locator('text=Toutes spécialités').count() > 0);
   const specChip = page.locator('text=Orthodontie').first();
   if (await specChip.count()) {
     await specChip.click(); await page.waitForTimeout(600);
-    await page.locator('text=Toutes spécialités').click(); await page.waitForTimeout(400);
+    ok('Dossiers : cartouche spécialité amovible', await page.locator('button:has-text("Orthodontie ×")').count() > 0);
+    await page.locator('button:has-text("Orthodontie ×")').click(); await page.waitForTimeout(400);
     ok('Dossiers : filtre spécialité cliquable sans erreur', errorsAt() === 0);
   }
 

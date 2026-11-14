@@ -9,13 +9,13 @@ import {
   FiPlus, FiType, FiMonitor, FiLayers, FiFileText, FiAlertCircle, FiEye,
   FiMoreVertical, FiClock, FiLink, FiEdit2, FiTrash2, FiCheck, FiCopy,
   FiExternalLink, FiImage, FiVideo, FiArchive, FiX, FiAlertTriangle,
-  FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiHeart, FiTool,
+  FiPlay, FiChevronUp, FiChevronDown, FiSmile, FiGrid, FiBook, FiTool,
   FiSquare, FiRotateCcw, FiRotateCw, FiMapPin, FiDownload, FiFile, FiFilter,
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, Tag, PageHeader, PrimaryButton, SearchInput,
-  Select, ago, isTestName, Modal, Field, Tip, IconTile, ConfirmModal,
+  Select, ago, isTestName, Modal, Field, Tip, ConfirmModal,
   MenuDropdown, MenuItem, toast,
 } from '../components/ui'
 import { C } from '../theme'
