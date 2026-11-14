@@ -30,3 +30,15 @@ async function fetchWithAuthRetry(input, init = {}) {
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: { fetch: fetchWithAuthRetry },
 })
+
+// Traduit les messages d'erreur auth Supabase (anglais) pour l'affichage.
+export function frAuthError(err) {
+  const m = (err?.message || '').toLowerCase()
+  if (m.includes('invalid login credentials')) return 'E-mail ou mot de passe incorrect.'
+  if (m.includes('email not confirmed')) return 'Confirmez votre e-mail avant de vous connecter — vérifiez votre boîte de réception.'
+  if (m.includes('user already registered')) return 'Un compte existe déjà avec cet e-mail — connectez-vous.'
+  if (m.includes('password should be at least')) return 'Mot de passe trop court (6 caractères minimum).'
+  if (m.includes('unable to validate email')) return 'Adresse e-mail invalide.'
+  if (m.includes('rate limit') || m.includes('security purposes')) return 'Trop de tentatives — réessayez dans quelques instants.'
+  return 'Une erreur est survenue — réessayez.'
+}

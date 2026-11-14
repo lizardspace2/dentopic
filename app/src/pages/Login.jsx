@@ -6,7 +6,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi'
 import Logo from '../components/Logo'
 import { C } from '../theme'
-import { supabase } from '../supabase'
+import { supabase, frAuthError } from '../supabase'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -36,7 +36,7 @@ export default function Login() {
         nav(loc.pathname === '/login' ? '/' : loc.pathname, { replace: true })
       }
     } catch (err) {
-      setError(err.message || 'Une erreur est survenue')
+      setError(frAuthError(err))
     } finally {
       setBusy(false)
     }
@@ -47,7 +47,7 @@ export default function Login() {
     setBusy(true); setError(null); setNotice(null)
     const { error } = await supabase.auth.resetPasswordForEmail(email)
     setBusy(false)
-    if (error) setError(error.message)
+    if (error) setError(frAuthError(error))
     else setNotice('Lien de réinitialisation envoyé — vérifiez votre boîte de réception.')
   }
 
@@ -56,7 +56,7 @@ export default function Login() {
     setBusy(true)
     const { error } = await supabase.auth.resend({ type: 'signup', email })
     setBusy(false)
-    if (error) setError(error.message)
+    if (error) setError(frAuthError(error))
     else setNotice('Email de confirmation renvoyé.')
   }
 

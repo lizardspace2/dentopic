@@ -12,7 +12,7 @@ import { useParams } from 'react-router-dom'
 import { FiCamera, FiCheckCircle, FiEye, FiEyeOff, FiImage, FiLock, FiMail } from 'react-icons/fi'
 import { useApp } from '../context/AppContext'
 import { getDossier, getSessionByToken, importPhotos } from '../api'
-import { supabase } from '../supabase'
+import { supabase, frAuthError } from '../supabase'
 import Logo from '../components/Logo'
 import { C } from '../theme'
 
@@ -30,7 +30,7 @@ function CaptureLogin() {
     e.preventDefault()
     setBusy(true); setError(null)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setError(error.message)
+    if (error) setError(frAuthError(error))
     setBusy(false)
   }
   return (
@@ -167,7 +167,7 @@ export default function Capture() {
               <HStack justify="center" gap="2">
                 <Box as={FiCheckCircle} color={C.greenText} />
                 <Text fontSize="sm" color={C.greenText} fontWeight="600">
-                  {sent} photo(s) envoyée(s) dans le dossier
+                  {sent} photo(s) envoyée(s){dossier ? ` dans ${dossier.name}` : ''}
                 </Text>
               </HStack>
             )}

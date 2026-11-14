@@ -70,6 +70,19 @@ const KINDS = [
   ['reel', 'Reel'],
 ]
 
+const EMPTY_MEDIA = {
+  photos: 'Aucune photo disponible — importez-en via l\'Acquisition.',
+  montages: 'Aucun montage disponible.',
+  videos: 'Aucune vidéo disponible.',
+}
+
+// Idées de légende pour démarrer vite (insérées dans le champ au clic).
+const CAPTION_IDEAS = [
+  ['Avant / Après', 'Avant / Après — un sourire retrouvé. #dentiste #sourire'],
+  ['Conseil d\'hygiène', 'Conseil du jour : brossez-vous les dents 2 fois par jour, 2 minutes à chaque fois. #conseil #santébuccodentaire'],
+  ['Coulisses', 'Bienvenue dans les coulisses du cabinet ! Présentez votre équipe ou vos soins du quotidien. #cabinetdentaire'],
+]
+
 export default function Publication() {
   const { workspace } = useApp()
   const wsId = workspace?.id
@@ -453,14 +466,14 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
     const r = await socialOAuthStart(wsId, prov)
     setBusy(false)
     if (r.url) window.open(r.url, '_blank', 'width=980,height=720')
-    else setOauthMsg(r.error || 'OAuth non configuré côté serveur — le mode manuel ci-dessous reste disponible.')
+    else setOauthMsg('Connexion automatique indisponible pour le moment — utilisez l\'ajout manuel ci-dessous.')
   }
   const syncAgg = async () => {
     setBusy(true)
     const r = await socialSyncAccounts(wsId)
     setBusy(false)
     if (r.synced !== undefined) { onDone(); setOauthMsg(`${r.synced} compte(s) synchronisé(s).`) }
-    else setOauthMsg(r.error || 'Agrégateur non configuré côté serveur.')
+    else setOauthMsg('Service de connexion indisponible pour le moment — utilisez l\'ajout manuel ci-dessous.')
   }
 
   const connect = async () => {
@@ -522,7 +535,7 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
             <SocialIcon provider="facebook" size={13} /> via Facebook
           </Button>
           <Button size="sm" variant="outline" onClick={() => connectOAuth('aggregator')} disabled={busy}>
-            <FiShare2 /> via l'agrégateur
+            <FiShare2 /> Autres réseaux
           </Button>
           <Button size="xs" variant="ghost" onClick={syncAgg} disabled={busy} aria-label="Synchroniser les comptes agrégateur">
             <FiClock /> Sync
@@ -531,6 +544,7 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
         {oauthMsg && <Text fontSize="2xs" color="orange.700">{oauthMsg}</Text>}
         <Text fontSize="2xs" color="gray.500">
           Le flux Facebook ramène vos Pages et le compte Instagram Pro associé en une seule autorisation.
+          Pour TikTok, LinkedIn ou YouTube, utilisez « Autres réseaux ».
         </Text>
       </VStack>
 
@@ -555,8 +569,8 @@ function ConnectModal({ open, onClose, wsId, accounts, onDone }) {
       <HStack bg="orange.50" borderRadius="md" px="3" py="2" gap="2">
         <Box as={FiAlertCircle} color="orange.500" fontSize="sm" flexShrink={0} />
         <Text fontSize="2xs" color="orange.700">
-          L'autorisation OAuth réelle nécessite une app {providerOf(provider).label} côté serveur —
-          le compte est enregistré « en attente » et déjà utilisable pour attacher vos brouillons.
+          La publication automatique sur {providerOf(provider).label} demande une configuration —
+          le compte est enregistré « en attente » et déjà utilisable pour préparer vos brouillons.
         </Text>
       </HStack>
       <ConfirmModal open={!!rmAcc} onClose={() => setRmAcc(null)}
@@ -703,7 +717,7 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
         <Box maxH="220px" overflowY="auto" border="1px solid" borderColor={C.cardBorder} borderRadius="md" p="2">
           {!pool.length ? (
             <Text fontSize="xs" color="gray.400" py="4" textAlign="center">
-              Aucun {mediaTab === 'photos' ? 'photo' : mediaTab} disponible
+              {EMPTY_MEDIA[mediaTab]}
             </Text>
           ) : (
             <SimpleGrid columns={5} gap="2">
@@ -740,6 +754,19 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
           border="1px solid" borderColor={C.cardBorder} borderRadius="md"
           placeholder="Votre légende, hashtags…" value={caption}
           onChange={(e) => setCaption(e.target.value)} />
+        {!caption && (
+          <HStack gap="1" mt="1.5" flexWrap="wrap" align="center">
+            <Text fontSize="2xs" color="gray.400">Une idée ?</Text>
+            {CAPTION_IDEAS.map(([label, text]) => (
+              <Box key={label} as="button" fontSize="2xs" px="2" py="0.5" borderRadius="md"
+                border="1px solid" borderColor={C.cardBorder} color="gray.600"
+                _hover={{ borderColor: C.primary, color: C.primary }}
+                onClick={() => setCaption(text)}>
+                {label}
+              </Box>
+            ))}
+          </HStack>
+        )}
       </Field>
 
       <SimpleGrid columns={2} gap="3" mb="3">
