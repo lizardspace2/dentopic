@@ -7,7 +7,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Box, Button, Center, HStack, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiClock, FiFolder,
-  FiMonitor, FiSmartphone, FiUpload, FiEdit3, FiSettings, FiPlay,
+  FiMonitor, FiUpload, FiEdit3, FiSettings, FiPlay,
 } from 'react-icons/fi'
 import {
   Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, ago, isTestName,
@@ -461,11 +461,6 @@ export default function Acquisition() {
       onDrop={(e) => { e.preventDefault(); setDragging(false); setModal('import') }}
     >
       <PageHeader icon={FiCamera} title="Acquisition photo" subtitle="Créez un dossier patient et importez vos photos.">
-        <Tip label="QR code — l'app envoie les photos ici">
-          <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={() => setModal('mobile')}>
-            <FiSmartphone /> Capturer depuis mobile
-          </Button>
-        </Tip>
         <Tip label="Destination + source, puis session live">
           <PrimaryButton icon={FiCamera} onClick={() => setModal('new')}>Nouvelle acquisition</PrimaryButton>
         </Tip>
