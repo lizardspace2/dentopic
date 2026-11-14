@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [d, setD] = useState(null)
   const [tasksOpen, setTasksOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
+  const [montagesOpen, setMontagesOpen] = useState(false)
+  const [favsOpen, setFavsOpen] = useState(false)
 
   const load = async () => {
     if (!wsId) return
@@ -205,38 +207,53 @@ export default function Dashboard() {
         ))}
       </SimpleGrid>
 
-      <Card p="5" mb="5">
-        <HStack gap="2" mb="4">
-          <Box as={FiTrendingUp} color={C.primary} fontSize="sm" />
-          <Text fontSize="sm" fontWeight="600" color={C.ink}>Montages récents</Text>
-        </HStack>
-        <SimpleGrid columns={4} gap="4">
-          {(d?.montages || []).slice(0, 4).map((m) => (
-            <Link key={m.id} to={`/studio?edit=${m.id}`} style={{ textDecoration: 'none' }}>
-              <Center bg="gray.100" aspectRatio="4/3" borderRadius="lg" color="gray.400">
-                <Box as={FiLayers} fontSize="22px" />
-              </Center>
-              <Text fontSize="xs" fontWeight="500" color={C.ink} mt="1.5" isTruncated>{m.name}</Text>
-              <Text fontSize="2xs" color="gray.500">
-                {m.ratio} · {m.status === 'draft' ? 'Brouillon' : 'Finalisé'}
-              </Text>
-            </Link>
-          ))}
-        </SimpleGrid>
-      </Card>
+      {d?.montages?.length > 0 && (
+        <Card p="5" mb="5">
+          <HStack gap="2" mb={montagesOpen ? '4' : '0'} as="button" w="100%" cursor="pointer"
+            aria-expanded={montagesOpen} onClick={() => setMontagesOpen((v) => !v)}>
+            <Box as={FiTrendingUp} color={C.primary} fontSize="sm" />
+            <Text fontSize="sm" fontWeight="600" color={C.ink}>Montages récents</Text>
+            <Tag color="gray">{d.montages.length}</Tag>
+            <Box flex="1" />
+            <Box as={montagesOpen ? FiChevronDown : FiChevronRight} color="gray.400" />
+          </HStack>
+          {montagesOpen && (
+            <SimpleGrid columns={4} gap="4">
+              {(d?.montages || []).slice(0, 4).map((m) => (
+                <Link key={m.id} to={`/studio?edit=${m.id}`} style={{ textDecoration: 'none' }}>
+                  <Center bg="gray.100" aspectRatio="4/3" borderRadius="lg" color="gray.400">
+                    <Box as={FiLayers} fontSize="22px" />
+                  </Center>
+                  <Text fontSize="xs" fontWeight="500" color={C.ink} mt="1.5" isTruncated>{m.name}</Text>
+                  <Text fontSize="2xs" color="gray.500">
+                    {m.ratio} · {m.status === 'draft' ? 'Brouillon' : 'Finalisé'}
+                  </Text>
+                </Link>
+              ))}
+            </SimpleGrid>
+          )}
+        </Card>
+      )}
 
-      <Card p="5" mb="8">
-        <HStack gap="2" mb="4">
-          <Box as={FiStar} color="#f59e0b" fontSize="sm" />
-          <Text fontSize="sm" fontWeight="600" color={C.ink}>Photos favorites</Text>
-          <Tag color="amber">{d?.favPhotos.length ?? 0}</Tag>
-        </HStack>
-        <SimpleGrid columns={6} gap="4">
-          {(d?.favPhotos || []).map((p) => (
-            <PhotoImg key={p.id} storagePath={p.edited_path || p.storage_path} ratio="1/1" />
-          ))}
-        </SimpleGrid>
-      </Card>
+      {d?.favPhotos?.length > 0 && (
+        <Card p="5" mb="8">
+          <HStack gap="2" mb={favsOpen ? '4' : '0'} as="button" w="100%" cursor="pointer"
+            aria-expanded={favsOpen} onClick={() => setFavsOpen((v) => !v)}>
+            <Box as={FiStar} color="#f59e0b" fontSize="sm" />
+            <Text fontSize="sm" fontWeight="600" color={C.ink}>Photos favorites</Text>
+            <Tag color="amber">{d.favPhotos.length}</Tag>
+            <Box flex="1" />
+            <Box as={favsOpen ? FiChevronDown : FiChevronRight} color="gray.400" />
+          </HStack>
+          {favsOpen && (
+            <SimpleGrid columns={6} gap="4">
+              {(d?.favPhotos || []).map((p) => (
+                <PhotoImg key={p.id} storagePath={p.edited_path || p.storage_path} ratio="1/1" />
+              ))}
+            </SimpleGrid>
+          )}
+        </Card>
+      )}
     </Box>
   )
 }
