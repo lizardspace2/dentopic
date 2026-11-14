@@ -4,10 +4,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Box, Button, Center, HStack, Text, VStack } from '@chakra-ui/react'
+import { Box, Button, Center, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import {
-  FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiClock, FiFolder,
-  FiMonitor, FiUpload, FiEdit3, FiSettings, FiPlay,
+  FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiChevronRight, FiClock, FiFolder,
+  FiFolderPlus, FiMonitor, FiUpload, FiEdit3, FiSettings, FiPlay,
 } from 'react-icons/fi'
 import {
   Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, ago, isTestName,
@@ -316,6 +316,10 @@ export default function Acquisition() {
   // `dossierBack` : modal à rouvrir après le choix/annulation de destination
   const [dossierBack, setDossierBack] = useState(null)
   const openDossier = (back = null) => { setDossierBack(back); setModal('dossier') }
+  // Dropdown ARRIVÉE : liste de tous les dossiers en ligne sous la carte
+  const [destOpen, setDestOpen] = useState(false)
+  const [destQ, setDestQ] = useState('')
+  const [destNew, setDestNew] = useState('')
 
   const reload = async () => {
     if (!wsId) return
@@ -445,6 +449,11 @@ export default function Acquisition() {
     return ds
   }
 
+  const createDestRow = async () => {
+    const ds = await createDest(destNew.trim())
+    if (ds) { setDestNew(''); setDestQ(''); setDestOpen(false) }
+  }
+
   const hideChecklist = () => {
     localStorage.setItem('dentopic.acq.checklist', '1')
     setChecklistHidden(true)
@@ -519,12 +528,12 @@ export default function Acquisition() {
             <DestTip target={target} photoCount={photoCount} photos={destPhotos}
               dossiers={d.dossiers}
               onOpen={() => target && navigate(`/dossier-patient/dossier/${target.id}`)}
-              onChange={() => openDossier()}
+              onChange={() => setDestOpen((v) => !v)}
               onNew={() => setModal('new')}
               onPick={(ds) => setTarget(ds)} />
           }
             tipW={300}>
-            <Box flex="1" cursor="pointer" onClick={() => openDossier()}>
+            <Box flex="1" cursor="pointer" onClick={() => setDestOpen((v) => !v)}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!target} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">ARRIVÉE</Text>
@@ -540,11 +549,43 @@ export default function Acquisition() {
                     {target ? 'Destination sélectionnée' : 'Cliquer pour choisir'}
                   </Text>
                 </Box>
-                <Box as={FiChevronDown} color="gray.300" />
+                <Box as={destOpen ? FiChevronDown : FiChevronRight} color="gray.300" />
               </HStack>
             </Box>
           </HoverTip>
         </HStack>
+
+        {/* ---- Dropdown : toutes les destinations ---- */}
+        {destOpen && (
+          <Box mt="4" pt="4" borderTop="1px solid" borderColor={C.cardBorder}>
+            <SearchInput placeholder="Rechercher un dossier ou un patient…" w="100%"
+              value={destQ} onChange={(e) => setDestQ(e.target.value)} />
+            <VStack align="stretch" gap="1.5" mt="3" maxH="280px" overflowY="auto">
+              {d.dossiers
+                .filter((x) => !destQ || x.name.toLowerCase().includes(destQ.toLowerCase()))
+                .map((ds) => (
+                  <HStack key={ds.id} px="3" py="2" borderRadius="lg" gap="3" cursor="pointer"
+                    bg={target?.id === ds.id ? C.softBlue : 'transparent'} _hover={{ bg: C.softBlue }}
+                    onClick={() => { setTarget(ds); setDestOpen(false) }}>
+                    <Box as={FiFolder} color={C.primary} />
+                    <Text fontSize="sm" color={C.ink} flex="1" isTruncated>{ds.name}</Text>
+                    {isTestName(ds.name) && <Tag color="purple">Test</Tag>}
+                    {ds.patient_dossier_number && <Text fontSize="xs" color="gray.400">n° {ds.patient_dossier_number}</Text>}
+                    {target?.id === ds.id && <Box as={FiCheck} color={C.primary} />}
+                  </HStack>
+                ))}
+              {d.dossiers.filter((x) => !destQ || x.name.toLowerCase().includes(destQ.toLowerCase())).length === 0 && (
+                <Text fontSize="sm" color="gray.500" textAlign="center" py="3">Aucun dossier ne correspond.</Text>
+              )}
+            </VStack>
+            <HStack mt="3" gap="2">
+              <Input placeholder="Créer un nouveau dossier…" fontSize="sm" value={destNew}
+                onChange={(e) => setDestNew(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && createDestRow()} />
+              <PrimaryButton icon={FiFolderPlus} onClick={createDestRow} disabled={!destNew.trim()}>Créer</PrimaryButton>
+            </HStack>
+          </Box>
+        )}
       </Card>
 
       {/* ---- Session active ---- */}
