@@ -72,20 +72,6 @@ export function SectionLabel({ children, ...rest }) {
   )
 }
 
-export function ProgressBar({ value = 0, label, ...rest }) {
-  return (
-    <HStack gap="3" {...rest}>
-      <Box flex="1" h="4px" bg="gray.200" borderRadius="full" overflow="hidden">
-        <Box h="100%" w={`${Math.max(0, Math.min(100, value))}%`} bg={C.primary} />
-      </Box>
-      {label && (
-        <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">
-          {label}
-        </Text>
-      )}
-    </HStack>
-  )
-}
 
 // ---- En-têtes de page (motif répété sur toutes les pages) ---------------------
 

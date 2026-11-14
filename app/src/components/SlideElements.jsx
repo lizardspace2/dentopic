@@ -12,15 +12,10 @@
 // diapo en miniature que le plein écran.
 import { useRef, useState } from 'react'
 import { Box, Center, Text } from '@chakra-ui/react'
-import { FiImage, FiRotateCw, FiType, FiVideo } from 'react-icons/fi'
+import { FiImage, FiRotateCw, FiType } from 'react-icons/fi'
 import { usePhotoUrl } from '../media'
 
 export const LAYOUT_VERSION = 1
-
-// La diapo a-t-elle un canevas d'éléments persisté ?
-export function hasLayout(s) {
-  try { const j = JSON.parse(s?.notes || ''); return Array.isArray(j?.els) } catch { return false }
-}
 
 export function layoutNotes(els, bg = null) {
   return JSON.stringify(bg ? { v: LAYOUT_VERSION, els, bg } : { v: LAYOUT_VERSION, els })
@@ -271,5 +266,3 @@ export default function SlideElements({ els, editing = false, sel = null, onSele
   )
 }
 
-export const SLIDE_BG = { text: '#1e3a5f', default: '#0b1120' }
-export const VIDEO_ICON = FiVideo
