@@ -388,7 +388,7 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
                 </HStack>
               )}
               {itemsFiltersOpen && (
-                <Box mb="3" p="3" border="1px solid" borderColor={C.cardBorder} borderRadius="md">
+                <Box mt="1" mb="3" pt="3" borderTop="1px solid" borderColor={C.cardBorder}>
                   <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400" mb="1.5">TRI</Text>
                   <HStack gap="1.5" flexWrap="wrap" mb="2.5">
                     {[['recent', 'Plus récentes d’abord'], ['oldest', 'Chronologie du traitement']].map(([k, l]) => (

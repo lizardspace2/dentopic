@@ -275,7 +275,7 @@ export default function Phototheque({ CollectionsComponent }) {
           actifs restent visibles sous forme de cartouches amovibles */}
       <Card p="3" mb="4">
         <HStack gap="2" flexWrap="wrap">
-          <Box flex="1" minW="220px">
+          <Box flex="1" minW="200px">
             <SearchInput w="100%" placeholder="Patient, N° dossier, fichier, description, collection…" value={filters.q}
               onChange={(e) => change({ q: e.target.value })} />
           </Box>

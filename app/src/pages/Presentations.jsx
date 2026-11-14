@@ -257,7 +257,7 @@ export default function Presentations() {
       {/* recherche + filtres repliables — façon photothèque : barre simple,
           les filtres se déplient via « Filtres » et les actifs restent
           visibles en cartouches amovibles */}
-      <Card p="3" mb="5" mt="4">
+      <Card p="3" mb="4" mt="4">
         <HStack gap="2" flexWrap="wrap">
           <Box flex="1" minW="200px">
             <SearchInput w="100%" placeholder="Rechercher une présentation…"

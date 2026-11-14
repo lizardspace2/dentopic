@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Box, Button, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
-import { FiSearch, FiBookmark, FiFolder } from 'react-icons/fi'
-import { Card, EmptyPane, Select, Field, PrimaryButton, Tag, Tip } from '../components/ui'
+import { FiSearch, FiFilter, FiFolder } from 'react-icons/fi'
+import { Card, EmptyPane, Select, Field, PrimaryButton, Tag, Tip, PageHeader, SearchInput } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
@@ -129,30 +129,21 @@ export default function Recherche() {
 
   return (
     <Box w="100%" px="6" py="6">
-      <HStack gap="3" mb="6">
-        <Box as={FiSearch} color="blue.500" fontSize="xl" />
-        <Box>
-          <Text fontSize="xl" fontWeight="700" letterSpacing="-0.01em" color={C.ink}>
-            Recherche multicritères
-          </Text>
-          <Text fontSize="sm" color="gray.500">
-            Retrouvez dossiers, photos, montages et cas cliniques.
-          </Text>
-        </Box>
-      </HStack>
+      <PageHeader icon={FiSearch} title="Recherche multicritères"
+        subtitle="Retrouvez dossiers, photos, montages et cas cliniques." />
 
-      {/* barre compacte + panneau de critères dépliable — cartouches des
+      {/* barre compacte + panneau de filtres dépliable — cartouches des
           filtres appliqués, façon comparateurs de vols */}
-      <Card p="4" mb="5">
+      <Card p="3" mb="4">
         <HStack gap="2" flexWrap="wrap">
-          <Box flex="1" minW="220px">
-            <TextInput w="100%" placeholder="N° de dossier, n° de cas, nom ou patient — ex. 2024-001, Dupont…"
+          <Box flex="1" minW="200px">
+            <SearchInput w="100%" placeholder="N° de dossier, n° de cas, nom ou patient — ex. 2024-001, Dupont…"
               value={f.q} onChange={set('q')} onKeyDown={(e) => { if (e.key === 'Enter') search() }} />
           </Box>
           <PrimaryButton icon={FiSearch} onClick={search}>Rechercher</PrimaryButton>
           <Button size="sm" variant={panelOpen ? 'solid' : 'outline'} borderRadius="full"
             aria-expanded={panelOpen} onClick={toggleAdv}>
-            Critères{advCount ? ` (${advCount})` : ''}
+            <HStack gap="1"><FiFilter /><Text>Filtres{advCount ? ` (${advCount})` : ''}</Text></HStack>
           </Button>
         </HStack>
         {(advCount > 0 || applied.q) && (
@@ -226,9 +217,6 @@ export default function Recherche() {
             <Button variant="outline" size="sm" borderRadius="full" color="gray.600"
               onClick={() => { setF(EMPTY); setApplied(EMPTY); setPeriod('all'); setPeriodApplied('all') }}>
               Réinitialiser
-            </Button>
-            <Button variant="outline" size="sm" borderRadius="full" color="gray.600">
-              <FiBookmark /> Enregistrer la recherche
             </Button>
           </HStack>
         </Box>}

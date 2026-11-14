@@ -471,8 +471,10 @@ export default function Acquisition() {
         </Tip>
       </PageHeader>
 
-      <SearchInput placeholder="Rechercher un dossier ou un patient…" w="100%"
-        value={q} onChange={(e) => setQ(e.target.value)} />
+      <Card p="3" mb="4">
+        <SearchInput placeholder="Rechercher un dossier ou un patient…" w="100%"
+          value={q} onChange={(e) => setQ(e.target.value)} />
+      </Card>
 
       {/* ---- Flux : DÉPART → DentoPic → ARRIVÉE (une carte épurée) ---- */}
       <Card px="5" py="4" my="5">

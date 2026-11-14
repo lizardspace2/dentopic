@@ -225,34 +225,40 @@ export default function Publication() {
 
       <HStack gap="4" alignItems="start">
         <Box flex="1">
-          <HStack mb="4" gap="2">
-            <HStack gap="0">
-              <Button size="xs" bg={view === 'week' ? C.primary : 'white'} color={view === 'week' ? '#ffffff' : 'gray.600'} border="1px solid" borderColor={C.cardBorder} borderRadius="md 0 0 md" onClick={() => setView('week')}>Semaine</Button>
-              <Button size="xs" bg={view === 'month' ? C.primary : 'white'} color={view === 'month' ? '#ffffff' : 'gray.600'} border="1px solid" borderColor={C.cardBorder} borderRadius="0" onClick={() => setView('month')}>Calendrier</Button>
-            </HStack>
-            <Button variant="ghost" size="xs" px="1" onClick={() => shift(-1)} aria-label="Période précédente"><FiChevronLeft /></Button>
-            <Button variant="outline" size="xs" onClick={() => setCursor(new Date())}>Aujourd'hui</Button>
-            <Button variant="ghost" size="xs" px="1" onClick={() => shift(1)} aria-label="Période suivante"><FiChevronRight /></Button>
-            <Text fontSize="lg" fontWeight="700" color={C.ink} flex="1" textAlign="center">{calTitle}</Text>
-            {kindFilter !== 'all' && (
-              <Button size="xs" variant="outline" borderRadius="full" onClick={() => setKindFilter('all')}>
-                Type : {KINDS.find(([k]) => k === kindFilter)?.[1]} ×
+          <Card p="3" mb="4">
+            <HStack gap="2" flexWrap="wrap">
+              <HStack gap="0">
+                <Button size="xs" bg={view === 'week' ? C.primary : 'white'} color={view === 'week' ? '#ffffff' : 'gray.600'} border="1px solid" borderColor={C.cardBorder} borderRadius="md 0 0 md" onClick={() => setView('week')}>Semaine</Button>
+                <Button size="xs" bg={view === 'month' ? C.primary : 'white'} color={view === 'month' ? '#ffffff' : 'gray.600'} border="1px solid" borderColor={C.cardBorder} borderRadius="0" onClick={() => setView('month')}>Calendrier</Button>
+              </HStack>
+              <Button variant="ghost" size="xs" px="1" onClick={() => shift(-1)} aria-label="Période précédente"><FiChevronLeft /></Button>
+              <Button variant="outline" size="xs" onClick={() => setCursor(new Date())}>Aujourd'hui</Button>
+              <Button variant="ghost" size="xs" px="1" onClick={() => shift(1)} aria-label="Période suivante"><FiChevronRight /></Button>
+              <Text fontSize="lg" fontWeight="700" color={C.ink} flex="1" textAlign="center">{calTitle}</Text>
+              <Button size="xs" variant={filtersOpen ? 'solid' : 'outline'} borderRadius="full"
+                aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)}>
+                <HStack gap="1"><FiFilter /><Text>Filtres{kindFilter !== 'all' ? ' (1)' : ''}</Text></HStack>
               </Button>
-            )}
-            <Button size="xs" variant={filtersOpen ? 'solid' : 'outline'} borderRadius="full"
-              aria-expanded={filtersOpen} onClick={() => setFiltersOpen((v) => !v)}>
-              <HStack gap="1"><FiFilter /><Text>Filtres{kindFilter !== 'all' ? ' (1)' : ''}</Text></HStack>
-            </Button>
-          </HStack>
-          {filtersOpen && (
-            <HStack gap="1.5" mb="3" flexWrap="wrap">
-              <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400">TYPE</Text>
-              {[['all', 'Tous'], ...KINDS].map(([k, l]) => (
-                <Button key={k} size="xs" variant={kindFilter === k ? 'solid' : 'outline'} borderRadius="full"
-                  aria-pressed={kindFilter === k} onClick={() => setKindFilter(k)}>{l}</Button>
-              ))}
             </HStack>
-          )}
+            {kindFilter !== 'all' && (
+              <HStack mt="2" gap="2" flexWrap="wrap">
+                <Button size="xs" variant="outline" borderRadius="full" onClick={() => setKindFilter('all')}>
+                  Type : {KINDS.find(([k]) => k === kindFilter)?.[1]} ×
+                </Button>
+              </HStack>
+            )}
+            {filtersOpen && (
+              <Box mt="3" pt="3" borderTop="1px solid" borderColor={C.cardBorder}>
+                <HStack gap="1.5" flexWrap="wrap">
+                  <Text fontSize="2xs" fontWeight="700" letterSpacing="0.06em" color="gray.400">TYPE</Text>
+                  {[['all', 'Tous'], ...KINDS].map(([k, l]) => (
+                    <Button key={k} size="xs" variant={kindFilter === k ? 'solid' : 'outline'} borderRadius="full"
+                      aria-pressed={kindFilter === k} onClick={() => setKindFilter(k)}>{l}</Button>
+                  ))}
+                </HStack>
+              </Box>
+            )}
+          </Card>
 
           {view === 'week' ? (
           <SimpleGrid columns={8} gap="0" border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
