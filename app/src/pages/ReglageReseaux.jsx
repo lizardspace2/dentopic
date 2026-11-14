@@ -12,7 +12,7 @@ import {
 } from 'react-icons/fi'
 import { ReglageNav } from '../components/ReglageNav'
 import {
-  Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
+  Card, Tag, PageHeader, PrimaryButton, Modal, Select, Field,
   Tip, ConfirmModal, SectionLabel, ago, toast,
 } from '../components/ui'
 import { C } from '../theme'
@@ -126,7 +126,6 @@ export default function ReglageReseaux() {
         icon={FiShare2} title="Réseaux sociaux"
         subtitle="Comptes connectés et programmation des publications"
       >
-        <HelpButton />
         <PrimaryButton icon={FiPlus} onClick={() => setConnect(true)}>
           Connecter un réseau ({accounts.length})
         </PrimaryButton>

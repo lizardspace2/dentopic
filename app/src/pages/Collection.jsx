@@ -9,7 +9,7 @@ import {
   FiExternalLink, FiFilter,
 } from 'react-icons/fi'
 import {
-  Card, Tag, EmptyPane, SectionLabel, PageHeader, HelpButton,
+  Card, Tag, EmptyPane, SectionLabel, PageHeader,
   PrimaryButton, SearchInput, isTestName, Modal, Select, Field, Tip, ago,
   ConfirmModal, toast,
 } from '../components/ui'
@@ -209,7 +209,6 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
         title="Collections"
         subtitle="Organisez vos photos et montages en collections thématiques"
       >
-        <HelpButton />
         <Tip label="Créer une collection : nom, couleur, dossier patient lié">
           <PrimaryButton icon={FiPlus} onClick={openNew}>Nouvelle collection</PrimaryButton>
         </Tip>

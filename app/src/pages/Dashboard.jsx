@@ -5,7 +5,7 @@ import {
   FiFolder, FiCamera, FiLayers, FiUsers, FiMonitor, FiFileText, FiCheckCircle,
   FiAlertTriangle, FiClock, FiTrendingUp, FiStar, FiImage, FiFilm, FiChevronRight,
 } from 'react-icons/fi'
-import { Card, Tag, HelpButton, PrimaryButton } from '../components/ui'
+import { Card, Tag, PrimaryButton } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
 import { useApp } from '../context/AppContext'
@@ -90,7 +90,6 @@ export default function Dashboard() {
       <HStack justify="space-between" mb="1">
         <Text fontSize="sm" color="gray.500">{greet} {profile?.full_name || ''}</Text>
         <HStack gap="2">
-          <HelpButton />
           <Link to="/acquisition">
             <PrimaryButton icon={FiCamera}>Nouvelle acquisition <FiChevronRight /></PrimaryButton>
           </Link>

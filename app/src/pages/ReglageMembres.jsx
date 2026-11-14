@@ -10,7 +10,7 @@ import {
 } from 'react-icons/fi'
 import { ReglageNav } from '../components/ReglageNav'
 import {
-  Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
+  Card, Tag, PageHeader, PrimaryButton, Modal, Select, Field,
   Tip, ConfirmModal, ago,
 } from '../components/ui'
 import { C } from '../theme'
@@ -96,7 +96,6 @@ export default function ReglageMembres() {
         icon={FiUsers} title="Membres de l'équipe"
         subtitle="Gérez les accès de votre équipe au cabinet"
       >
-        <HelpButton />
         <PrimaryButton icon={FiUserPlus} onClick={openInvite}>Créer un compte</PrimaryButton>
       </PageHeader>
 

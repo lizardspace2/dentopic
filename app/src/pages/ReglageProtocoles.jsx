@@ -11,7 +11,7 @@ import {
 } from 'react-icons/fi'
 import { ReglageNav } from '../components/ReglageNav'
 import {
-  Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
+  Card, Tag, PageHeader, PrimaryButton, Modal, Select, Field,
   Tip, ConfirmModal,
 } from '../components/ui'
 import { C } from '../theme'
@@ -102,7 +102,6 @@ export default function ReglageProtocoles() {
         icon={FiFileText} title="Protocoles"
         subtitle="Guides de prise de vue standardisés — utilisés dans l'acquisition"
       >
-        <HelpButton />
         <PrimaryButton icon={FiPlus} onClick={() => setEditProto({ name: '', description: '' })}>
           Nouveau protocole
         </PrimaryButton>

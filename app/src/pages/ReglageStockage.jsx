@@ -11,7 +11,7 @@ import {
 import { FaCrown } from 'react-icons/fa'
 import { ReglageNav } from '../components/ReglageNav'
 import {
-  Card, Tag, PageHeader, HelpButton, SectionLabel, ago,
+  Card, Tag, PageHeader, SectionLabel, ago,
 } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
 import { C } from '../theme'
@@ -56,7 +56,6 @@ export default function ReglageStockage() {
         icon={FiHardDrive} title="Usage du stockage"
         subtitle="Consultez votre plan et votre consommation réelle"
       >
-        <HelpButton />
       </PageHeader>
 
       <SimpleGrid columns={{ base: 1, xl: 2 }} gap="5" mt="4">

@@ -12,7 +12,7 @@ import {
   FiUser, FiFolderMinus, FiFilter,
 } from 'react-icons/fi'
 import {
-  Card, Tag, PageHeader, HelpButton, PrimaryButton,
+  Card, Tag, PageHeader, PrimaryButton,
   SearchInput, Modal, ago, isTestName, Tip, ConfirmModal, PromptModal,
   toast, EmptyPane,
 } from '../components/ui'
@@ -258,7 +258,6 @@ function DossierGrid() {
     <Box w="100%" px="6" py="6">
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={onImportFiles} />
       <PageHeader title="Dossier patient" subtitle="Gérez les dossiers sans informations personnelles.">
-        <HelpButton />
         <Tip label="Dossiers mis à la corbeille — restauration possible">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={openTrash}>
             <FiTrash2 /> Corbeille <Tag color="gray">{d?.trash ?? 0}</Tag>

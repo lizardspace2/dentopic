@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Box, Button, Center, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
-  FiBell, FiPlus, FiZap, FiShare2, FiEdit3,
+  FiBell, FiPlus, FiShare2, FiEdit3,
   FiChevronLeft, FiChevronRight, FiCalendar, FiCheck, FiSend,
   FiImage, FiLayers, FiVideo, FiTrash2,
   FiClock, FiAlertCircle, FiX, FiFilter,
@@ -177,11 +177,6 @@ export default function Publication() {
         <Tip label="Composer un avant/après prêt à publier depuis un montage">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.500" onClick={() => openDraft()}>
             <HiOutlineSparkles /> Avant/Après express
-          </Button>
-        </Tip>
-        <Tip label="Bientôt — génération de légende par IA">
-          <Button variant="outline" size="sm" borderRadius="md" color="gray.500" disabled>
-            <FiZap /> Campagne IA
           </Button>
         </Tip>
         <Tip label={accounts.length ? `${accounts.length} réseau(x) connecté(s) — gérer` : 'Lier un compte Instagram / Facebook / TikTok / LinkedIn'}>

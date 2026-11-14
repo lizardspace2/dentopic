@@ -14,7 +14,7 @@ import {
 } from 'react-icons/fi'
 import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
-  Card, Tag, PageHeader, HelpButton, PrimaryButton, SearchInput,
+  Card, Tag, PageHeader, PrimaryButton, SearchInput,
   Select, ago, isTestName, Modal, Field, Tip, IconTile, ConfirmModal,
   MenuDropdown, MenuItem, toast,
 } from '../components/ui'
@@ -196,7 +196,6 @@ export default function Presentations() {
         icon={FiMonitor} title="Présentations"
         subtitle="Créez et partagez des présentations visuelles"
       >
-        <HelpButton />
         <Tip label="Galerie de modèles dentaires — le contenu se pré-remplit depuis le dossier patient">
           <Button variant="outline" size="sm" borderRadius="md" color="gray.600"
             onClick={() => setModal({ kind: 'gallery' })}>

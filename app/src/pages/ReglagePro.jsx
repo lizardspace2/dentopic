@@ -11,7 +11,7 @@ import {
 import { FaCrown } from 'react-icons/fa'
 import { ReglageNav } from '../components/ReglageNav'
 import {
-  Card, Tag, PageHeader, HelpButton, PrimaryButton, Modal, SectionLabel,
+  Card, Tag, PageHeader, PrimaryButton, Modal, SectionLabel,
 } from '../components/ui'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
@@ -62,7 +62,6 @@ export default function ReglagePro() {
         icon={FaCrown} iconBg="amber.100" iconColor="amber.500"
         title="Passer Pro" subtitle="Débloquez toutes les fonctionnalités de DentoPic"
       >
-        <HelpButton />
       </PageHeader>
 
       {done && (

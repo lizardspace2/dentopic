@@ -12,7 +12,7 @@ import {
 import { FaMagic } from 'react-icons/fa'
 import { ReglageNav } from '../components/ReglageNav'
 import {
-  Card, PageHeader, HelpButton, PrimaryButton, Select, Field, SectionLabel,
+  Card, PageHeader, PrimaryButton, Select, Field, SectionLabel,
   Tip, ConfirmModal, toast,
 } from '../components/ui'
 import PhotoImg from '../components/PhotoImg'
@@ -97,7 +97,6 @@ export default function ReglageBrand() {
         icon={FaMagic} title="Brand Système"
         subtitle="Logo, signature, couleurs et polices de votre cabinet"
       >
-        <HelpButton />
         <Button variant="outline" size="sm" onClick={reset}><FiRotateCcw /> Rétablir</Button>
         <PrimaryButton icon={FiCheck} onClick={() => save()} disabled={busy || !loaded}>
           {busy ? 'Enregistrement…' : 'Enregistrer'}
