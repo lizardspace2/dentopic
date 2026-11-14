@@ -3,7 +3,7 @@
 // se font en popups sans quitter la route — voir ./modals.jsx.
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Box, Button, Center, HStack, Input, Text, VStack } from '@chakra-ui/react'
+import { Box, Button, Center, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiChevronRight, FiClock, FiFolder,
   FiFolderPlus, FiMonitor,
@@ -212,7 +212,7 @@ export default function Acquisition() {
 
       {/* ---- Flux : DÉPART → DentoPic → ARRIVÉE (une carte épurée) ---- */}
       <Card px="5" py="4" my="5">
-        <HStack gap="5" align="stretch">
+        <Flex gap={{ base: '3', md: '5' }} align="stretch" direction={{ base: 'column', md: 'row' }}>
           <Box flex="1" minW="0">
             <Box cursor="pointer" w="100%" onClick={() => setModal('source')}>
               <HStack mb="2" gap="2">
@@ -235,12 +235,13 @@ export default function Acquisition() {
             </Box>
           </Box>
 
-          <Center flexDirection="column" gap="1" flexShrink={0} alignSelf="center" pt="3">
+          <Center flexDirection={{ base: 'row', md: 'column' }} gap="1" flexShrink={0} alignSelf="center" pt={{ base: '0', md: '3' }}>
             <HStack bg={C.softBlue} borderRadius="full" px="3" py="1" gap="1.5">
               <Box w="9px" h="9px" borderRadius="full" bg={C.primary} />
               <Text fontSize="2xs" color={C.primary} fontWeight="700">DentoPic</Text>
             </HStack>
-            <Box as={FiArrowRight} color={C.primary} fontSize="sm" />
+            <Box as={FiArrowRight} color={C.primary} fontSize="sm"
+              transform={{ base: 'rotate(90deg)', md: 'rotate(0deg)' }} />
           </Center>
 
           <Box flex="1" minW="0">
@@ -264,7 +265,7 @@ export default function Acquisition() {
               </HStack>
             </Box>
           </Box>
-        </HStack>
+        </Flex>
 
         {/* ---- Dropdown : toutes les destinations ---- */}
         {destOpen && (
@@ -302,16 +303,18 @@ export default function Acquisition() {
       {/* ---- Session active ---- */}
       {active && (
         <Card px="4" py="3" mb="4" borderColor={C.greenBorder} bg={C.greenBg}>
-          <HStack gap="3">
-            <Box w="8px" h="8px" borderRadius="full" bg="#22c55e" />
-            <Box flex="1" minW="0">
+          <HStack gap="3" flexWrap="wrap">
+            <HStack gap="2" flex="1" minW={{ base: '100%', sm: '0' }} w={{ base: '100%', sm: 'auto' }}>
+              <Box w="8px" h="8px" borderRadius="full" bg="#22c55e" flexShrink={0} />
+              <Box minW="0">
               <Text fontSize="sm" color={C.greenText} fontWeight="600">Rangement automatique actif</Text>
               <Text fontSize="xs" color="gray.500" isTruncated>
                 {source ? source.label || sourceLabel(source.key) : 'Source non configurée'} →{' '}
                 {d.dossiers.find((x) => x.id === active.dossier_id)?.name || 'Non triées'} —{' '}
                 {received} photo(s) reçue(s)
               </Text>
-            </Box>
+              </Box>
+            </HStack>
             <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">
               <FiClock style={{ display: 'inline', marginRight: 4 }} />ouverte {ago(active.started_at)}
             </Text>

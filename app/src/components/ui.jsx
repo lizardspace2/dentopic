@@ -91,7 +91,7 @@ export function PageHeader({ icon, iconBg, iconColor, title, subtitle, children 
       <HStack justify="space-between" mb={subtitle ? '1' : '6'}>
         <HStack gap="3">
           {icon && <IconTile icon={icon} bg={iconBg} color={iconColor} />}
-          <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
+          <Text fontSize={{ base: '2xl', md: '3xl' }} fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
             {title}
           </Text>
         </HStack>

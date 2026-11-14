@@ -3,8 +3,8 @@ import { Box, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   FiSearch, FiHome, FiCamera, FiUsers, FiLayers, FiFolder, FiCalendar,
-  FiMonitor, FiSettings, FiChevronsLeft, FiLogOut, FiFilter, FiBell,
-  FiHelpCircle, FiEye, FiMoon, FiSun, FiCommand,
+  FiMonitor, FiSettings, FiLogOut, FiFilter, FiBell,
+  FiHelpCircle, FiEye, FiMoon, FiSun, FiCommand, FiMenu,
 } from 'react-icons/fi'
 import Logo from './Logo'
 import { Tip, ToastHost } from './ui'
@@ -34,6 +34,7 @@ export default function AppShell() {
   const { profile, signOut } = useApp()
   const { pathname } = useLocation()
   const [mode, setMode] = useState(getMode())
+  const [navOpen, setNavOpen] = useState(false) // tiroir latéral (< lg)
   const dark = mode === 'dark' // le Studio suit aussi le basculement clair/sombre
   const toggleMode = () => {
     const next = mode === 'dark' ? 'light' : 'dark'
@@ -52,61 +53,78 @@ export default function AppShell() {
   const navActive = dark ? '#1a2434' : C.navActive
   const navActiveFg = dark ? C.darkFg : C.ink
 
+  const sidebarInner = (onNav) => (
+    <>
+      <Box px="4" pt="4" pb="3"><Logo /></Box>
+      <VStack align="stretch" gap="0.5" px="2" flex="1">
+        {NAV.map((n) => (
+          <NavLink key={n.to} to={n.to} end={n.to === '/'} style={{ textDecoration: 'none' }} onClick={onNav}>
+            {({ isActive }) => (
+              <HStack
+                gap="2.5" px="3" py="2" borderRadius="lg" fontSize="sm"
+                bg={isActive ? navActive : 'transparent'}
+                color={isActive ? navActiveFg : navFg}
+                fontWeight={isActive ? '600' : '500'}
+                _hover={{ bg: isActive ? navActive : dark ? C.darkCard : 'gray.100' }}
+              >
+                <Box as={n.icon} fontSize="15px" />
+                <Text>{n.label}</Text>
+              </HStack>
+            )}
+          </NavLink>
+        ))}
+      </VStack>
+      <HStack px="3" py="3" gap="3" borderTop="1px solid" borderColor={sbBorder}>
+        <Flex
+          w="34px" h="34px" borderRadius="full" align="center" justify="center"
+          bg={dark ? C.darkBorder : 'gray.200'} color={dark ? '#dfe6ef' : 'gray.600'}
+          fontSize="xs" fontWeight="700" flexShrink={0}
+        >
+          {initials(profile?.full_name)}
+        </Flex>
+        <Box flex="1" minW="0">
+          <Text fontSize="sm" fontWeight="600" color={dark ? C.darkFg : C.ink} isTruncated>
+            {profile?.full_name || '—'}
+          </Text>
+          <Text fontSize="2xs" color={dark ? C.darkMuted : 'gray.500'} isTruncated>
+            {profile?.profession || ''}
+          </Text>
+        </Box>
+        <Box as={FiLogOut} color={dark ? C.darkMuted : 'gray.400'} cursor="pointer" onClick={signOut} title="Se déconnecter" />
+      </HStack>
+    </>
+  )
+
   return (
     <Flex h="100vh" bg={dark ? C.darkBg : C.pageBg} overflow="hidden">
-      <Flex w="232px" direction="column" bg={sbBg} borderRight="1px solid" borderColor={sbBorder} flexShrink={0}>
-        <Box px="4" pt="4" pb="3"><Logo /></Box>
-        <VStack align="stretch" gap="0.5" px="2" flex="1">
-          {NAV.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.to === '/'} style={{ textDecoration: 'none' }}>
-              {({ isActive }) => (
-                <HStack
-                  gap="2.5" px="3" py="2" borderRadius="lg" fontSize="sm"
-                  bg={isActive ? navActive : 'transparent'}
-                  color={isActive ? navActiveFg : navFg}
-                  fontWeight={isActive ? '600' : '500'}
-                  _hover={{ bg: isActive ? navActive : dark ? C.darkCard : 'gray.100' }}
-                >
-                  <Box as={n.icon} fontSize="15px" />
-                  <Text>{n.label}</Text>
-                </HStack>
-              )}
-            </NavLink>
-          ))}
-        </VStack>
-        <Box px="2" pb="2">
-          <HStack gap="2.5" px="3" py="2" borderRadius="lg" color={navFg} fontSize="sm" cursor="pointer" _hover={{ bg: dark ? C.darkCard : 'gray.100' }}>
-            <Box as={FiChevronsLeft} fontSize="15px" />
-            <Text>Réduire</Text>
-          </HStack>
-        </Box>
-        <HStack px="3" py="3" gap="3" borderTop="1px solid" borderColor={sbBorder}>
-          <Flex
-            w="34px" h="34px" borderRadius="full" align="center" justify="center"
-            bg={dark ? C.darkBorder : 'gray.200'} color={dark ? '#dfe6ef' : 'gray.600'}
-            fontSize="xs" fontWeight="700" flexShrink={0}
-          >
-            {initials(profile?.full_name)}
-          </Flex>
-          <Box flex="1" minW="0">
-            <Text fontSize="sm" fontWeight="600" color={dark ? C.darkFg : C.ink} isTruncated>
-              {profile?.full_name || '—'}
-            </Text>
-            <Text fontSize="2xs" color={dark ? C.darkMuted : 'gray.500'} isTruncated>
-              {profile?.profession || ''}
-            </Text>
-          </Box>
-          <Box as={FiLogOut} color={dark ? C.darkMuted : 'gray.400'} cursor="pointer" onClick={signOut} title="Se déconnecter" />
-        </HStack>
+      <Flex w="232px" direction="column" bg={sbBg} borderRight="1px solid" borderColor={sbBorder} flexShrink={0}
+        display={{ base: 'none', lg: 'flex' }}>
+        {sidebarInner()}
       </Flex>
+      {navOpen && (
+        <>
+          <Box position="fixed" inset="0" bg="blackAlpha.400" zIndex="40"
+            display={{ lg: 'none' }} onClick={() => setNavOpen(false)} />
+          <Flex w="240px" position="fixed" left="0" top="0" bottom="0" direction="column"
+            bg={sbBg} borderRight="1px solid" borderColor={sbBorder} zIndex="50"
+            display={{ lg: 'none' }} overflowY="auto">
+            {sidebarInner(() => setNavOpen(false))}
+          </Flex>
+        </>
+      )}
 
       <Flex direction="column" flex="1" minW="0">
-        <HStack h="52px" px="5" gap="4" bg={dark ? C.darkSidebar : 'white'} borderBottom="1px solid" borderColor={sbBorder} flexShrink={0}>
+        <HStack h="52px" px={{ base: '3', lg: '5' }} gap={{ base: '2', lg: '4' }} bg={dark ? C.darkSidebar : 'white'} borderBottom="1px solid" borderColor={sbBorder} flexShrink={0}>
+          <Box as={FiMenu} fontSize="18px" cursor="pointer" flexShrink={0}
+            color={dark ? C.darkMuted : 'gray.500'}
+            display={{ base: 'block', lg: 'none' }}
+            aria-label="Ouvrir le menu" onClick={() => setNavOpen(true)} />
           <HStack
             flex="0 0 240px" h="30px" gap="2" px="2.5"
             bg={dark ? C.darkCard : 'gray.50'}
             border="1px solid" borderColor={dark ? C.darkBorder : C.cardBorder}
             borderRadius="md"
+            display={{ base: 'none', md: 'flex' }}
           >
             <Box as={FiSearch} color={dark ? C.darkMuted : 'gray.400'} fontSize="13px" />
             <Input
@@ -123,6 +141,7 @@ export default function AppShell() {
             border="1px solid" borderColor={C.greenBorder}
             borderRadius="md" px="2.5" h="26px" gap="1.5"
             fontSize="2xs" color={C.greenText}
+            display={{ base: 'none', sm: 'flex' }}
           >
             <Box w="6px" h="6px" borderRadius="full" bg="#22c55e" />
             <Text fontWeight="600">Source non confi…</Text>
@@ -130,12 +149,13 @@ export default function AppShell() {
             <Text isTruncated maxW="110px">E2E-17933332…</Text>
             <Text fontWeight="600">⌄</Text>
           </HStack>
-          <HStack gap="1" color={dark ? C.darkMuted : 'gray.500'}>
+          <HStack gap="1" color={dark ? C.darkMuted : 'gray.500'} display={{ base: 'none', md: 'flex' }}>
             <Box as={FiCommand} fontSize="14px" />
             <Text fontSize="2xs" border="1px solid" borderColor={dark ? C.darkBorder : 'gray.300'} borderRadius="sm" px="1">⌘K</Text>
           </HStack>
           {TOP_ICONS.map((I, i) => (
-            <Box key={i} as={I} fontSize="15px" color={dark ? C.darkMuted : 'gray.500'} cursor="pointer" />
+            <Box key={i} as={I} fontSize="15px" color={dark ? C.darkMuted : 'gray.500'} cursor="pointer"
+              display={{ base: 'none', md: 'block' }} />
           ))}
           <Tip label={mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
             <Box
