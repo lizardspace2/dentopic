@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Box, Button, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
-import { FiSearch, FiFilter, FiFolder } from 'react-icons/fi'
+import { Box, Button, Flex, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
+import { FiSearch, FiFilter } from 'react-icons/fi'
 import { Card, EmptyPane, Select, Field, PrimaryButton, Tag, Tip, PageHeader, SearchInput } from '../components/ui'
+import { FolderTile } from '../components/Explorer'
 import PhotoImg from '../components/PhotoImg'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
@@ -125,6 +126,11 @@ export default function Recherche() {
     Object.fromEntries((data?.patients || []).map((p) => [p.dossier_id, p])), [data])
   const dossierName = useMemo(() =>
     Object.fromEntries((data?.dossiers || []).map((d) => [d.id, d.name])), [data])
+  const photoCountByDossier = useMemo(() => {
+    const m = {}
+    for (const p of data?.photos || []) if (p.dossier_id) m[p.dossier_id] = (m[p.dossier_id] || 0) + 1
+    return m
+  }, [data])
   const total = results ? results.dossiers.length + results.photos.length + results.montages.length : 0
 
   return (
@@ -244,35 +250,24 @@ export default function Recherche() {
               <Text fontSize="xs" fontWeight="700" color="gray.500" mb="2">
                 DOSSIERS ({results.dossiers.length})
               </Text>
-              <SimpleGrid columns={{ base: 1, md: 3, lg: 4 }} gap="3" mb="5">
+              <Flex flexWrap="wrap" gap="1" mb="5">
                 {results.dossiers.map((d) => {
                   const pat = patByDossier[d.id]
+                  const photos = photoCountByDossier[d.id] || 0
+                  const info = [
+                    d.name,
+                    pat ? `Patient : ${[pat.first_name, pat.last_name].filter(Boolean).join(' ')}` : null,
+                    `${photos} photo(s)`,
+                    d.patient_dossier_number ? `Dossier n° ${d.patient_dossier_number}` : null,
+                    (d.specialties || []).length ? `Spécialités : ${d.specialties.join(', ')}` : null,
+                  ].filter(Boolean).join('\n')
                   return (
-                    <Card key={d.id} p="3" cursor="pointer" _hover={{ shadow: 'md' }}
-                      onClick={() => nav(`/dossier-patient/dossier/${d.id}`)}>
-                      <HStack gap="2" mb="1">
-                        <Box as={FiFolder} color={C.primary} />
-                        <Text fontSize="sm" fontWeight="600" color={C.ink} noOfLines={1}>{d.name}</Text>
-                      </HStack>
-                      {d.patient_dossier_number && (
-                        <Text fontSize="2xs" color="gray.400">n° {d.patient_dossier_number}</Text>
-                      )}
-                      {pat && (
-                        <Text fontSize="2xs" color="gray.500">
-                          {[pat.first_name, pat.last_name].filter(Boolean).join(' ')}
-                          {pat.birth_date ? ` · ${ageOf(pat.birth_date)} ans` : ''}
-                          {pat.sex ? ` · ${pat.sex}` : ''}
-                        </Text>
-                      )}
-                      {(d.specialties || []).length > 0 && (
-                        <HStack gap="1" mt="1" flexWrap="wrap">
-                          {d.specialties.slice(0, 3).map((s) => <Tag key={s}>{s}</Tag>)}
-                        </HStack>
-                      )}
-                    </Card>
+                    <FolderTile key={d.id} dossier={d} size={64} w="118px" title={info}
+                      subtitle={`${photos} photo(s)`}
+                      onOpen={(fid) => nav(`/dossier-patient/dossier/${fid}`)} />
                   )
                 })}
-              </SimpleGrid>
+              </Flex>
             </>
           )}
 
