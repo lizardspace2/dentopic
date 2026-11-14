@@ -76,7 +76,7 @@ export function AppProvider({ children }) {
   const createWorkspace = async (name) => {
     const uid = session.user.id
     const { data: ws, error } = await supabase
-      .from('workspaces').insert({ name }).select().single()
+      .from('workspaces').insert({ name, owner_id: uid }).select().single()
     if (error) throw error
     const { error: mErr } = await supabase
       .from('workspace_members')
