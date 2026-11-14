@@ -28,7 +28,7 @@ const ACTIONS = [
 ]
 
 export default function Dashboard() {
-  const { profile, workspace } = useApp()
+  const { workspace } = useApp()
   const wsId = workspace?.id
   const [d, setD] = useState(null)
 
@@ -82,25 +82,20 @@ export default function Dashboard() {
     return { tasks, drafts, noSlidePres, emptyCount: emptyDossiers.length }
   }, [d])
 
-  const hour = new Date().getHours()
-  const greet = hour < 18 ? 'Bonjour' : 'Bonsoir'
   const toSort = (d?.unassignedPhotos || []).slice(0, 6)
 
   return (
     <Box w="100%" px="6" py="6">
-      <HStack justify="space-between" mb="1">
-        <Text fontSize="sm" color="gray.500">{profile?.full_name ? `${greet} ${profile.full_name}` : greet}</Text>
-        <HStack gap="2">
-          <Link to="/acquisition">
-            <PrimaryButton icon={FiCamera}>Nouvelle acquisition <FiChevronRight /></PrimaryButton>
-          </Link>
+      <HStack justify="space-between" mb="4">
+        <HStack gap="3">
+          <IconTile icon={FiHome} />
+          <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
+            Tableau de bord
+          </Text>
         </HStack>
-      </HStack>
-      <HStack gap="3" mb="4">
-        <IconTile icon={FiHome} />
-        <Text fontSize="3xl" fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
-          Tableau de bord
-        </Text>
+        <Link to="/acquisition">
+          <PrimaryButton icon={FiCamera}>Nouvelle acquisition <FiChevronRight /></PrimaryButton>
+        </Link>
       </HStack>
 
       <SimpleGrid columns={{ base: 2, md: 5 }} gap="4" mb="5">
