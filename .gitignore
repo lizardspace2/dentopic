@@ -12,21 +12,6 @@ app/dist/
 *.log
 devserver.log
 
-# Artefacts d'exploration lourds
-site-assets/
-explore/shots/
-explore/screenshots/
-explore/auth-state.json
-
 # OS
 Thumbs.db
 .DS_Store
-
-# Captures de test + identifiants locaux
-explore/*-shots/
-explore/test-creds.json
-
-# Captures temporaires
-explore/.shots-tmp/
-explore/tab-shots/
-explore/winshots/
