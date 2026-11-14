@@ -1,8 +1,10 @@
-import { Center, Spinner } from '@chakra-ui/react'
+import { useState } from 'react'
+import { Box, Button, Center, Input, Spinner, Text, VStack } from '@chakra-ui/react'
 import { Route, Routes } from 'react-router-dom'
 import { useApp } from './context/AppContext'
 import { C } from './theme'
 import AppShell from './components/AppShell'
+import Logo from './components/Logo'
 import Login from './pages/Login'
 import Capture from './pages/Capture'
 import Dashboard from './pages/Dashboard'
@@ -24,10 +26,54 @@ import ReglageReseaux from './pages/ReglageReseaux'
 import ReglagePro from './pages/ReglagePro'
 import NotFound from './pages/NotFound'
 
-export default function App() {
-  const { session, loading } = useApp()
+function WelcomeCabinet() {
+  const { createWorkspace } = useApp()
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
 
-  if (loading) {
+  const submit = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      await createWorkspace(name.trim() || 'Mon cabinet')
+    } catch (err) {
+      setError(err.message || 'Une erreur est survenue')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Center minH="100vh" bg={C.pageBg} p="4">
+      <Box as="form" onSubmit={submit} w="100%" maxW="384px" bg="white"
+        border="1px solid" borderColor={C.cardBorder} borderRadius="2xl" px="8" py="8" boxShadow="sm">
+        <Logo size="lg" />
+        <Text mt="7" fontSize="xl" fontWeight="700" color={C.ink}>Bienvenue sur DentoPic</Text>
+        <Text mt="1" fontSize="sm" color="gray.500">
+          Donnez un nom à votre espace de travail pour commencer — photos, dossiers et publications y seront rangés.
+        </Text>
+        <VStack align="stretch" mt="6" gap="4">
+          <Box>
+            <Text fontSize="sm" fontWeight="500" mb="1.5" color={C.ink}>Nom du cabinet</Text>
+            <Input fontSize="sm" placeholder="ex. Cabinet Sourire" value={name}
+              onChange={(e) => setName(e.target.value)} autoFocus />
+          </Box>
+          {error && <Text fontSize="xs" color="red.500">{error}</Text>}
+          <Button type="submit" w="100%" bg={C.primary} color="#ffffff" fontWeight="600"
+            loading={busy} _hover={{ bg: C.primaryHover }}>
+            Créer mon espace
+          </Button>
+        </VStack>
+      </Box>
+    </Center>
+  )
+}
+
+export default function App() {
+  const { session, loading, workspace, wsLoaded } = useApp()
+
+  if (loading || (session && !wsLoaded)) {
     return (
       <Center minH="100vh" bg={C.pageBg}>
         <Spinner size="lg" color={C.primary} />
@@ -40,6 +86,16 @@ export default function App() {
       <Routes>
         <Route path="/capture/:token" element={<Capture />} />
         <Route path="*" element={<Login />} />
+      </Routes>
+    )
+  }
+
+  // Compte authentifié sans cabinet : seul le bootstrap est accessible.
+  if (!workspace) {
+    return (
+      <Routes>
+        <Route path="/capture/:token" element={<Capture />} />
+        <Route path="*" element={<WelcomeCabinet />} />
       </Routes>
     )
   }

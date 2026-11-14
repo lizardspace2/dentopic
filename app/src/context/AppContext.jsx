@@ -14,6 +14,7 @@ export function AppProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [workspace, setWorkspace] = useState(null)
+  const [wsLoaded, setWsLoaded] = useState(false)
 
   useEffect(() => {
     let alive = true
@@ -35,6 +36,7 @@ export function AppProvider({ children }) {
     if (!session?.user) {
       setProfile(null)
       setWorkspace(null)
+      setWsLoaded(false)
       return
     }
     let alive = true
@@ -54,26 +56,41 @@ export function AppProvider({ children }) {
         .order('created_at', { ascending: true })
         .limit(1)
       const wsId = mem && mem[0] && mem[0].workspace_id
-      if (!wsId) return
-      const { data: ws } = await supabase
-        .from('workspaces')
-        .select('*')
-        .eq('id', wsId)
-        .maybeSingle()
-      if (!alive) return
-      setWorkspace(ws)
+      if (wsId) {
+        const { data: ws } = await supabase
+          .from('workspaces')
+          .select('*')
+          .eq('id', wsId)
+          .maybeSingle()
+        if (!alive) return
+        setWorkspace(ws)
+      }
+      if (alive) setWsLoaded(true)
     })()
     return () => {
       alive = false
     }
   }, [session?.user?.id])
 
+  // Bootstrap : un compte sans cabinet ne peut rien faire — on en crée un.
+  const createWorkspace = async (name) => {
+    const uid = session.user.id
+    const { data: ws, error } = await supabase
+      .from('workspaces').insert({ name }).select().single()
+    if (error) throw error
+    const { error: mErr } = await supabase
+      .from('workspace_members')
+      .insert({ workspace_id: ws.id, user_id: uid, role: 'owner' })
+    if (mErr) throw mErr
+    setWorkspace(ws)
+  }
+
   const signOut = async () => {
     await supabase.auth.signOut()
   }
 
   return (
-    <AppCtx.Provider value={{ session, loading, profile, workspace, signOut }}>
+    <AppCtx.Provider value={{ session, loading, profile, workspace, wsLoaded, createWorkspace, signOut }}>
       {children}
     </AppCtx.Provider>
   )

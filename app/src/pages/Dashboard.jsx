@@ -88,7 +88,7 @@ export default function Dashboard() {
   return (
     <Box w="100%" px="6" py="6">
       <HStack justify="space-between" mb="1">
-        <Text fontSize="sm" color="gray.500">{greet} {profile?.full_name || ''}</Text>
+        <Text fontSize="sm" color="gray.500">{profile?.full_name ? `${greet} ${profile.full_name}` : greet}</Text>
         <HStack gap="2">
           <Link to="/acquisition">
             <PrimaryButton icon={FiCamera}>Nouvelle acquisition <FiChevronRight /></PrimaryButton>
@@ -122,24 +122,26 @@ export default function Dashboard() {
           to="/collection?tab=photos&quick=unassigned" />
       </SimpleGrid>
 
-      <Card p="5" mb="5">
-        <HStack gap="2" mb="3">
-          <Box as={FiFileText} color="gray.400" fontSize="sm" />
-          <Text fontSize="sm" fontWeight="600" color={C.ink}>À traiter</Text>
-          <Tag color="blue">{derived?.tasks.length ?? 0}</Tag>
-        </HStack>
-        <SimpleGrid columns={2} gap="1.5">
-          {(derived?.tasks || []).map((t, i) => (
-            <Link key={i} to={t.to} style={{ textDecoration: 'none' }}>
-              <HStack px="2" py="1.5" borderRadius="md" _hover={{ bg: 'gray.50' }} gap="2.5">
-                <Box as={t.icon} color={t.tone === 'amber' ? '#f59e0b' : C.primary} fontSize="sm" flexShrink={0} />
-                <Text fontSize="sm" color={C.body} flex="1">{t.text}</Text>
-                <Box as={FiChevronRight} color="gray.300" fontSize="xs" />
-              </HStack>
-            </Link>
-          ))}
-        </SimpleGrid>
-      </Card>
+      {derived?.tasks.length > 0 && (
+        <Card p="5" mb="5">
+          <HStack gap="2" mb="3">
+            <Box as={FiFileText} color="gray.400" fontSize="sm" />
+            <Text fontSize="sm" fontWeight="600" color={C.ink}>À traiter</Text>
+            <Tag color="blue">{derived.tasks.length}</Tag>
+          </HStack>
+          <SimpleGrid columns={2} gap="1.5">
+            {derived.tasks.map((t, i) => (
+              <Link key={i} to={t.to} style={{ textDecoration: 'none' }}>
+                <HStack px="2" py="1.5" borderRadius="md" _hover={{ bg: 'gray.50' }} gap="2.5">
+                  <Box as={t.icon} color={t.tone === 'amber' ? '#f59e0b' : C.primary} fontSize="sm" flexShrink={0} />
+                  <Text fontSize="sm" color={C.body} flex="1">{t.text}</Text>
+                  <Box as={FiChevronRight} color="gray.300" fontSize="xs" />
+                </HStack>
+              </Link>
+            ))}
+          </SimpleGrid>
+        </Card>
+      )}
 
       <Card p="5" mb="5">
         <HStack gap="2" mb="1">
@@ -160,6 +162,15 @@ export default function Dashboard() {
             </SimpleGrid>
             <Link to="/collection?tab=photos&quick=unassigned">
               <Button variant="outline" size="sm">Trier dans la photothèque <FiChevronRight /></Button>
+            </Link>
+          </>
+        ) : d && d.totalPhotos === 0 ? (
+          <>
+            <Text fontSize="xs" color="gray.500" mb="4">
+              Votre photothèque est vide — importez vos premières photos de cas pour commencer.
+            </Text>
+            <Link to="/acquisition">
+              <PrimaryButton icon={FiCamera}>Importer mes premières photos <FiChevronRight /></PrimaryButton>
             </Link>
           </>
         ) : (

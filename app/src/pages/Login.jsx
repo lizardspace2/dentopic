@@ -42,6 +42,24 @@ export default function Login() {
     }
   }
 
+  const forgot = async () => {
+    if (!email) { setError('Saisissez votre e-mail pour recevoir le lien.'); return }
+    setBusy(true); setError(null); setNotice(null)
+    const { error } = await supabase.auth.resetPasswordForEmail(email)
+    setBusy(false)
+    if (error) setError(error.message)
+    else setNotice('Lien de réinitialisation envoyé — vérifiez votre boîte de réception.')
+  }
+
+  const resend = async () => {
+    if (!email) return
+    setBusy(true)
+    const { error } = await supabase.auth.resend({ type: 'signup', email })
+    setBusy(false)
+    if (error) setError(error.message)
+    else setNotice('Email de confirmation renvoyé.')
+  }
+
   return (
     <Center minH="100vh" bg={C.pageBg} p="4">
       <Box
@@ -74,7 +92,8 @@ export default function Login() {
             <HStack justify="space-between" mb="1.5">
               <Text fontSize="sm" fontWeight="500" color={C.ink}>Mot de passe</Text>
               {!signup && (
-                <Text fontSize="xs" color="gray.400" cursor="pointer">Mot de passe oublié ?</Text>
+                <Text fontSize="xs" color="gray.400" cursor="pointer" _hover={{ color: C.primary }}
+                  onClick={forgot}>Mot de passe oublié ?</Text>
               )}
             </HStack>
             <InputGroup
@@ -94,7 +113,16 @@ export default function Login() {
           </Box>
 
           {error && <Text fontSize="xs" color="red.500">{error}</Text>}
-          {notice && <Text fontSize="xs" color="green.600">{notice}</Text>}
+          {notice && (
+            <Text fontSize="xs" color="green.600">
+              {notice}{' '}
+              {signup && notice.includes('confirmation') && (
+                <Text as="span" color={C.primary} cursor="pointer" onClick={resend}>
+                  Renvoyer l'email
+                </Text>
+              )}
+            </Text>
+          )}
 
           <Button type="submit" w="100%" bg={C.primary} color="#ffffff" fontWeight="600" loading={busy} _hover={{ bg: C.primaryHover }}>
             {signup ? 'Créer un compte' : 'Se connecter'}
