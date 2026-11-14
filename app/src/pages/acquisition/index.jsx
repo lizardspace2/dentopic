@@ -2,7 +2,7 @@
 // Toutes les actions (source, destination, config appareil, FTP, import, session)
 // se font en popups sans quitter la route — voir ./modals.jsx.
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { Box, Button, Center, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiChevronRight, FiClock, FiFolder,
@@ -19,9 +19,9 @@ import {
   createCaptureDevice, updateCaptureDevice, importPhotos, countSessionPhotos,
   listProtocolSteps, listPhotosByDossier, listRooms,
 } from '../../api'
-import { sourceLabel, sourceIcon, devKind } from './constants'
+import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind } from './constants'
 import {
-  SourceModal, DossierModal, MobileModal, CameraModal,
+  DossierModal, MobileModal, CameraModal,
   FtpModal, WatchModal, ImportModal, NewAcqModal, DeviceCaptureModal,
 } from './modals'
 
@@ -57,6 +57,8 @@ export default function Acquisition() {
   const openDossier = (back = null) => { setDossierBack(back); setModal('dossier') }
   // Dropdown ARRIVÉE : liste de tous les dossiers en ligne sous la carte
   const [destOpen, setDestOpen] = useState(false)
+  // Dropdown DÉPART : liste des sources en ligne sous la carte
+  const [departOpen, setDepartOpen] = useState(false)
   // Protocole optionnel : repliable, choix mémorisé
   const [protoOpen, setProtoOpen] = useState(() => localStorage.getItem('dentopic.acq.proto') === '1')
   const [destQ, setDestQ] = useState('')
@@ -216,7 +218,7 @@ export default function Acquisition() {
       <Card px="5" py="4" my="5">
         <Flex gap={{ base: '3', md: '5' }} align="stretch" direction={{ base: 'column', md: 'row' }}>
           <Box flex="1" minW="0">
-            <Box cursor="pointer" w="100%" onClick={() => setModal('source')}>
+            <Box cursor="pointer" w="100%" onClick={() => { setDepartOpen((v) => !v); setDestOpen(false) }}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!source} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">DÉPART</Text>
@@ -232,7 +234,7 @@ export default function Acquisition() {
                     {source ? 'Source sélectionnée' : 'Mobile, boîtier, FTP, dossier, import…'}
                   </Text>
                 </Box>
-                <Box as={FiChevronDown} color="gray.300" />
+                <Box as={departOpen ? FiChevronDown : FiChevronRight} color="gray.300" />
               </HStack>
             </Box>
           </Box>
@@ -247,7 +249,7 @@ export default function Acquisition() {
           </Center>
 
           <Box flex="1" minW="0">
-            <Box cursor="pointer" w="100%" onClick={() => setDestOpen((v) => !v)}>
+            <Box cursor="pointer" w="100%" onClick={() => { setDestOpen((v) => !v); setDepartOpen(false) }}>
               <HStack mb="2" gap="2">
                 <StatusDot ok={!!target} />
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">ARRIVÉE</Text>
@@ -268,6 +270,65 @@ export default function Acquisition() {
             </Box>
           </Box>
         </Flex>
+
+        {/* ---- Dropdown : toutes les sources ---- */}
+        {departOpen && (
+          <Box mt="4" pt="4" borderTop="1px solid" borderColor={C.cardBorder}>
+            <VStack align="stretch" gap="1.5" maxH="300px" overflowY="auto">
+              {SOURCE_DEFS.map((def) => (
+                <HStack key={def.key} px="3" py="2" borderRadius="lg" gap="3" cursor="pointer"
+                  bg={source?.key === def.key && !source?.deviceId ? C.softBlue : 'transparent'}
+                  _hover={{ bg: C.softBlue }}
+                  onClick={() => { pickSource(def); setDepartOpen(false) }}>
+                  <IconTile icon={def.icon} />
+                  <Box flex="1" minW="0">
+                    <Text fontSize="sm" color={C.ink}>{def.label}</Text>
+                    <Text fontSize="xs" color="gray.500" isTruncated>{def.hint}</Text>
+                  </Box>
+                  {source?.key === def.key && !source?.deviceId && <Box as={FiCheck} color={C.primary} />}
+                </HStack>
+              ))}
+              {d.devices.length > 0 && (
+                <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400" pt="2">
+                  AUTRE APPAREIL
+                </Text>
+              )}
+              {d.devices.map((dev) => (
+                <HStack key={dev.id} px="3" py="2" borderRadius="lg" gap="3" cursor="pointer"
+                  bg={source?.deviceId === dev.id ? C.softBlue : 'transparent'}
+                  _hover={{ bg: C.softBlue }}
+                  onClick={() => { pickSource({ key: devKind(dev), modal: null, deviceId: dev.id, label: dev.name }); setDepartOpen(false) }}>
+                  <IconTile icon={FiMonitor} />
+                  <Box flex="1" minW="0">
+                    <Text fontSize="sm" color={C.ink} isTruncated>{dev.name}</Text>
+                    <Text fontSize="xs" color="gray.500" isTruncated>
+                      {[dev.manufacturer, dev.model].filter(Boolean).join(' · ') || 'Appareil'}
+                    </Text>
+                  </Box>
+                  <HStack gap="1.5" flexShrink={0}>
+                    <Box w="7px" h="7px" borderRadius="full" bg={dev.status === 'online' ? '#22c55e' : '#cbd5e1'} />
+                    <Text fontSize="2xs" color={dev.status === 'online' ? C.greenText : 'gray.500'}>
+                      {dev.status === 'online' ? 'En ligne' : 'Hors ligne'}
+                    </Text>
+                  </HStack>
+                </HStack>
+              ))}
+              <HStack px="3" py="2" borderRadius="lg" gap="3" cursor="pointer"
+                bg={source?.key === 'direct' ? C.softBlue : 'transparent'} _hover={{ bg: C.softBlue }}
+                onClick={() => { pickSource({ key: 'direct', modal: null }); setDepartOpen(false) }}>
+                <IconTile icon={FiCamera} />
+                <Text fontSize="sm" color={C.ink} flex="1">Session directe (sans appareil)</Text>
+                {source?.key === 'direct' && <Box as={FiCheck} color={C.primary} />}
+              </HStack>
+            </VStack>
+            <Link to="/reglage/appareils" style={{ textDecoration: 'none' }}>
+              <HStack px="3" py="2" mt="1" borderRadius="lg" cursor="pointer" _hover={{ bg: C.softBlue }}>
+                <IconTile icon={FiFolderPlus} />
+                <Text fontSize="sm" color={C.primary} fontWeight="500">Connecter un nouvel appareil</Text>
+              </HStack>
+            </Link>
+          </Box>
+        )}
 
         {/* ---- Dropdown : toutes les destinations ---- */}
         {destOpen && (
@@ -418,7 +479,7 @@ export default function Acquisition() {
       )}
 
       {/* ---- Modals : tout se configure en popup ---- */}
-      <SourceModal open={modal === 'source'} onClose={close} source={source} devices={d.devices} rooms={d.rooms} onPick={pickSource} />
+      {/* Le choix de source se fait dans le dropdown DÉPART (plus de modal) */}
       <DossierModal open={modal === 'dossier'} onClose={() => setModal(dossierBack)} dossiers={d.dossiers} target={target}
         onPick={(ds) => { setTarget(ds); setModal(dossierBack) }} onCreate={createDest} />
       <MobileModal open={modal === 'mobile'} onClose={close} target={target} onStart={startSession} />
