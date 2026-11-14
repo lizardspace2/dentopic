@@ -6,7 +6,7 @@ import {
   FiAlertTriangle, FiClock, FiTrendingUp, FiStar, FiImage, FiFilm, FiChevronRight,
   FiHome,
 } from 'react-icons/fi'
-import { Card, Tag, PrimaryButton, PageHeader } from '../components/ui'
+import { Card, Tag, PrimaryButton, PageHeader, Tip } from '../components/ui'
 import { C } from '../theme'
 import PhotoImg from '../components/PhotoImg'
 import { useApp } from '../context/AppContext'
@@ -69,15 +69,21 @@ export default function Dashboard() {
     const active = d.activeSessions
 
     const tasks = []
-    const push = (icon, tone, text, to) => tasks.push({ icon, tone, text, to })
-    if (drafts) push(FiLayers, 'blue', `${drafts} montage(s) en brouillon`, '/studio')
-    if (noExportVideos) push(FiFilm, 'blue', `${noExportVideos} vidéo(s) non exportée(s)`, '/studio/montage-video')
-    if (noSlidePres) push(FiMonitor, 'blue', `${noSlidePres} présentation(s) sans diapositive — à compléter`, '/presentations')
-    if (offline.length) push(FiAlertTriangle, 'amber', `${offline.length} appareil(s) hors ligne — vérifier dans Réglages`, '/reglage/appareils')
+    const push = (icon, tone, text, to, tip) => tasks.push({ icon, tone, text, to, tip })
+    if (drafts) push(FiLayers, 'blue', `${drafts} montage(s) en brouillon`, '/studio',
+      'Aller à l\'onglet Studio pour finaliser ces montages')
+    if (noExportVideos) push(FiFilm, 'blue', `${noExportVideos} vidéo(s) non exportée(s)`, '/studio/montage-video',
+      'Aller à l\'onglet Studio pour exporter ces vidéos')
+    if (noSlidePres) push(FiMonitor, 'blue', `${noSlidePres} présentation(s) sans diapositive — à compléter`, '/presentations',
+      'Aller à l\'onglet Présentations pour ajouter des diapositives')
+    if (offline.length) push(FiAlertTriangle, 'amber', `${offline.length} appareil(s) hors ligne — vérifier dans Réglages`, '/reglage/appareils',
+      'Aller à Réglages → Appareils pour vérifier la connexion')
     emptyDossiers.slice(0, 4).forEach((ds) =>
-      push(FiFolder, 'blue', `Dossier « ${ds.name} » sans photo — lancer l'acquisition`, `/dossier-patient/dossier/${ds.id}`))
+      push(FiFolder, 'blue', `Dossier « ${ds.name} » sans photo — lancer l'acquisition`, `/dossier-patient/dossier/${ds.id}`,
+        `Ouvrir le dossier « ${ds.name} » dans l'onglet Dossier patient`))
     active.slice(0, 2).forEach((s) =>
-      push(FiClock, 'blue', `Session de capture du ${new Date(s.started_at).toLocaleDateString('fr-FR')} encore active`, `/acquisition/capture/${s.id}`))
+      push(FiClock, 'blue', `Session de capture du ${new Date(s.started_at).toLocaleDateString('fr-FR')} encore active`, `/acquisition/capture/${s.id}`,
+        'Reprendre la session dans l\'onglet Acquisition photo'))
 
     return { tasks, drafts, noSlidePres, emptyCount: emptyDossiers.length }
   }, [d])
@@ -125,13 +131,15 @@ export default function Dashboard() {
           </HStack>
           <SimpleGrid columns={2} gap="1.5">
             {derived.tasks.map((t, i) => (
-              <Link key={i} to={t.to} style={{ textDecoration: 'none' }}>
-                <HStack px="2" py="1.5" borderRadius="md" _hover={{ bg: 'gray.50' }} gap="2.5">
-                  <Box as={t.icon} color={t.tone === 'amber' ? '#f59e0b' : C.primary} fontSize="sm" flexShrink={0} />
-                  <Text fontSize="sm" color={C.body} flex="1">{t.text}</Text>
-                  <Box as={FiChevronRight} color="gray.300" fontSize="xs" />
-                </HStack>
-              </Link>
+              <Tip key={i} label={t.tip} display="block">
+                <Link to={t.to} style={{ textDecoration: 'none' }}>
+                  <HStack px="2" py="1.5" borderRadius="md" _hover={{ bg: 'gray.50' }} gap="2.5">
+                    <Box as={t.icon} color={t.tone === 'amber' ? '#f59e0b' : C.primary} fontSize="sm" flexShrink={0} />
+                    <Text fontSize="sm" color={C.body} flex="1">{t.text}</Text>
+                    <Box as={FiChevronRight} color="gray.300" fontSize="xs" />
+                  </HStack>
+                </Link>
+              </Tip>
             ))}
           </SimpleGrid>
         </Card>
