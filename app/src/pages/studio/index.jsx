@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Flex, HStack, Input, Text } from '@chakra-ui/react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  FiCheck, FiDroplet, FiEdit2, FiMove, FiRefreshCw, FiSquare, FiTarget, FiX,
+  FiCheck, FiDroplet, FiEdit2, FiLayers, FiMove, FiRefreshCw, FiSquare, FiTarget, FiX,
 } from 'react-icons/fi'
 import { LuPaintBucket, LuWaves } from 'react-icons/lu'
 import { TbMask } from 'react-icons/tb'
@@ -17,7 +17,7 @@ import {
   updatePatientPhoto,
 } from '../../api'
 import { photoUrl } from '../../media'
-import { ConfirmModal, PromptModal } from '../../components/ui'
+import { ConfirmModal, PageHeader, PromptModal } from '../../components/ui'
 import PatientFilmstrip, { PatientContext } from './PatientFilmstrip'
 import ProtocolGuideModal from './ProtocolGuideModal'
 import { rootDossierId } from '../../phototheque'
@@ -2349,6 +2349,10 @@ export default function Studio() {
   return (
     <Flex h="100%" direction="column" bg={S.bg} color={S.fg} overflow="hidden">
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={openFile} />
+      <Box px="4" pt="3" flexShrink="0">
+        <PageHeader icon={FiLayers} title="Studio"
+          subtitle="Éditeur photo — retouche, calques et montages avant/après." />
+      </Box>
       <MenuBar menus={menus} docName={docOpen ? editor.docName : ''} zoom={docOpen ? view.scale : null} />
       {docOpen && <PatientContext photo={srcPhoto} dossier={dossiers.find((d) => d.id === srcPhoto?.dossier_id)}
         onExport={() => setModal('export')} />}
