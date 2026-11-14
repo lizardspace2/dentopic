@@ -3,7 +3,7 @@ import {
   Box, Button, Center, HStack, IconButton, Input, InputGroup, Text, VStack,
 } from '@chakra-ui/react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi'
+import { FiMail, FiLock, FiEye, FiEyeOff, FiBriefcase } from 'react-icons/fi'
 import Logo from '../components/Logo'
 import { C } from '../theme'
 import { supabase, frAuthError } from '../supabase'
@@ -11,6 +11,7 @@ import { supabase, frAuthError } from '../supabase'
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [cabinet, setCabinet] = useState('')
   const [show, setShow] = useState(false)
   const [signup, setSignup] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -26,7 +27,10 @@ export default function Login() {
     setNotice(null)
     try {
       if (signup) {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const { error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { workspace_name: cabinet.trim() || undefined } },
+        })
         if (error) throw error
         setNotice('Email de confirmation envoyé — vérifiez votre boîte de réception.')
       } else {
@@ -73,10 +77,23 @@ export default function Login() {
           {signup ? 'Créer un compte' : 'Connexion'}
         </Text>
         <Text mt="1" fontSize="sm" color="gray.500">
-          {signup ? 'Choisissez votre e-mail et un mot de passe.' : 'Connectez-vous à votre compte.'}
+          {signup ? 'Quelques infos pour créer votre espace.' : 'Connectez-vous à votre compte.'}
         </Text>
 
         <VStack align="stretch" mt="6" gap="4">
+          {signup && (
+            <Box>
+              <Text fontSize="sm" fontWeight="500" mb="1.5" color={C.ink}>Nom du cabinet</Text>
+              <InputGroup startElement={<FiBriefcase color="gray.400" />}>
+                <Input
+                  type="text" value={cabinet} required ps="9"
+                  onChange={(e) => setCabinet(e.target.value)}
+                  placeholder="Cabinet Sourire"
+                />
+              </InputGroup>
+            </Box>
+          )}
+
           <Box>
             <Text fontSize="sm" fontWeight="500" mb="1.5" color={C.ink}>E-mail</Text>
             <InputGroup startElement={<FiMail color="gray.400" />}>
