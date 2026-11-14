@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import {
   FiFolder, FiCamera, FiLayers, FiUsers, FiMonitor, FiFileText, FiCheckCircle,
   FiAlertTriangle, FiClock, FiTrendingUp, FiStar, FiImage, FiFilm, FiChevronRight,
+  FiChevronDown,
   FiHome,
 } from 'react-icons/fi'
 import { Card, Tag, PrimaryButton, PageHeader, Tip } from '../components/ui'
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const { workspace } = useApp()
   const wsId = workspace?.id
   const [d, setD] = useState(null)
+  const [tasksOpen, setTasksOpen] = useState(false)
 
   const load = async () => {
     if (!wsId) return
@@ -124,12 +126,15 @@ export default function Dashboard() {
 
       {derived?.tasks.length > 0 && (
         <Card p="5" mb="5">
-          <HStack gap="2" mb="3">
+          <HStack gap="2" mb={tasksOpen ? '3' : '0'} as="button" w="100%" cursor="pointer"
+            aria-expanded={tasksOpen} onClick={() => setTasksOpen((v) => !v)}>
             <Box as={FiFileText} color="gray.400" fontSize="sm" />
             <Text fontSize="sm" fontWeight="600" color={C.ink}>À traiter</Text>
             <Tag color="blue">{derived.tasks.length}</Tag>
+            <Box flex="1" />
+            <Box as={tasksOpen ? FiChevronDown : FiChevronRight} color="gray.400" />
           </HStack>
-          <SimpleGrid columns={2} gap="1.5">
+          {tasksOpen && <SimpleGrid columns={2} gap="1.5">
             {derived.tasks.map((t, i) => (
               <Tip key={i} label={t.tip} display="block">
                 <Link to={t.to} style={{ textDecoration: 'none' }}>
@@ -141,7 +146,7 @@ export default function Dashboard() {
                 </Link>
               </Tip>
             ))}
-          </SimpleGrid>
+          </SimpleGrid>}
         </Card>
       )}
 
