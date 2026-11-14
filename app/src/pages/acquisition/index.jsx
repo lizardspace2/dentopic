@@ -300,8 +300,6 @@ export default function Acquisition() {
   // Un seul état pour la modal ouverte — tout reste sur la route
   const [modal, setModal] = useState(null)
   const [checklistHidden, setChecklistHidden] = useState(() => localStorage.getItem('dentopic.acq.checklist') === '1')
-  const [q, setQ] = useState('')
-  const [dragging, setDragging] = useState(false)
   // Protocole de prise de vues : étapes attendues + étape active pour taguer les photos
   const [protoSteps, setProtoSteps] = useState([])
   const [activeStep, setActiveStep] = useState(null)
@@ -468,20 +466,14 @@ export default function Acquisition() {
 
   return (
     <Box w="100%" px="6" py="6"
-      onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={(e) => { e.preventDefault(); setDragging(false); setModal('import') }}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => { e.preventDefault(); setModal('import') }}
     >
       <PageHeader icon={FiCamera} title="Acquisition photo" subtitle="Créez un dossier patient et importez vos photos.">
         <Tip label="Destination + source, puis session live">
           <PrimaryButton icon={FiCamera} onClick={() => setModal('new')}>Nouvelle acquisition</PrimaryButton>
         </Tip>
       </PageHeader>
-
-      <Card p="3" mb="4">
-        <SearchInput placeholder="Rechercher un dossier ou un patient…" w="100%"
-          value={q} onChange={(e) => setQ(e.target.value)} />
-      </Card>
 
       {/* ---- Flux : DÉPART → DentoPic → ARRIVÉE (une carte épurée) ---- */}
       <Card px="5" py="4" my="5">
@@ -689,49 +681,6 @@ export default function Acquisition() {
           </HStack>
         </Card>
       )}
-
-      {/* ---- Drop zone rapide ---- */}
-      <Center
-        border="1.5px dashed" borderRadius="xl" py="6" mb="4" cursor="pointer"
-        borderColor={dragging ? C.primary : 'gray.300'} bg={dragging ? C.softBlue : 'transparent'}
-        _hover={{ borderColor: C.primary }} onClick={() => setModal('import')}
-      >
-        <HStack gap="3">
-          <IconTile icon={FiUpload} />
-          <Box>
-            <Text fontSize="sm" fontWeight="600" color={C.ink}>
-              Glissez vos photos ici{target ? ` — rangées dans « ${target.name} »` : ''}
-            </Text>
-            <Text fontSize="xs" color="gray.500">ou cliquez pour ouvrir l'import — JPEG, PNG, WebP</Text>
-          </Box>
-        </HStack>
-      </Center>
-
-      {/* ---- Dossiers ---- */}
-      <VStack align="stretch" gap="3">
-        {d.dossiers
-          .filter((ds) => !q || [ds.name, ds.patient_dossier_number, ds.first_name, ds.last_name]
-            .filter(Boolean).join(' ').toLowerCase().includes(q.trim().toLowerCase()))
-          .slice(0, 10).map((ds) => (
-          <Card key={ds.id} px="4" py="3" _hover={{ borderColor: 'blue.300' }} cursor="pointer"
-            onClick={() => setTarget(ds)}>
-            <HStack gap="3">
-              <Box as={FiFolder} color={C.primary} />
-              <Text fontSize="sm" fontWeight="600" color={C.ink}>{ds.name}</Text>
-              {isTestName(ds.name) && <Tag color="purple">Test</Tag>}
-              {target?.id === ds.id && <Tag color="green"><FiCheck /> Destination</Tag>}
-              <Box flex="1" />
-              <Box as={FiArrowRight} color="gray.300" />
-            </HStack>
-          </Card>
-        ))}
-        {q && !d.dossiers.some((ds) => [ds.name, ds.patient_dossier_number, ds.first_name, ds.last_name]
-          .filter(Boolean).join(' ').toLowerCase().includes(q.trim().toLowerCase())) && (
-          <Text fontSize="sm" color="gray.500" textAlign="center" py="4">
-            Aucun dossier ne correspond à « {q} ».
-          </Text>
-        )}
-      </VStack>
 
       {/* ---- Modals : tout se configure en popup ---- */}
       <SourceModal open={modal === 'source'} onClose={close} source={source} devices={d.devices} rooms={d.rooms} onPick={pickSource} />
