@@ -57,6 +57,8 @@ export default function Acquisition() {
   const openDossier = (back = null) => { setDossierBack(back); setModal('dossier') }
   // Dropdown ARRIVÉE : liste de tous les dossiers en ligne sous la carte
   const [destOpen, setDestOpen] = useState(false)
+  // Protocole optionnel : repliable, choix mémorisé
+  const [protoOpen, setProtoOpen] = useState(() => localStorage.getItem('dentopic.acq.proto') === '1')
   const [destQ, setDestQ] = useState('')
   const [destNew, setDestNew] = useState('')
 
@@ -334,20 +336,29 @@ export default function Acquisition() {
         </Card>
       )}
 
-      {/* ---- Protocole de prise de vues (référentiel DentoPic) ---- */}
+      {/* ---- Protocole de prise de vues (optionnel, repliable) ---- */}
       {protoSteps.length > 0 && (active || target) && (
         <Card px="5" py="4" mb="4">
-          <HStack justify="space-between" mb="3">
+          <HStack justify="space-between" mb={protoOpen ? '3' : '0'} as="button" w="100%" cursor="pointer"
+            aria-expanded={protoOpen} onClick={() => {
+              const v = !protoOpen
+              setProtoOpen(v)
+              localStorage.setItem('dentopic.acq.proto', v ? '1' : '0')
+            }}>
             <HStack gap="2">
               <Text fontSize="sm" fontWeight="600" color={C.ink}>Protocole de prise de vues</Text>
               <Tag color="gray">{protoSteps.length} vues attendues</Tag>
+              {activeStep && (
+                <Text fontSize="xs" color={C.primary} cursor="pointer"
+                  onClick={(e) => { e.stopPropagation(); setActiveStep(null) }}>
+                  Étape : {protoSteps.find((s) => s.id === activeStep)?.name} — désactiver
+                </Text>
+              )}
             </HStack>
-            {activeStep && (
-              <Text fontSize="xs" color={C.primary} cursor="pointer" onClick={() => setActiveStep(null)}>
-                Étape active : {protoSteps.find((s) => s.id === activeStep)?.name} — désactiver
-              </Text>
-            )}
+            <Box as={protoOpen ? FiChevronDown : FiChevronRight} color="gray.400" />
           </HStack>
+          {protoOpen && (
+          <>
           <HStack gap="2" flexWrap="wrap">
             {protoSteps.map((s) => {
               const n = stepCounts[s.id] || 0
@@ -374,6 +385,8 @@ export default function Acquisition() {
           <Text fontSize="2xs" color="gray.400" mt="2">
             Cliquez une étape : les prochaines photos importées y seront rattachées (protocol_step_id).
           </Text>
+          </>
+          )}
         </Card>
       )}
 
