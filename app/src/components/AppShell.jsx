@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Box, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   FiSearch, FiHome, FiCamera, FiUsers, FiLayers, FiFolder, FiCalendar,
   FiMonitor, FiSettings, FiChevronsLeft, FiLogOut, FiFilter, FiBell,
@@ -32,6 +32,7 @@ function initials(name = '') {
 
 export default function AppShell() {
   const { profile, signOut } = useApp()
+  const { pathname } = useLocation()
   const [mode, setMode] = useState(getMode())
   const dark = mode === 'dark' // le Studio suit aussi le basculement clair/sombre
   const toggleMode = () => {
@@ -39,6 +40,12 @@ export default function AppShell() {
     setMode(next)
     applyMode(next)
   }
+  // L'onglet navigateur reprend le nom de la section courante.
+  useEffect(() => {
+    const nav = NAV.find((n) => n.to === pathname)
+      || NAV.find((n) => n.to !== '/' && pathname.startsWith(n.to))
+    document.title = nav ? `${nav.label} — DentoPic` : 'DentoPic'
+  }, [pathname])
   const sbBg = dark ? C.darkSidebar : C.sidebarBg
   const sbBorder = dark ? '#1c2635' : C.cardBorder
   const navFg = dark ? '#c4cdd9' : C.body
