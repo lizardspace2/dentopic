@@ -33,6 +33,7 @@ export default function Dashboard() {
   const wsId = workspace?.id
   const [d, setD] = useState(null)
   const [tasksOpen, setTasksOpen] = useState(false)
+  const [sortOpen, setSortOpen] = useState(false)
 
   const load = async () => {
     if (!wsId) return
@@ -151,13 +152,18 @@ export default function Dashboard() {
       )}
 
       <Card p="5" mb="5">
-        <HStack gap="2" mb="1">
+        <HStack gap="2" mb={d?.unsorted ? (sortOpen ? '1' : '0') : '1'}
+          as={d?.unsorted ? 'button' : undefined} w="100%"
+          cursor={d?.unsorted ? 'pointer' : undefined}
+          aria-expanded={d?.unsorted ? sortOpen : undefined}
+          onClick={d?.unsorted ? () => setSortOpen((v) => !v) : undefined}>
           <Box as={FiImage} color={C.primary} fontSize="sm" />
           <Text fontSize="sm" fontWeight="600" color={C.ink}>Photos à classer</Text>
           <Box flex="1" />
           {d?.unsorted > 0 && <Tag color="amber">{d.unsorted} à classer</Tag>}
+          {d?.unsorted > 0 && <Box as={sortOpen ? FiChevronDown : FiChevronRight} color="gray.400" />}
         </HStack>
-        {d?.unsorted ? (
+        {d?.unsorted ? (sortOpen && (
           <>
             <Text fontSize="xs" color="gray.500" mb="4">
               Patient, vue ou étape manquant — sélectionnez-les dans la photothèque puis attribuez en lot.
@@ -171,7 +177,7 @@ export default function Dashboard() {
               <Button variant="outline" size="sm">Trier dans la photothèque <FiChevronRight /></Button>
             </Link>
           </>
-        ) : d && d.totalPhotos === 0 ? (
+        )) : d && d.totalPhotos === 0 ? (
           <>
             <Text fontSize="xs" color="gray.500" mb="4">
               Votre photothèque est vide — importez vos premières photos de cas pour commencer.
