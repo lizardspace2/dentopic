@@ -311,7 +311,7 @@ export function FtpModal({ open, onClose, devices = [], rooms = [], selectedId, 
   const [form, setForm] = useState({})
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
   const startNew = () => { setEditing('new'); setForm({ name: '', host: '', port: '21', path: '', user: '', roomId: '' }) }
-  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.ftp || {}), roomId: dev.room_id || '' }) }
+  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...dev.metadata?.ftp, roomId: dev.room_id || '' }) }
   const save = async () => {
     const ok = await onSave(editing === 'new' ? null : editing, form)
     if (ok) setEditing(null)
@@ -400,7 +400,7 @@ export function WatchModal({ open, onClose, devices = [], rooms = [], selectedId
   const [form, setForm] = useState({})
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
   const startNew = () => { setEditing('new'); setForm({ name: '', path: '', grouping: 'date', exts: '', roomId: '' }) }
-  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...(dev.metadata?.watch || {}), roomId: dev.room_id || '' }) }
+  const startEdit = (dev) => { setEditing(dev.id); setForm({ name: dev.name, ...dev.metadata?.watch, roomId: dev.room_id || '' }) }
   const save = async () => {
     const ok = await onSave(editing === 'new' ? null : editing, form)
     if (ok) setEditing(null)

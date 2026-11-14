@@ -54,7 +54,7 @@ export default function ReglageBrand() {
   useEffect(() => {
     if (!wsId) return
     getWorkspaceSettings(wsId).then((s) => {
-      setBrand({ ...DEFAULT_BRAND, ...(s.brand || {}) })
+      setBrand({ ...DEFAULT_BRAND, ...s.brand })
       setLoaded(true)
     })
   }, [wsId])

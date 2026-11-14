@@ -102,7 +102,7 @@ export default function ReglageMembres() {
       <Card overflow="hidden" mt="4">
         <VStack align="stretch" gap="0">
           {members.map((m, i) => {
-            const [roleKey, roleLabel, roleColor] = roleTag(m.role)
+            const [, roleLabel, roleColor] = roleTag(m.role)
             const isMe = m.user_id === myId
             const isOwner = m.role === 'owner'
             return (

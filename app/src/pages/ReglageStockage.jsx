@@ -5,7 +5,7 @@ import {
   Box, Center, HStack, SimpleGrid, Text, VStack,
 } from '@chakra-ui/react'
 import {
-  FiHardDrive, FiUsers, FiShare2, FiFolder, FiCheck,
+  FiHardDrive, FiUsers, FiShare2, FiFolder,
   FiAlertTriangle, FiImage, FiClock,
 } from 'react-icons/fi'
 import { FaCrown } from 'react-icons/fa'

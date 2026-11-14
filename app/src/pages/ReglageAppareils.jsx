@@ -50,14 +50,14 @@ export default function ReglageAppareils() {
     const prev = devModal && devModal !== 'new' ? devModal : null
     const kind = form.src === 'ftp' ? 'ftp' : form.src === 'watch' ? 'watch' : 'camera'
     const meta = {
-      ...(prev?.metadata || {}),
+      ...prev?.metadata,
       source: form.src, kind,
       liaison: form.liaison || undefined,
       interop: form.interop || undefined,
       conn: ALLOWED_CONN.has(form.conn) ? undefined : form.conn,
     }
-    if (kind === 'ftp') meta.ftp = { ...(prev?.metadata?.ftp || {}), host: form.ftpHost }
-    if (kind === 'watch') meta.watch = { ...(prev?.metadata?.watch || {}), path: form.watchPath }
+    if (kind === 'ftp') meta.ftp = { ...prev?.metadata?.ftp, host: form.ftpHost }
+    if (kind === 'watch') meta.watch = { ...prev?.metadata?.watch, path: form.watchPath }
     const payload = {
       name: form.name.trim(),
       manufacturer: form.manufacturer,

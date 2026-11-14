@@ -365,7 +365,7 @@ export default function Publication() {
 
 // ---- Onglet brouillons : posts réels -------------------------------------------
 
-function DraftsPane({ drafts, accounts, wsId, onEdit, onReload }) {
+function DraftsPane({ drafts, wsId, onEdit, onReload }) {
   const [busy, setBusy] = useState(false)
   const [rmPost, setRmPost] = useState(null)
   if (!drafts.length) {

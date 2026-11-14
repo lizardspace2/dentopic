@@ -7,7 +7,7 @@ import {
 } from '@chakra-ui/react'
 import {
   FiFileText, FiPlus, FiTrash2, FiEdit2, FiCheck,
-  FiChevronUp, FiChevronDown, FiStar, FiCamera, FiAlertCircle,
+  FiChevronUp, FiChevronDown, FiStar, FiCamera,
 } from 'react-icons/fi'
 import { ReglageNav } from '../components/ReglageNav'
 import {

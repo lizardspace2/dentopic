@@ -13,7 +13,7 @@ import {
 import { ReglageNav } from '../components/ReglageNav'
 import {
   Card, Tag, PageHeader, PrimaryButton, Modal, Select, Field,
-  Tip, ConfirmModal, SectionLabel, ago, toast,
+  Tip, ConfirmModal, ago, toast,
 } from '../components/ui'
 import { C } from '../theme'
 import SocialIcon from '../components/SocialIcon'

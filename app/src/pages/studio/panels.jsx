@@ -643,7 +643,7 @@ function SwatchPicker({ value, onChange, onCustom }) {
 
 // ---- Panneau droit : Calques ----------------------------------------------------
 
-export function LayersPanel({ editor, version, onChange, onFx, onAdjust }) {
+export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
   const [kind, setKind] = useState('all') // filtre « Genre » façon Photoshop
   const [dropHint, setDropHint] = useState(null) // {id, pos:'up'|'down'|'in'} — ligne cible du drag & drop
   const dragIdRef = useRef(null)
@@ -1200,7 +1200,7 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
 // Zone carrée 216px = [0..255]². Clic près de la courbe : nouveau point.
 // Drag d'un point : déplace. Sortir un point du cadre : supprime.
 
-export function CurvesPanel({ editor, version, onChange, target }) {
+export function CurvesPanel({ editor, onChange, target }) {
   const curves = target || editor.curves
   const [ch, setCh] = useState('rgb')
   const cvRef = useRef(null)
@@ -1354,11 +1354,11 @@ const DBtn = ({ children, onClick, active, disabled, tip }) => (
   </Tip>
 )
 
-export function DentalPanel({ editor, version, onChange, dental }) {
+export function DentalPanel({ editor, onChange, dental }) {
   const {
     comparing, onCompare, onMontage,
     straighten, setStraighten, onApplyStraighten,
-    wbPick, onWbPick, onAutoWB, onCalRef,
+    wbPick, onWbPick, onCalRef,
     shade, onShade, srcPhoto,
     shadePick, onShadePick, shadeGuess, onApplyGuess, onDismissGuess, onAnalyzeSel, hasSel,
     steps, refStep, onRefStep, refImg, refOverlay, onToggleOverlay, onPickRef, onProtocolGuide,
@@ -1974,7 +1974,7 @@ function LevelsHistCanvas({ editor, ch, inBlack, inWhite, gamma }) {
   )
 }
 
-function PixelLayerProps({ editor, layer, onChange, onFx }) {
+function PixelLayerProps({ editor, layer, onChange }) {
   if (!layer) {
     return (
       <VStack align="stretch" gap="2" px="3" py="3">
@@ -2240,7 +2240,7 @@ export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
 
 // ---- Panneau Canaux (miniatures grises R/V/B — façon Photoshop) --------------------
 
-export function ChannelsPanel({ editor, version }) {
+export function ChannelsPanel({ editor }) {
   const chs = [['rgb', 'RVB'], ['r', 'Rouge'], ['g', 'Vert'], ['b', 'Bleu']]
   return (
     <VStack align="stretch" gap="1" px="3" py="2" overflowY="auto" flex="1">
@@ -2260,7 +2260,7 @@ export function ChannelsPanel({ editor, version }) {
 
 // ---- Panneau droit : Histoire (états nommés, clic = saut) — façon Photoshop ------
 
-export function HistoryPanel({ editor, version, onJump }) {
+export function HistoryPanel({ editor, onJump }) {
   const past = editor.undoStack // [{label, json}]
   const fut = editor.redoStack
   return (

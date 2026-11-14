@@ -403,7 +403,7 @@ export default function Acquisition() {
       ? await updateCaptureDevice(deviceId, {
           name: ftp.name?.trim() || undefined,
           room_id: roomId || null,
-          metadata: { ...(d.devices.find((x) => x.id === deviceId)?.metadata || {}), kind: 'ftp', ftp },
+          metadata: { ...d.devices.find((x) => x.id === deviceId)?.metadata, kind: 'ftp', ftp },
         })
       : await createCaptureDevice(wsId, {
           name: ftp.name?.trim() || `FTP — ${ftp.host || 'serveur'}`,
@@ -419,7 +419,7 @@ export default function Acquisition() {
       ? await updateCaptureDevice(deviceId, {
           name: watch.name?.trim() || undefined,
           room_id: roomId || null,
-          metadata: { ...(d.devices.find((x) => x.id === deviceId)?.metadata || {}), kind: 'watch', watch },
+          metadata: { ...d.devices.find((x) => x.id === deviceId)?.metadata, kind: 'watch', watch },
         })
       : await createCaptureDevice(wsId, {
           name: watch.name?.trim() || watch.path || 'Dossier surveillé',

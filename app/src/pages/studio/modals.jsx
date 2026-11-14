@@ -99,7 +99,7 @@ export function OpenPhotoModal({ open, onClose, wsId, onPick }) {
 const fmtBytes = (n) => n == null ? '…' : n >= 1048576 ? `${(n / 1048576).toFixed(2)} M`
   : n >= 1024 ? `${Math.round(n / 1024)} K` : `${n} o`
 
-export function ExportModal({ open, onClose, editor, docName, dossiers, onExport, onSave, onExportPdf }) {
+export function ExportModal({ open, onClose, editor, dossiers, onExport, onSave, onExportPdf }) {
   const [format, setFormat] = useState('jpeg')
   const [quality, setQuality] = useState(92)
   const [scale, setScale] = useState(100)
@@ -775,7 +775,7 @@ export function ColorPickerModal({ open, onClose, color, onApply, title = 'Séle
 // Le parent (index.jsx) mémorise l'état avant ouverture : chaque changement de
 // paramètre restaure cet état puis ré-applique → aperçu temps réel réversible.
 
-export function FilterModal({ open, onClose, def, onPreview, onPreviewOff, onApply, onCancel }) {
+export function FilterModal({ open, def, onPreview, onPreviewOff, onApply, onCancel }) {
   const [params, setParams] = useState({})
   const [previewOn, setPreviewOn] = useState(true)
   useEffect(() => {
@@ -847,7 +847,7 @@ export function FilterModal({ open, onClose, def, onPreview, onPreviewOff, onApp
 // Non destructif : les changements modifient l'objet adj du calque, le composite
 // est recalculé à chaque rendu — pas de « Appliquer » nécessaire.
 
-export function AdjustLayerModal({ open, onClose, editor, layer, onChange }) {
+export function AdjustLayerModal({ open, onClose, layer, onChange }) {
   const adj = layer?.adj
   const p = adj?.params || {}
   const setP = (k, v) => { p[k] = v; onChange() }
@@ -856,7 +856,7 @@ export function AdjustLayerModal({ open, onClose, editor, layer, onChange }) {
     layer.name = ADJUST_KINDS.find((k) => k.key === kind)?.label || layer.name
     onChange()
   }
-  const sl = (label, key, min, max, step = 1, unit = '') => (
+  const sl = (label, key, min, max, step = 1) => (
     <VStack key={key} align="stretch" gap="0.5">
       <HStack justify="space-between">
         <Text fontSize="xs" color="gray.600">{label}</Text>
@@ -885,7 +885,7 @@ export function AdjustLayerModal({ open, onClose, editor, layer, onChange }) {
           {sl('Contraste', 'contrast', -100, 100)}
         </>)}
         {adj?.kind === 'hsl' && (<>
-          {sl('Teinte', 'hue', -180, 180, 1, '°')}
+          {sl('Teinte', 'hue', -180, 180)}
           {sl('Saturation', 'sat', -100, 100)}
           {sl('Luminosité', 'light', -100, 100)}
         </>)}
@@ -1368,7 +1368,7 @@ export function TransformSelModal({ open, onClose, onApply }) {
 
 // ---- Sélection → Canaux alpha (Mémoriser / Récupérer la sélection) -----------------
 
-export function SavedSelModal({ open, onClose, editor, version, onApply }) {
+export function SavedSelModal({ open, onClose, editor, onApply }) {
   const [name, setName] = useState('')
   const list = editor?.savedSels || []
   return (

@@ -153,7 +153,7 @@ export default function ReglagePro() {
           </PrimaryButton>
         </>}>
         <VStack align="start" gap="2">
-          {pick && features(pick).map(([I, txt], i) => (
+          {pick && features(pick).map(([, txt], i) => (
             <HStack key={i} gap="2">
               <Box as={FiCheck} color={C.greenText} fontSize="xs" />
               <Text fontSize="xs" color="gray.600">{txt}</Text>

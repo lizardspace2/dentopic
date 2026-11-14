@@ -189,7 +189,7 @@ const aggJson = async (path: string, key: string, init: RequestInit = {}) =>
     headers: {
       Authorization: `Apikey ${key}`,
       'Content-Type': 'application/json',
-      ...(init.headers || {}),
+      ...init.headers,
     },
   })).json()
 
@@ -219,7 +219,7 @@ export async function aggProfile(sb: SupabaseClient, wsId: string) {
       method: 'POST', body: JSON.stringify({ username }),
     }).catch(() => {})
     await sb.from('workspaces').update({
-      settings: { ...(ws?.settings || {}), social_agg_profile: { u: username, k: fp(key) } },
+      settings: { ...ws?.settings, social_agg_profile: { u: username, k: fp(key) } },
     }).eq('id', wsId)
   }
   return { username, key }
