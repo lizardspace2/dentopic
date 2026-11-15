@@ -4,7 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FiSearch, FiHome, FiCamera, FiUsers, FiLayers, FiFolder, FiCalendar,
   FiMonitor, FiSettings, FiLogOut,
-  FiMoon, FiSun, FiCommand, FiMenu,
+  FiMoon, FiSun, FiMenu,
 } from 'react-icons/fi'
 import Logo from './Logo'
 import { Dot, Tip, ToastHost } from './ui'
@@ -161,11 +161,6 @@ export default function AppShell() {
             <Text>→</Text>
             <Text isTruncated maxW="110px">E2E-17933332…</Text>
             <Text fontWeight="600">⌄</Text>
-          </HStack>
-          <HStack gap="1" color={dark ? C.darkMuted : 'gray.500'} display={{ base: 'none', md: 'flex' }}
-            cursor="pointer" title="Recherche rapide (Ctrl/⌘+K)" onClick={() => searchRef.current?.focus()}>
-            <Box as={FiCommand} fontSize="14px" />
-            <Text fontSize="2xs" border="1px solid" borderColor={dark ? C.darkBorder : 'gray.300'} borderRadius="sm" px="1">⌘K</Text>
           </HStack>
           <Tip label={mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
             <Box
