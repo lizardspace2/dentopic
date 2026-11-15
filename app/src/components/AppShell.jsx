@@ -3,7 +3,7 @@ import { Box, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FiSearch, FiHome, FiCamera, FiUsers, FiLayers, FiFolder, FiCalendar,
-  FiMonitor, FiSettings, FiLogOut, FiFilter,
+  FiMonitor, FiSettings, FiLogOut,
   FiMoon, FiSun, FiCommand, FiMenu,
 } from 'react-icons/fi'
 import Logo from './Logo'
@@ -145,10 +145,6 @@ export default function AppShell() {
               border="none" _focus={{ boxShadow: 'none' }} h="100%"
               color={dark ? '#dfe6ef' : 'inherit'}
             />
-            <Tip label="Lancer la recherche">
-              <Box as={FiFilter} color={dark ? C.darkMuted : 'gray.400'} fontSize="13px" cursor="pointer" onClick={goSearch} />
-            </Tip>
-            <Text fontSize="2xs" color={dark ? C.darkMuted : 'gray.400'}>/</Text>
           </HStack>
           <Box flex="1" />
           <HStack
