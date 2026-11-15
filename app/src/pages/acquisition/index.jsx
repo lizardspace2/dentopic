@@ -16,7 +16,7 @@ import { useApp } from '../../context/AppContext'
 import {
   listCaptureDevices, listDossiers, listActiveSessions,
   createCaptureSession, endCaptureSession, createDossier,
-  createCaptureDevice, updateCaptureDevice, importPhotos, countSessionPhotos,
+  createCaptureDevice, updateCaptureDevice, importPhotos, countSessionPhotos, countPhotosByDossier,
   listProtocolSteps, listPhotosByDossier, listRooms,
 } from '../../api'
 import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind } from './constants'
@@ -63,16 +63,19 @@ export default function Acquisition() {
   const [protoOpen, setProtoOpen] = useState(() => localStorage.getItem('dentopic.acq.proto') === '1')
   const [destQ, setDestQ] = useState('')
   const [destNew, setDestNew] = useState('')
+  const [photoCounts, setPhotoCounts] = useState({})
 
   const reload = async () => {
     if (!wsId) return
-    const [devices, dossiers, active, rooms] = await Promise.all([
+    const [devices, dossiers, active, rooms, counts] = await Promise.all([
       listCaptureDevices(wsId),
       listDossiers(wsId, { limit: 200 }),
       listActiveSessions(wsId),
       listRooms(wsId),
+      countPhotosByDossier(wsId),
     ])
     setD({ devices, dossiers, active, rooms })
+    setPhotoCounts(counts)
     const cur = active[0]
     if (cur) {
       setReceived(await countSessionPhotos(cur.id))
@@ -349,6 +352,9 @@ export default function Acquisition() {
                     <Box as={FiFolder} color={C.primary} />
                     <Text fontSize="sm" color={C.ink} flex="1" isTruncated>{ds.name}</Text>
                     {isTestName(ds.name) && <Tag color="purple">Test</Tag>}
+                    <Text fontSize="xs" color="gray.400" whiteSpace="nowrap">
+                      {photoCounts[ds.id] || 0} photo{(photoCounts[ds.id] || 0) > 1 ? 's' : ''}
+                    </Text>
                     {ds.patient_dossier_number && <Text fontSize="xs" color="gray.400">n° {ds.patient_dossier_number}</Text>}
                     {target?.id === ds.id && <Tag color="green">Destination</Tag>}
                     {target?.id === ds.id && <Box as={FiCheck} color={C.primary} />}

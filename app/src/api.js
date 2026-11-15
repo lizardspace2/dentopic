@@ -17,6 +17,17 @@ export function listDossiers(wsId, { limit = 500 } = {}) {
     .then(({ data }) => data || [])
 }
 
+/** Nombre de photos vivantes par dossier : { dossier_id: n }. */
+export function countPhotosByDossier(wsId) {
+  return alive(supabase.from('patient_photos').select('dossier_id').eq('workspace_id', wsId).not('dossier_id', 'is', null))
+    .limit(10000)
+    .then(({ data }) => {
+      const map = {}
+      ;(data || []).forEach((p) => { map[p.dossier_id] = (map[p.dossier_id] || 0) + 1 })
+      return map
+    })
+}
+
 export function countTrashDossiers(wsId) {
   return supabase
     .from('dossiers')
