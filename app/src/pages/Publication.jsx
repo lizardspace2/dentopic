@@ -7,7 +7,6 @@ import {
   FiImage, FiLayers, FiVideo, FiTrash2,
   FiClock, FiAlertCircle, FiX, FiFilter,
 } from 'react-icons/fi'
-import { HiOutlineSparkles } from 'react-icons/hi2'
 import {
   Card, PageHeader, HelpButton, PrimaryButton, Modal, Select, Field,
   Tip, Tag, ago, ConfirmModal, toast,
@@ -176,11 +175,6 @@ export default function Publication() {
         </Tip>
       </PageHeader>
       <HStack gap="2" mb="5" justify="flex-end">
-        <Tip label="Composer un avant/après prêt à publier depuis un montage">
-          <Button variant="outline" size="sm" borderRadius="md" color="gray.500" onClick={() => openDraft()}>
-            <HiOutlineSparkles /> Avant/Après express
-          </Button>
-        </Tip>
         <Tip label={accounts.length ? `${accounts.length} réseau(x) connecté(s) — gérer` : 'Lier un compte Instagram / Facebook / TikTok / LinkedIn'}>
           <Button variant="outline" size="sm" borderRadius="md" color="gray.600" onClick={() => setModal('connect')}>
             <FiShare2 /> Réseaux{accounts.length > 0 && ` (${accounts.length})`}
