@@ -285,6 +285,7 @@ export default function Acquisition() {
                     <Text fontSize="sm" color={C.ink}>{def.label}</Text>
                     <Text fontSize="xs" color="gray.500" isTruncated>{def.hint}</Text>
                   </Box>
+                  {source?.key === def.key && !source?.deviceId && <Tag color="green">Source</Tag>}
                   {source?.key === def.key && !source?.deviceId && <Box as={FiCheck} color={C.primary} />}
                 </HStack>
               ))}
@@ -311,6 +312,8 @@ export default function Acquisition() {
                       {dev.status === 'online' ? 'En ligne' : 'Hors ligne'}
                     </Text>
                   </HStack>
+                  {source?.deviceId === dev.id && <Tag color="green">Source</Tag>}
+                  {source?.deviceId === dev.id && <Box as={FiCheck} color={C.primary} />}
                 </HStack>
               ))}
               <HStack px="3" py="2" borderRadius="lg" gap="3" cursor="pointer"
@@ -318,6 +321,7 @@ export default function Acquisition() {
                 onClick={() => { pickSource({ key: 'direct', modal: null }); setDepartOpen(false) }}>
                 <IconTile icon={FiCamera} />
                 <Text fontSize="sm" color={C.ink} flex="1">Session directe (sans appareil)</Text>
+                {source?.key === 'direct' && <Tag color="green">Source</Tag>}
                 {source?.key === 'direct' && <Box as={FiCheck} color={C.primary} />}
               </HStack>
             </VStack>
@@ -346,6 +350,7 @@ export default function Acquisition() {
                     <Text fontSize="sm" color={C.ink} flex="1" isTruncated>{ds.name}</Text>
                     {isTestName(ds.name) && <Tag color="purple">Test</Tag>}
                     {ds.patient_dossier_number && <Text fontSize="xs" color="gray.400">n° {ds.patient_dossier_number}</Text>}
+                    {target?.id === ds.id && <Tag color="green">Destination</Tag>}
                     {target?.id === ds.id && <Box as={FiCheck} color={C.primary} />}
                   </HStack>
                 ))}
