@@ -9,7 +9,7 @@ import {
   FiFolderPlus, FiMonitor,
 } from 'react-icons/fi'
 import {
-  Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, ago, isTestName,
+  Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, Dot, ago, isTestName,
 } from '../../components/ui'
 import { C } from '../../theme'
 import { useApp } from '../../context/AppContext'
@@ -27,7 +27,7 @@ import {
 
 // Petit point de statut : vert = configuré, ambre = à configurer
 function StatusDot({ ok }) {
-  return <Box w="8px" h="8px" borderRadius="full" bg={ok ? '#22c55e' : '#f59e0b'} flexShrink={0} />
+  return <Dot ok={ok} warn={!ok} />
 }
 
 
@@ -310,7 +310,7 @@ export default function Acquisition() {
                     </Text>
                   </Box>
                   <HStack gap="1.5" flexShrink={0}>
-                    <Box w="7px" h="7px" borderRadius="full" bg={dev.status === 'online' ? '#22c55e' : '#cbd5e1'} />
+                    <Dot ok={dev.status === 'online'} size="7px" />
                     <Text fontSize="2xs" color={dev.status === 'online' ? C.greenText : 'gray.500'}>
                       {dev.status === 'online' ? 'En ligne' : 'Hors ligne'}
                     </Text>
@@ -379,7 +379,7 @@ export default function Acquisition() {
         <Card px="4" py="3" mb="4" borderColor={C.greenBorder} bg={C.greenBg}>
           <HStack gap="3" flexWrap="wrap">
             <HStack gap="2" flex="1" minW={{ base: '100%', sm: '0' }} w={{ base: '100%', sm: 'auto' }}>
-              <Box w="8px" h="8px" borderRadius="full" bg="#22c55e" flexShrink={0} />
+              <Dot ok />
               <Box minW="0">
               <Text fontSize="sm" color={C.greenText} fontWeight="600">Rangement automatique actif</Text>
               <Text fontSize="xs" color="gray.500" isTruncated>
@@ -445,7 +445,7 @@ export default function Acquisition() {
                     color={done ? C.greenText : C.ink}
                     onClick={() => setActiveStep(isActive ? null : s.id)}>
                     <Box w="6px" h="6px" borderRadius="full"
-                      bg={done ? '#22c55e' : isActive ? C.primary : 'gray.300'} />
+                      bg={done ? C.ok : isActive ? C.primary : 'gray.300'} />
                     <Text fontWeight={done || isActive ? '600' : '400'}>{s.name}</Text>
                     {s.required && <Text fontSize="2xs" color="gray.400">req.</Text>}
                     {done && <Text fontSize="2xs" color={C.greenText}>×{n}</Text>}
@@ -475,7 +475,7 @@ export default function Acquisition() {
                 bg={s.done ? C.greenBg : 'gray.50'} border="1px solid"
                 borderColor={s.done ? C.greenBorder : C.cardBorder}>
                 <Center w="22px" h="22px" borderRadius="full" flexShrink={0}
-                  bg={s.done ? '#22c55e' : C.softBlue} color={s.done ? '#ffffff' : C.primary}
+                  bg={s.done ? C.ok : C.softBlue} color={s.done ? C.onPrimary : C.primary}
                   fontSize="2xs" fontWeight="700">
                   {s.done ? <FiCheck /> : i + 1}
                 </Center>

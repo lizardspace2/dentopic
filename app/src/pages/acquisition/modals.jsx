@@ -10,7 +10,7 @@ import {
   FiHardDrive, FiMonitor, FiPlus, FiRefreshCw, FiSmartphone, FiUpload, FiVideo, FiWifi,
 } from 'react-icons/fi'
 import {
-  Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, isTestName, toast,
+  Card, Tag, Modal, PrimaryButton, SearchInput, IconTile, Field, Select, Dot, isTestName, toast,
 } from '../../components/ui'
 import { C } from '../../theme'
 import {
@@ -58,7 +58,7 @@ function DeviceRow({ dev, rooms = [], selected, onClick }) {
         <Text fontSize="xs" color="gray.500" isTruncated>{hint}</Text>
       </Box>
       <HStack gap="1.5">
-        <Box w="7px" h="7px" borderRadius="full" bg={online ? '#22c55e' : '#cbd5e1'} />
+        <Dot ok={online} size="7px" />
         <Text fontSize="2xs" color={online ? C.greenText : 'gray.500'}>
           {online ? 'En ligne' : 'Hors ligne'}
         </Text>
@@ -205,10 +205,9 @@ export function MobileModal({ open, onClose, target, onStart }) {
           <Text fontSize="xs" color={C.greenText}>Destination : {target.name}</Text>
         </HStack>
       )}
-      <Button mt="4" w="100%" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
-        onClick={() => onStart(token)}>
+      <PrimaryButton mt="4" w="100%" onClick={() => onStart(token)}>
         Démarrer la session de capture
-      </Button>
+      </PrimaryButton>
     </Modal>
   )
 }
@@ -886,7 +885,7 @@ export function NewAcqModal({ open, onClose, target, source, devices, rooms = []
       <HStack align="flex-start" gap="3">
         <Box flex="1" minW="0">
           <HStack mb="2" gap="2">
-            <Box w="8px" h="8px" borderRadius="full" bg={source ? '#22c55e' : '#f59e0b'} />
+            <Dot ok={!!source} warn={!source} />
             <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">DÉPART</Text>
           </HStack>
           <HStack gap="3" p="3" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
@@ -915,7 +914,7 @@ export function NewAcqModal({ open, onClose, target, source, devices, rooms = []
 
         <Box flex="1" minW="0">
           <HStack mb="2" gap="2">
-            <Box w="8px" h="8px" borderRadius="full" bg={target ? '#22c55e' : '#f59e0b'} />
+            <Dot ok={!!target} warn={!target} />
             <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400">ARRIVÉE</Text>
           </HStack>
           <HStack gap="3" p="3" borderRadius="lg" border="1px solid" borderColor={C.cardBorder}
@@ -975,9 +974,9 @@ export function NewAcqModal({ open, onClose, target, source, devices, rooms = []
         </Box>
       )}
 
-      <Button mt="5" w="100%" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }} onClick={onStart}>
+      <PrimaryButton mt="5" w="100%" onClick={onStart}>
         Démarrer la session
-      </Button>
+      </PrimaryButton>
     </Modal>
   )
 }

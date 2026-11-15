@@ -120,10 +120,16 @@ export function HelpButton({ active = false, ...rest }) {
 
 export function PrimaryButton({ icon: I, children, ...rest }) {
   return (
-    <Button size="sm" bg={C.primary} color="#ffffff" borderRadius="md" _hover={{ bg: C.primaryHover }} {...rest}>
+    <Button size="sm" bg={C.primary} color={C.onPrimary} borderRadius="md" _hover={{ bg: C.primaryHover }} {...rest}>
       {I && <I />} {children}
     </Button>
   )
+}
+
+/** Voyant d'état : <Dot ok /> vert · <Dot warn /> ambre · <Dot off /> gris (défaut) */
+export function Dot({ ok, warn, size = '8px', ...rest }) {
+  const bg = ok ? C.ok : warn ? C.warn : C.off
+  return <Box w={size} h={size} borderRadius="full" bg={bg} flexShrink={0} {...rest} />
 }
 
 // ---- Champs ---------------------------------------------------------------------

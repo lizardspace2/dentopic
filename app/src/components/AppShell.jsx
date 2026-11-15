@@ -7,7 +7,7 @@ import {
   FiHelpCircle, FiEye, FiMoon, FiSun, FiCommand, FiMenu,
 } from 'react-icons/fi'
 import Logo from './Logo'
-import { Tip, ToastHost } from './ui'
+import { Dot, Tip, ToastHost } from './ui'
 import { C, getMode, applyMode } from '../theme'
 import { useApp } from '../context/AppContext'
 
@@ -143,7 +143,7 @@ export default function AppShell() {
             fontSize="2xs" color={C.greenText}
             display={{ base: 'none', sm: 'flex' }}
           >
-            <Box w="6px" h="6px" borderRadius="full" bg="#22c55e" />
+            <Dot ok size="6px" />
             <Text fontWeight="600">Source non confi…</Text>
             <Text>→</Text>
             <Text isTruncated maxW="110px">E2E-17933332…</Text>

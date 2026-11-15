@@ -142,7 +142,7 @@ export default function Dashboard() {
               <Tip key={i} label={t.tip} display="block">
                 <Link to={t.to} style={{ textDecoration: 'none' }}>
                   <HStack px="2" py="1.5" borderRadius="md" _hover={{ bg: 'gray.50' }} gap="2.5">
-                    <Box as={t.icon} color={t.tone === 'amber' ? '#f59e0b' : C.primary} fontSize="sm" flexShrink={0} />
+                    <Box as={t.icon} color={t.tone === 'amber' ? C.warn : C.primary} fontSize="sm" flexShrink={0} />
                     <Text fontSize="sm" color={C.body} flex="1">{t.text}</Text>
                     <Box as={FiChevronRight} color="gray.300" fontSize="xs" />
                   </HStack>
@@ -239,7 +239,7 @@ export default function Dashboard() {
         <Card p="5" mb="8">
           <HStack gap="2" mb={favsOpen ? '4' : '0'} as="button" w="100%" cursor="pointer"
             aria-expanded={favsOpen} onClick={() => setFavsOpen((v) => !v)}>
-            <Box as={FiStar} color="#f59e0b" fontSize="sm" />
+            <Box as={FiStar} color={C.warn} fontSize="sm" />
             <Text fontSize="sm" fontWeight="600" color={C.ink}>Photos favorites</Text>
             <Tag color="amber">{d.favPhotos.length}</Tag>
             <Box flex="1" />

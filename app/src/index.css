@@ -26,6 +26,12 @@
   --c-amber-border: #fde8b0;
   --c-amber-text: #92400e;
 
+  /* Voyants et contraste */
+  --c-ok: #22c55e;
+  --c-warn: #f59e0b;
+  --c-off: #cbd5e1;
+  --c-on-primary: #ffffff;
+
   /* Studio — thème clair (panneaux façon Photoshop light) */
   --s-bg: #dcdcdc;
   --s-panel: #f0f0f0;
@@ -87,6 +93,12 @@ html[data-theme='dark'] {
   --c-amber-bg: #2a2010;
   --c-amber-border: #4d3a14;
   --c-amber-text: #fbbf24;
+
+  /* Voyants et contraste */
+  --c-ok: #4ade80;
+  --c-warn: #fbbf24;
+  --c-off: #475569;
+  --c-on-primary: #ffffff;
 
   /* Remapping Chakra : le "blanc" devient le fond des cartes sombres */
   --chakra-colors-white: #141c2a;

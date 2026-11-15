@@ -34,6 +34,12 @@ export const C = {
   amberBorder: v('amber-border'),
   amberText: v('amber-text'),
 
+  // Voyants et contraste
+  ok: v('ok'), // vert statut « en ligne / fait »
+  warn: v('warn'), // ambre « à configurer / attention »
+  off: v('off'), // gris statut « hors ligne / inactif »
+  onPrimary: v('on-primary'), // texte sur bouton coloré
+
   // Studio (toujours sombre, quel que soit le mode)
   darkBg: '#0a0f18',
   darkSidebar: '#0d1420',
