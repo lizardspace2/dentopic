@@ -158,7 +158,7 @@ export default function Capture() {
                 </Button>
                 <input ref={camInput} type="file" accept="image/*" capture="environment" hidden
                   onChange={(e) => { send(e.target.files); e.target.value = '' }} />
-                <input ref={galInput} type="file" accept="image/*" multiple hidden
+                <input ref={galInput} type="file" accept="image/*,video/*" multiple hidden
                   onChange={(e) => { send(e.target.files); e.target.value = '' }} />
               </VStack>
             )}

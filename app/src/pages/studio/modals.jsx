@@ -35,6 +35,7 @@ export function OpenPhotoModal({ open, onClose, wsId, onPick }) {
   const subFolders = searching ? [] : dossierChildren(dossiers, folder)
   const dossierName = (id) => dossiers.find((d) => d.id === id)?.name || 'Sans dossier'
   const list = photos.filter((p) => {
+    if ((p.mime || '').startsWith('video/')) return false
     if (q && !(p.original_filename || '').toLowerCase().includes(q.toLowerCase())) return false
     if (quick === 'fav' && !p.is_favorite) return false
     if (quick === 'unassigned' && p.dossier_id) return false
@@ -265,7 +266,7 @@ export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, compa
     Promise.all([listPhotos(wsId, { limit: 500 }), listDossiers(wsId)])
       .then(([ps, ds]) => {
         if (!active) return
-        setPhotos(ps); setDossiers(ds)
+        setPhotos(ps.filter((p) => !(p.mime || '').startsWith('video/'))); setDossiers(ds)
         if (comparisonPhoto && comparisonPhoto.id !== sourcePhoto?.id && comparisonPhoto.dossier_id
           && rootDossierId(ds, comparisonPhoto.dossier_id) === rootDossierId(ds, sourcePhoto?.dossier_id)) setApres(comparisonPhoto)
       })

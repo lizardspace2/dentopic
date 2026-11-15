@@ -76,7 +76,7 @@ export default function PatientFilmstrip({ wsId, photo, onPick, onCompare, onPho
     } catch { setError('Favori non enregistré. Réessayez.') }
     finally { setBusy(null) }
   }
-  const list = photos.filter((p) => (!view || clinicalLabels(p).view === view) && (!favorites || p.is_favorite))
+  const list = photos.filter((p) => !(p.mime || '').startsWith('video/') && (!view || clinicalLabels(p).view === view) && (!favorites || p.is_favorite))
   const currentIndex = list.findIndex((p) => p.id === photo?.id)
   const smallButton = { fontSize: '2xs', px: '2', py: '1', borderRadius: 'sm', border: '1px solid', borderColor: S.border, color: S.fg }
 

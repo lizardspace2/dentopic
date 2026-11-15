@@ -36,7 +36,7 @@ export default function PatientTimelineModal({ patient, wsId, dossiers, onClose,
 
   useEffect(() => { setPicked([null, null]) }, [sessions, view, patient?.id])
   const candidates = sessions.map((key) => (groups.find((g) => g.key === key)?.photos || [])
-    .filter((p) => clinicalLabels(p).view === view))
+    .filter((p) => !(p.mime || '').startsWith('video/') && clinicalLabels(p).view === view))
   const sameSession = sessions[0] && sessions[0] === sessions[1]
 
   return (

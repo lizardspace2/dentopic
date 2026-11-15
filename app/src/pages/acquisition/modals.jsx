@@ -660,7 +660,7 @@ export function ImportModal({ open, onClose, target, onImport }) {
   }
   return (
     <Modal open={open} onClose={onClose}
-      title="Importer des photos" subtitle="Fichiers ou dossier complet" width="480px">
+      title="Importer des fichiers" subtitle="Photos ou vidéos — fichiers ou dossier complet" width="480px">
       <Center
         border="1.5px dashed" borderColor="gray.300" borderRadius="xl" py="8" mb="4"
         cursor="pointer" _hover={{ borderColor: C.primary, bg: C.softBlue }}
@@ -670,10 +670,10 @@ export function ImportModal({ open, onClose, target, onImport }) {
       >
         <VStack gap="1.5">
           <IconTile icon={FiUpload} size="40px" iconSize="18px" />
-          <Text fontSize="sm" fontWeight="600" color={C.ink}>Glissez vos photos ici</Text>
-          <Text fontSize="xs" color="gray.500">ou cliquez pour parcourir — JPEG, PNG, WebP</Text>
+          <Text fontSize="sm" fontWeight="600" color={C.ink}>Glissez vos photos ou vidéos ici</Text>
+          <Text fontSize="xs" color="gray.500">ou cliquez pour parcourir — JPEG, PNG, WebP, MP4, MOV, WebM</Text>
         </VStack>
-        <input ref={input} type="file" accept="image/*" multiple hidden onChange={(e) => add(e.target.files)} />
+        <input ref={input} type="file" accept="image/*,video/*" multiple hidden onChange={(e) => add(e.target.files)} />
       </Center>
 
       {files.length > 0 && (
@@ -694,7 +694,7 @@ export function ImportModal({ open, onClose, target, onImport }) {
         borderColor={target ? C.greenBorder : C.amberBorder} borderRadius="md" px="3" py="2" gap="2" mb="4">
         <Box as={FiFolder} color={target ? C.greenText : C.amberText} />
         <Text fontSize="xs" color={target ? C.greenText : C.amberText}>
-          {target ? `Destination : ${target.name}` : 'Aucune destination — les photos iront dans « Non triées »'}
+          {target ? `Destination : ${target.name}` : 'Aucune destination — les fichiers iront dans « Non triées »'}
         </Text>
       </HStack>
 
@@ -840,7 +840,7 @@ export function DeviceCaptureModal({ open, onClose, target, onCapture }) {
         borderColor={target ? C.greenBorder : C.amberBorder} borderRadius="md" px="3" py="2" gap="2" mb="3">
         <Box as={FiFolder} color={target ? C.greenText : C.amberText} />
         <Text fontSize="xs" color={target ? C.greenText : C.amberText}>
-          {target ? `Destination : ${target.name}` : 'Aucune destination — les photos iront dans « Non triées »'}
+          {target ? `Destination : ${target.name}` : 'Aucune destination — les fichiers iront dans « Non triées »'}
         </Text>
       </HStack>
 

@@ -25,8 +25,8 @@ export const SOURCE_DEFS = [
     hint: 'Auto-import depuis un dossier (Nikon WMU, EOS Utility…)', modal: 'watch',
   },
   {
-    key: 'import', icon: FiUpload, label: 'Importer des photos',
-    hint: 'Fichiers ou dossier complet, glisser-déposer', modal: 'import',
+    key: 'import', icon: FiUpload, label: 'Importer des fichiers',
+    hint: 'Photos ou vidéos — fichiers ou dossier complet, glisser-déposer', modal: 'import',
   },
 ]
 

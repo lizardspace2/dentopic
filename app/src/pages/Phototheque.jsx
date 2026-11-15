@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, Button, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import { FiExternalLink, FiFilter, FiFolder, FiFolderMinus, FiGrid, FiList, FiMaximize2, FiStar, FiTag } from 'react-icons/fi'
 import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
-import PhotoImg from '../components/PhotoImg'
+import PhotoImg, { isVideoMedia } from '../components/PhotoImg'
 import PhotoViewer from '../components/PhotoViewer'
 import PatientTimelineModal from './PatientTimelineModal'
 import { useApp } from '../context/AppContext'
@@ -618,7 +618,7 @@ export default function Phototheque({ CollectionsComponent }) {
       ] : []} />
       <ContextMenu menu={menu?.kind === 'photo' ? menu : null} onClose={() => setMenu(null)} items={menu?.kind === 'photo' ? [
         { icon: FiMaximize2, label: 'Agrandir', onClick: () => setViewer(rows.findIndex((x) => x.id === menu.photo.id)) },
-        { icon: FiExternalLink, label: 'Ouvrir dans le Studio', onClick: () => nav(`/studio?edit=${menu.photo.id}`) },
+        ...(isVideoMedia(menu.photo) ? [] : [{ icon: FiExternalLink, label: 'Ouvrir dans le Studio', onClick: () => nav(`/studio?edit=${menu.photo.id}`) }]),
         { icon: FiTag, label: 'Classer la photo…', onClick: () => openClassify(menu.photo) },
         { icon: FiStar, label: menu.photo.is_favorite ? 'Retirer des favorites' : 'Ajouter aux favorites', onClick: () => favorite(menu.photo) },
         '-',

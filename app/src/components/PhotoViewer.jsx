@@ -22,8 +22,10 @@ export default function PhotoViewer({ photo, onClose, onStudio, onPrev, onNext, 
 
   if (!photo) return null
 
+  const video = (photo.mime || '').startsWith('video/')
+
   const meta = [
-    (photo.mime || '').replace('image/', '').toUpperCase() || null,
+    (photo.mime || '').replace('image/', '').replace('video/', '').toUpperCase() || null,
     photo.width && photo.height ? `${photo.width} × ${photo.height} px` : null,
     photo.bytes ? `${(photo.bytes / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko` : null,
     new Date(photo.taken_at || photo.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }),
@@ -61,8 +63,14 @@ export default function PhotoViewer({ photo, onClose, onStudio, onPrev, onNext, 
         px="60px" pb="2" minH="0">
         {navBtn(FiChevronLeft, onPrev, { left: '12px' })}
         {url ? (
-          <Image src={url} alt={photo.original_filename || 'Photo'}
-            maxW="100%" maxH="100%" objectFit="contain" borderRadius="md" draggable={false} />
+          video ? (
+            <Box as="video" src={url} controls autoPlay
+              maxW="100%" maxH="100%" borderRadius="md"
+              onClick={(e) => e.stopPropagation()} />
+          ) : (
+            <Image src={url} alt={photo.original_filename || 'Photo'}
+              maxW="100%" maxH="100%" objectFit="contain" borderRadius="md" draggable={false} />
+          )
         ) : (
           <Center color="whiteAlpha.600" fontSize="sm">Chargement…</Center>
         )}
@@ -73,7 +81,7 @@ export default function PhotoViewer({ photo, onClose, onStudio, onPrev, onNext, 
       <HStack px="5" py="3" justify="space-between" flexShrink={0} gap="4"
         onClick={(e) => e.stopPropagation()}>
         <Text color="whiteAlpha.700" fontSize="xs" isTruncated flex="1">{meta}</Text>
-        {onStudio && (
+        {onStudio && !video && (
           <Button size="sm" variant="outline" color="white" borderColor="whiteAlpha.500"
             _hover={{ bg: 'whiteAlpha.200' }} flexShrink={0}
             onClick={() => onStudio(photo)}>
