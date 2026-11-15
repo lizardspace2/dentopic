@@ -90,7 +90,7 @@ export default function ReglageMembres() {
     (memberName(m).match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase()
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <ReglageNav />
       <PageHeader
         icon={FiUsers} title="Membres de l'équipe"
@@ -106,14 +106,14 @@ export default function ReglageMembres() {
             const isMe = m.user_id === myId
             const isOwner = m.role === 'owner'
             return (
-              <HStack key={m.user_id} px="4" py="3.5" gap="3"
+              <HStack key={m.user_id} px="4" py="3.5" gap="3" flexWrap="wrap"
                 borderTop={i > 0 ? '1px solid' : 'none'} borderColor="gray.100">
                 <Center w="38px" h="38px" borderRadius="full" bg={C.softBlue} color={C.primary}
                   fontSize="sm" fontWeight="700" flexShrink={0}>
                   {initials(m)}
                 </Center>
                 <Box flex="1" minW="0">
-                  <HStack gap="2">
+                  <HStack gap="2" flexWrap="wrap">
                     <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>{memberName(m)}</Text>
                     {isMe && <Tag color="blue">Vous</Tag>}
                     <Tag color={roleColor}>

@@ -109,7 +109,7 @@ export default function ReglageReseaux() {
   const fmtWhen = (d) => d ? new Date(d).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <ReglageNav />
       <PageHeader
         icon={FiShare2} title="Réseaux sociaux"
@@ -137,7 +137,7 @@ export default function ReglageReseaux() {
                   <SocialIcon provider={a.provider} size={16} />
                 </Center>
                 <Box flex="1" minW="0">
-                  <HStack gap="2">
+                  <HStack gap="2" flexWrap="wrap">
                     <Text fontSize="sm" fontWeight="600" color={C.ink} isTruncated>@{a.handle}</Text>
                     <Tag color="gray">{prov.label}</Tag>
                     {a.meta?.pending_oauth && <Tag color="amber">En attente OAuth</Tag>}
@@ -205,7 +205,7 @@ export default function ReglageReseaux() {
               <Text fontSize="xs" color="gray.400">Aucun créneau défini.</Text>
             )}
           </HStack>
-          <HStack gap="2">
+          <HStack gap="2" flexWrap="wrap">
             <Select value={slotForm.day} aria-label="Jour du créneau"
               onChange={(e) => setSlotForm({ ...slotForm, day: +e.target.value })}>
               {DAYS.map((d, i) => <option key={d} value={i}>{d}</option>)}
@@ -232,8 +232,8 @@ export default function ReglageReseaux() {
             Votre propre clé Upload-Post (ou compatible) — utilisée en priorité sur la clé de la
             plateforme pour connecter vos comptes et publier. Laissez vide pour utiliser celle de DentoPic.
           </Text>
-          <HStack gap="2">
-            <Input type="password" fontSize="sm" flex="1" placeholder="Clé API Upload-Post…"
+          <HStack gap="2" flexWrap="wrap">
+            <Input type="password" fontSize="sm" flex="1" minW="180px" placeholder="Clé API Upload-Post…"
               value={aggKey} aria-label="Clé API agrégateur"
               onChange={(e) => setAggKey(e.target.value)} />
             <PrimaryButton icon={FiCheck} onClick={saveAggKey} disabled={busy}>
@@ -257,7 +257,7 @@ export default function ReglageReseaux() {
         {scheduled.map((p, i) => {
           const prov = p.account && providerOf(p.account.provider)
           return (
-            <HStack key={p.id} px="4" py="3" gap="3"
+            <HStack key={p.id} px="4" py="3" gap="3" flexWrap="wrap"
               borderTop={i > 0 ? '1px solid' : 'none'} borderColor="gray.100">
               {prov && (
                 <Center w="30px" h="30px" borderRadius="lg" flexShrink={0} bg="gray.100">

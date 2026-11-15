@@ -18,3 +18,7 @@ Thumbs.db
 
 # Supabase CLI (local)
 app/supabase/.temp/
+
+# Audits locaux (captures Playwright)
+audit-mobile/
+audit-prod/

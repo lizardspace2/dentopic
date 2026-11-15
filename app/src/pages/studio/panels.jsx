@@ -44,10 +44,11 @@ export function MenuBar({ menus, docName, zoom }) {
   }, [])
   return (
     <HStack h="34px" px="3" gap="1" bg={panelBg} borderBottom="1px solid" borderColor={panelBorder}
-      flexShrink={0} ref={ref} position="relative" zIndex="30">
-      <Text fontSize="xs" fontWeight="700" color={fg} mr="2">DentoPic Studio</Text>
+      flexShrink={0} ref={ref} position="relative" zIndex="30"
+      overflowX="auto" className="noscroll" flexWrap="nowrap">
+      <Text fontSize="xs" fontWeight="700" color={fg} mr="2" flexShrink={0}>DentoPic Studio</Text>
       {menus.map((m) => (
-        <Box key={m.label} position="relative">
+        <Box key={m.label} position="relative" flexShrink={0}>
           <Tip label={m.tip || `Menu ${m.label}`}>
             <Box
               px="2.5" py="1" fontSize="xs" borderRadius="md" cursor="pointer"

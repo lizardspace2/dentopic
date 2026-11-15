@@ -7,7 +7,7 @@ import { C } from '../theme'
 
 export default function Reglages() {
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <PageHeader icon={FiSettings} title="Réglages"
         subtitle="Compte, cabinet, abonnement et diffusion" />
 

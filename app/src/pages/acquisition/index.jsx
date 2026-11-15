@@ -207,7 +207,7 @@ export default function Acquisition() {
   const allDone = steps.every((s) => s.done)
 
   return (
-    <Box w="100%" px="6" py="6"
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); setModal('import') }}
     >
@@ -469,7 +469,7 @@ export default function Acquisition() {
             <Text fontSize="sm" fontWeight="600" color={C.ink}>Votre première acquisition</Text>
             <Text fontSize="xs" color={C.primary} cursor="pointer" onClick={hideChecklist}>Masquer ce guide</Text>
           </HStack>
-          <HStack gap="3" align="stretch">
+          <Flex gap="3" align="stretch" direction={{ base: 'column', sm: 'row' }}>
             {steps.map((s, i) => (
               <HStack key={i} flex="1" p="3" borderRadius="lg"
                 bg={s.done ? C.greenBg : 'gray.50'} border="1px solid"
@@ -485,7 +485,7 @@ export default function Acquisition() {
                 </Box>
               </HStack>
             ))}
-          </HStack>
+          </Flex>
         </Card>
       )}
 

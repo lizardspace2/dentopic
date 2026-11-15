@@ -157,7 +157,7 @@ export default function Publication() {
     : cursor.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <PageHeader
         icon={FiCalendar}
         title="Publication"
@@ -219,8 +219,8 @@ export default function Publication() {
       </Card>
       )}
 
-      <HStack gap="4" alignItems="start">
-        <Box flex="1">
+      <Flex direction={{ base: 'column', xl: 'row' }} gap="4" alignItems="start">
+        <Box flex="1" minW="0" w="100%">
           <Card p="3" mb="4">
             <HStack gap="2" flexWrap="wrap">
               <HStack gap="0">
@@ -257,7 +257,8 @@ export default function Publication() {
           </Card>
 
           {view === 'week' ? (
-          <SimpleGrid columns={8} gap="0" border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
+          <Box overflowX="auto">
+          <SimpleGrid columns={8} gap="0" minW="760px" border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
             <Box borderRight="1px solid" borderColor={C.cardBorder} p="1.5" minH="220px" bg="gray.50">
               <Text fontSize="2xs" fontWeight="700" color="gray.500" mb="1">FILE</Text>
               <VStack align="stretch" gap="1" maxH="190px" overflowY="auto" mb="1">
@@ -290,8 +291,10 @@ export default function Publication() {
               )
             })}
           </SimpleGrid>
+          </Box>
           ) : (
-          <Box border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
+          <Box overflowX="auto">
+          <Box minW="620px" border="1px solid" borderColor={C.cardBorder} borderRadius="lg" overflow="hidden">
             <SimpleGrid columns={7} gap="0" bg="gray.50">
               {DAYS_FR.map((d) => (
                 <Text key={d} fontSize="2xs" fontWeight="700" color="gray.500"
@@ -324,10 +327,11 @@ export default function Publication() {
               </SimpleGrid>
             ))}
           </Box>
+          </Box>
           )}
         </Box>
 
-        <Card w="270px" flexShrink={0} p="4">
+        <Card w={{ base: '100%', xl: '270px' }} flexShrink={0} p="4">
           <HStack justify="space-between" mb="3" borderBottom="1px solid" borderColor="gray.100" pb="2">
             <Text fontSize="xs" fontWeight="600" color={C.ink}>
               Brouillons{drafts.length > 0 ? ` (${drafts.length})` : ''}
@@ -336,7 +340,7 @@ export default function Publication() {
           <DraftsPane drafts={posts.filter((p) => p.status !== 'published')} accounts={accounts}
             wsId={wsId} onEdit={openDraft} onReload={reload} />
         </Card>
-      </HStack>
+      </Flex>
 
       <ConnectModal open={modal === 'connect'} onClose={() => setModal(null)}
         wsId={wsId} accounts={accounts} onDone={reload} />
@@ -703,7 +707,7 @@ function DraftModal({ open, onClose, wsId, accounts, post, prefill, slots, onDon
               {EMPTY_MEDIA[mediaTab]}
             </Text>
           ) : (
-            <SimpleGrid columns={5} gap="2">
+            <SimpleGrid columns={{ base: 3, sm: 5 }} gap="2">
               {pool.map((m) => {
                 const path = mediaTab === 'photos' ? m.storage_path : m.export_url
                 return (

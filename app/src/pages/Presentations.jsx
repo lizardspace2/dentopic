@@ -191,7 +191,7 @@ export default function Presentations() {
   // ---- rendu -----------------------------------------------------------------
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <PageHeader
         icon={FiMonitor} title="Présentations"
         subtitle="Créez et partagez des présentations visuelles"

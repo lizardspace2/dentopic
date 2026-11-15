@@ -96,7 +96,7 @@ export default function Dashboard() {
   const toSort = (d?.unassignedPhotos || []).slice(0, 6)
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <PageHeader icon={FiHome} title="Accueil"
         subtitle="Tableau de bord — l'activité du cabinet en un coup d'œil.">
         <Link to="/acquisition">
@@ -137,7 +137,7 @@ export default function Dashboard() {
             <Box flex="1" />
             <Box as={tasksOpen ? FiChevronDown : FiChevronRight} color="gray.400" />
           </HStack>
-          {tasksOpen && <SimpleGrid columns={2} gap="1.5">
+          {tasksOpen && <SimpleGrid columns={{ base: 1, sm: 2 }} gap="1.5">
             {derived.tasks.map((t, i) => (
               <Tip key={i} label={t.tip} display="block">
                 <Link to={t.to} style={{ textDecoration: 'none' }}>
@@ -170,7 +170,7 @@ export default function Dashboard() {
             <Text fontSize="xs" color="gray.500" mb="4">
               Patient, vue ou étape manquant — sélectionnez-les dans la photothèque puis attribuez en lot.
             </Text>
-            <SimpleGrid columns={6} gap="3" mb="4">
+            <SimpleGrid columns={{ base: 3, md: 6 }} gap="3" mb="4">
               {toSort.map((p) => (
                 <PhotoImg key={p.id} storagePath={p.edited_path || p.storage_path} ratio="1/1" />
               ))}
@@ -195,7 +195,7 @@ export default function Dashboard() {
         )}
       </Card>
 
-      <SimpleGrid columns={3} gap="4" mb="5">
+      <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap="4" mb="5">
         {ACTIONS.map((a) => (
           <Link key={a.title} to={a.to} style={{ textDecoration: 'none' }}>
             <Card p="4" _hover={{ borderColor: 'blue.300' }} h="100%">
@@ -218,7 +218,7 @@ export default function Dashboard() {
             <Box as={montagesOpen ? FiChevronDown : FiChevronRight} color="gray.400" />
           </HStack>
           {montagesOpen && (
-            <SimpleGrid columns={4} gap="4">
+            <SimpleGrid columns={{ base: 2, md: 4 }} gap="4">
               {(d?.montages || []).slice(0, 4).map((m) => (
                 <Link key={m.id} to={`/studio?edit=${m.id}`} style={{ textDecoration: 'none' }}>
                   <Center bg="gray.100" aspectRatio="4/3" borderRadius="lg" color="gray.400">
@@ -246,7 +246,7 @@ export default function Dashboard() {
             <Box as={favsOpen ? FiChevronDown : FiChevronRight} color="gray.400" />
           </HStack>
           {favsOpen && (
-            <SimpleGrid columns={6} gap="4">
+            <SimpleGrid columns={{ base: 3, md: 6 }} gap="4">
               {(d?.favPhotos || []).map((p) => (
                 <PhotoImg key={p.id} storagePath={p.edited_path || p.storage_path} ratio="1/1" />
               ))}

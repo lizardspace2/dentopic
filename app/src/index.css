@@ -198,5 +198,14 @@ textarea {
   color-scheme: inherit;
 }
 
+/* Zone scrollable horizontale sans barre visible (nav d'onglets, carrousels) */
+.noscroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.noscroll::-webkit-scrollbar {
+  display: none;
+}
+
 /* Tooltips <Tip> — rendus via portal (position:fixed) dans ui.jsx :
    pas de règle CSS requise ici (évite tout clipping/z-index de parent). */

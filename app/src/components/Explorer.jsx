@@ -172,7 +172,7 @@ export function DossierTree({ dossiers, currentId, onNavigate, onMove, onFileDro
   const pathIds = dossierPath(dossiers, currentId).map((d) => d.id)
   const allActive = !currentId
   return (
-    <Card p="0" w="230px" flexShrink={0} overflow="hidden" alignSelf="flex-start">
+    <Card p="0" w={{ base: '100%', lg: '230px' }} flexShrink={0} overflow="hidden" alignSelf="flex-start">
       <Box px="3" py="2" borderBottom="1px solid" borderColor={C.cardBorder}>
         <Text fontSize="2xs" fontWeight="700" color="gray.500" letterSpacing="0.06em">{title.toUpperCase()}</Text>
       </Box>

@@ -91,7 +91,7 @@ export default function ReglageBrand() {
   const previewName = b.cabinet_name || workspace?.name || 'Mon cabinet'
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <ReglageNav />
       <PageHeader
         icon={FaMagic} title="Brand Système"
@@ -111,7 +111,7 @@ export default function ReglageBrand() {
               <Box as={FiImage} color={C.primary} />
               <Text fontSize="sm" fontWeight="700" color={C.ink}>Logo du cabinet</Text>
             </HStack>
-            <HStack gap="4" align="start">
+            <HStack gap="4" align="start" flexWrap="wrap">
               <Box w="140px" flexShrink={0}>
                 {b.logo_path ? (
                   <PhotoImg storagePath={b.logo_path} ratio="1/1" objectFit="contain" />
@@ -187,7 +187,7 @@ export default function ReglageBrand() {
               <Box as={FiDroplet} color={C.primary} />
               <Text fontSize="sm" fontWeight="700" color={C.ink}>Couleurs</Text>
             </HStack>
-            <SimpleGrid columns={2} gap="3" mb="3">
+            <SimpleGrid columns={{ base: 1, sm: 2 }} gap="3" mb="3">
               {[['color_primary', 'Couleur principale'], ['color_secondary', 'Couleur secondaire']].map(([k, lbl]) => (
                 <Field key={k} label={lbl}>
                   <HStack>
@@ -223,7 +223,7 @@ export default function ReglageBrand() {
               <Box as={FiType} color={C.primary} />
               <Text fontSize="sm" fontWeight="700" color={C.ink}>Polices</Text>
             </HStack>
-            <SimpleGrid columns={2} gap="3">
+            <SimpleGrid columns={{ base: 1, sm: 2 }} gap="3">
               <Field label="Titres">
                 <Select w="100%" value={b.font_title} aria-label="Police des titres"
                   onChange={(e) => set('font_title', e.target.value)}>

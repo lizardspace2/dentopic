@@ -75,7 +75,7 @@ export default function ReglageAppareils() {
   }
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <ReglageNav />
       <PageHeader icon={FiMonitor} title="Appareils">
         <PrimaryButton icon={FiPlus} onClick={() => setDevModal('new')}>Ajouter</PrimaryButton>
@@ -118,7 +118,7 @@ export default function ReglageAppareils() {
             </HStack>
           ) : (
             <Card p="4" mt="3">
-              <SimpleGrid columns={2} gap="3" mb="3">
+              <SimpleGrid columns={{ base: 1, sm: 2 }} gap="3" mb="3">
                 <Field label="Nom de la salle *">
                   <Input fontSize="sm" placeholder="ex. Salle 2" value={roomForm.name}
                     onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })}
@@ -143,7 +143,7 @@ export default function ReglageAppareils() {
           <VStack align="stretch" gap="3">
             {devices.map((d) => (
               <Card key={d.id} p="4">
-                <HStack gap="3">
+                <HStack gap="3" flexWrap="wrap">
                   <IconTile icon={FiMonitor} />
                   <Box flex="1" minW="0">
                     <HStack gap="2" flexWrap="wrap">

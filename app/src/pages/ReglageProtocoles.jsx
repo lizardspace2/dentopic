@@ -3,7 +3,7 @@
 // confirmations obligatoires (ConfirmModal) sur les suppressions.
 import { useEffect, useState } from 'react'
 import {
-  Box, Center, HStack, Input, Text, Textarea, VStack,
+  Box, Center, Flex, HStack, Input, Text, Textarea, VStack,
 } from '@chakra-ui/react'
 import {
   FiFileText, FiPlus, FiTrash2, FiEdit2, FiCheck,
@@ -96,7 +96,7 @@ export default function ReglageProtocoles() {
   }
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <ReglageNav />
       <PageHeader
         icon={FiFileText} title="Protocoles"
@@ -107,9 +107,9 @@ export default function ReglageProtocoles() {
         </PrimaryButton>
       </PageHeader>
 
-      <HStack align="start" gap="5" mt="4">
+      <Flex direction={{ base: 'column', lg: 'row' }} align={{ base: 'stretch', lg: 'start' }} gap="5" mt="4">
         {/* ---- liste des protocoles ---- */}
-        <VStack align="stretch" gap="3" w="320px" flexShrink={0}>
+        <VStack align="stretch" gap="3" w={{ base: '100%', lg: '320px' }} flexShrink={0}>
           {protocols.map((p) => (
             <Card key={p.id} p="4" cursor="pointer"
               border={p.id === selId ? `2px solid ${C.primary}` : undefined}
@@ -186,7 +186,7 @@ export default function ReglageProtocoles() {
                     {i + 1}
                   </Center>
                   <Box flex="1" minW="0">
-                    <HStack gap="2">
+                    <HStack gap="2" flexWrap="wrap">
                       <Text fontSize="sm" fontWeight="600" color={C.ink}>{s.name}</Text>
                       <Tag color="blue">{classLabel(s.expected_photo_class)}</Tag>
                       {s.required && <Tag color="red">Requis</Tag>}
@@ -236,7 +236,7 @@ export default function ReglageProtocoles() {
             </Center>
           )}
         </Card>
-      </HStack>
+      </Flex>
 
       {/* ---- modal protocole ---- */}
       <Modal open={!!editProto} onClose={() => setEditProto(null)}

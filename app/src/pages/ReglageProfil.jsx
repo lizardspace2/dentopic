@@ -37,7 +37,7 @@ export default function ReglageProfil() {
   }
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <ReglageNav />
       <PageHeader icon={FiUser} title="Profil" />
 
@@ -50,7 +50,7 @@ export default function ReglageProfil() {
         <Text fontSize="sm" color={C.primary} fontWeight="500" cursor="pointer">Changer la photo</Text>
       </Center>
 
-      <SimpleGrid columns={2} gap="4" mb="4">
+      <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4" mb="4">
         <Field label="Prénom"><TextInput value={f.first_name || ''} onChange={set('first_name')} /></Field>
         <Field label="Nom"><TextInput value={f.last_name || ''} onChange={set('last_name')} /></Field>
       </SimpleGrid>
@@ -60,7 +60,7 @@ export default function ReglageProfil() {
           {PROFESSIONS.map((p) => <option key={p}>{p}</option>)}
         </Select>
       </Field>
-      <SimpleGrid columns={2} gap="4" mb="4">
+      <SimpleGrid columns={{ base: 1, sm: 2 }} gap="4" mb="4">
         <Field label="Email"><TextInput type="email" value={f.email || session?.user?.email || ''} onChange={set('email')} /></Field>
         <Field label="Téléphone"><TextInput value={f.phone || ''} onChange={set('phone')} /></Field>
       </SimpleGrid>

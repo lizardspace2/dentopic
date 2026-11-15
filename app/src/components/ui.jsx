@@ -88,14 +88,14 @@ export function IconTile({ icon, bg = C.softBlue, color = C.primary, size = '34p
 export function PageHeader({ icon, iconBg, iconColor, title, subtitle, children }) {
   return (
     <>
-      <HStack justify="space-between" mb={subtitle ? '1' : '6'}>
-        <HStack gap="3">
+      <HStack justify="space-between" mb={subtitle ? '1' : '6'} flexWrap="wrap" gap="2" rowGap="2">
+        <HStack gap="3" minW="0">
           {icon && <IconTile icon={icon} bg={iconBg} color={iconColor} />}
-          <Text fontSize={{ base: '2xl', md: '3xl' }} fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
+          <Text fontSize={{ base: 'xl', md: '3xl' }} fontWeight="700" letterSpacing="-0.02em" color={C.ink}>
             {title}
           </Text>
         </HStack>
-        <HStack gap="2">{children}</HStack>
+        <HStack gap="2" flexWrap="wrap">{children}</HStack>
       </HStack>
       {subtitle && (
         <Text fontSize="sm" color="gray.500" mb="4">

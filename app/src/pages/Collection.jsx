@@ -4,12 +4,12 @@
 import { useEffect, useState } from 'react'
 import { Box, Button, Center, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
 import {
-  FiPlus, FiFolder, FiFolderPlus, FiEye, FiLink, FiEdit2, FiTrash2,
+  FiFolderPlus, FiEye, FiLink, FiEdit2, FiTrash2,
   FiAlertTriangle, FiCheck, FiImage, FiLayers, FiX, FiCopy,
   FiExternalLink, FiFilter,
 } from 'react-icons/fi'
 import {
-  Card, Tag, EmptyPane, SectionLabel, PageHeader,
+  Card, Tag, EmptyPane, SectionLabel,
   PrimaryButton, SearchInput, isTestName, Modal, Select, Field, Tip, ago,
   ConfirmModal, toast,
 } from '../components/ui'
@@ -33,7 +33,7 @@ export default function Collection() {
   return <Phototheque CollectionsComponent={CollectionsManager} />
 }
 
-function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecialty = '', matchingCollectionIds, onCollectionsChange }) {
+function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecialty = '', matchingCollectionIds, onCollectionsChange, onRegisterNew }) {
   const { workspace, session } = useApp()
   const wsId = workspace?.id
   const userId = session?.user?.id
@@ -132,6 +132,7 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
 
   const EMPTY = { name: '', description: '', color: COLORS[0], specialty: '', dossier_id: '' }
   const openNew = () => { setForm({ ...EMPTY }); setModal({ kind: 'edit', col: null }) }
+  useEffect(() => { onRegisterNew?.(() => openNew) }, [onRegisterNew]) // eslint-disable-line
   const openEdit = (col) => {
     setForm({
       name: col.name, description: col.description || '', color: col.color || COLORS[0],
@@ -204,16 +205,6 @@ function CollectionsManager({ globalQuery = '', globalPatient = '', globalSpecia
 
   return (
     <Box w="100%">
-      <PageHeader
-        icon={FiFolder}
-        title="Collections"
-        subtitle="Organisez vos photos et montages en collections thématiques"
-      >
-        <Tip label="Créer une collection : nom, couleur, dossier patient lié">
-          <PrimaryButton icon={FiPlus} onClick={openNew}>Nouvelle collection</PrimaryButton>
-        </Tip>
-      </PageHeader>
-
       <Card p="4" mb="4">
         <Text fontSize="sm" fontWeight="700" color={C.ink} mb="1">Organiser un cas clinique</Text>
         <Text fontSize="xs" color={C.body} mb="3">Un patient, une étape de traitement, une collection. Choisissez un modèle puis ajoutez vos photos.</Text>

@@ -47,7 +47,7 @@ export const REGLAGE_PAGES = REGLAGE_SECTIONS.flatMap((s) => s.items)
 export function ReglageNav() {
   const { pathname } = useLocation()
   return (
-    <Card px="2" py="1.5" mb="5" overflowX="auto">
+    <Card px="2" py="1.5" mb="5" overflowX="auto" className="noscroll">
       <HStack gap="1" flexWrap="nowrap" minW="max-content">
         <Link to="/reglage" style={{ textDecoration: 'none' }}>
           <HStack px="2" py="1.5" borderRadius="md" gap="1.5" fontSize="xs"

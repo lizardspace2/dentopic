@@ -243,7 +243,7 @@ function DossierGrid() {
   const resetFilters = () => { setSpecFilter(null); setSort('recent') }
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={onImportFiles} />
       <PageHeader icon={FiFolder} title="Dossier patient" subtitle="Gérez les dossiers sans informations personnelles.">
         <Tip label="Dossiers mis à la corbeille — restauration possible">
@@ -343,7 +343,7 @@ function DossierGrid() {
         </Box>
       </Tip>
 
-      <HStack align="start" gap="4">
+      <Flex direction={{ base: 'column', lg: 'row' }} align="start" gap="4">
         <DossierTree dossiers={d?.dossiers || []} currentId={null}
           onNavigate={(id) => { if (id) nav(`/dossier-patient/dossier/${id}`) }}
           onFileDrop={importInto} />
@@ -378,7 +378,7 @@ function DossierGrid() {
         </Text>
       )}
         </Box>
-      </HStack>
+      </Flex>
 
       {/* menu contextuel dossier — clic droit sur une tuile */}
       <ContextMenu menu={ctx} onClose={() => setCtx(null)} items={ctx ? [
@@ -442,7 +442,7 @@ function DossierGrid() {
         }>
         {editForm && (
           <VStack align="stretch" gap="4">
-            <SimpleGrid columns={3} gap="3">
+            <SimpleGrid columns={{ base: 1, sm: 3 }} gap="3">
               <Box>
                 <Text fontSize="xs" color="gray.500" mb="1">Nom</Text>
                 <Input fontSize="sm" placeholder="DOE" textTransform="uppercase"
@@ -503,7 +503,7 @@ function DossierGrid() {
           </>
         }>
         <VStack align="stretch" gap="4">
-          <SimpleGrid columns={3} gap="3">
+          <SimpleGrid columns={{ base: 1, sm: 3 }} gap="3">
             <Box>
               <Text fontSize="xs" color="gray.500" mb="1">Nom</Text>
               <Input fontSize="sm" placeholder="DOE" textTransform="uppercase" autoFocus
@@ -664,10 +664,10 @@ function DossierDetail({ id }) {
   }
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={onImportFiles} />
 
-      <HStack align="start" gap="4">
+      <Flex direction={{ base: 'column', lg: 'row' }} align="start" gap="4">
         <DossierTree dossiers={allDossiers} currentId={id}
           onNavigate={openFolder} onMove={movePhotos} onFileDrop={importInto} />
         <Box flex="1" minW="0" position="relative" borderRadius="lg"
@@ -855,7 +855,7 @@ function DossierDetail({ id }) {
         onNext={viewer != null && viewer < photos.length - 1 ? () => setViewer(viewer + 1) : null}
         onStudio={(p) => nav(`/studio?edit=${p.id}`)} />
         </Box>
-      </HStack>
+      </Flex>
     </Box>
   )
 }

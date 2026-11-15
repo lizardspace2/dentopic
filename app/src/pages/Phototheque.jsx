@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, Button, Flex, HStack, Input, SimpleGrid, Text, VStack } from '@chakra-ui/react'
-import { FiExternalLink, FiFilter, FiFolder, FiFolderMinus, FiGrid, FiList, FiMaximize2, FiStar, FiTag } from 'react-icons/fi'
-import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, toast } from '../components/ui'
+import { FiExternalLink, FiFilter, FiFolder, FiFolderMinus, FiGrid, FiList, FiMaximize2, FiPlus, FiStar, FiTag } from 'react-icons/fi'
+import { Card, EmptyPane, Field, Modal, PageHeader, PrimaryButton, SearchInput, Select, Tag, Tip, toast } from '../components/ui'
 import PhotoImg, { isVideoMedia } from '../components/PhotoImg'
 import PhotoViewer from '../components/PhotoViewer'
 import PatientTimelineModal from './PatientTimelineModal'
@@ -38,6 +38,7 @@ export default function Phototheque({ CollectionsComponent }) {
   const [patient, setPatient] = useState(null)
   const [saved, setSaved] = useState([])
   const [saveOpen, setSaveOpen] = useState(false)
+  const [newCollection, setNewCollection] = useState(null) // action « Nouvelle collection » enregistrée par CollectionsManager
   const [saveName, setSaveName] = useState('')
   const [savedError, setSavedError] = useState('')
   const [classify, setClassify] = useState(null)
@@ -250,6 +251,7 @@ export default function Phototheque({ CollectionsComponent }) {
     const next = [...saved, { id: crypto.randomUUID(), name: saveName.trim(), params: approved.toString() }].slice(-20)
     if (storeSaved(next)) { setSaveOpen(false); setSaveName('') }
   }
+  const registerNew = useCallback((fn) => setNewCollection(() => fn), [])
   const reset = () => setParams(filters.tab === 'photos' ? {} : { tab: filters.tab }, { replace: true })
   // façon Windows : entrer dans un dossier quitte la recherche et les filtres
   const navigateFolder = (id) => change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: id || '' })
@@ -265,11 +267,17 @@ export default function Phototheque({ CollectionsComponent }) {
   const panelOpen = filtersOpen || advancedActive
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <input ref={importRef} type="file" accept="image/*" multiple hidden
         onChange={(e) => { const f = Array.from(e.target.files || []); e.target.value = ''; if (f.length) importInto(f, importTarget.current) }} />
       <PageHeader icon={FiFolder} title="Collection"
-        subtitle="Photothèque clinique — retrouvez une photo, un patient ou une collection, sans déplacer les originaux." />
+        subtitle="Photothèque clinique — retrouvez une photo, un patient ou une collection, sans déplacer les originaux.">
+        {filters.tab === 'collections' && newCollection && (
+          <Tip label="Créer une collection : nom, couleur, dossier patient lié">
+            <PrimaryButton icon={FiPlus} onClick={newCollection}>Nouvelle collection</PrimaryButton>
+          </Tip>
+        )}
+      </PageHeader>
       {/* barre de recherche + cartouches — façon comparateurs de vols :
           les filtres avancés se déplient via « Filtres », les filtres
           actifs restent visibles sous forme de cartouches amovibles */}
@@ -279,7 +287,7 @@ export default function Phototheque({ CollectionsComponent }) {
             <SearchInput w="100%" placeholder="Patient, N° dossier, fichier, description, collection…" value={filters.q}
               onChange={(e) => change({ q: e.target.value })} />
           </Box>
-          <HStack gap="1">
+          <HStack gap="1" flexWrap="wrap">
             {[["photos", "Photos", count], ["patients", "Patients", patients.length], ["collections", "Collections", collections.length]].map(([tab, label, total]) => (
               <Button key={tab} size="sm" variant={filters.tab === tab ? 'solid' : 'outline'} borderRadius="full" aria-pressed={filters.tab === tab}
                 onClick={() => change({ tab })}>{label} ({total == null ? '…' : total})</Button>
@@ -344,7 +352,7 @@ export default function Phototheque({ CollectionsComponent }) {
       {contextError && <Card p="4"><Text role="alert">{contextError}</Text><Button size="xs" onClick={() => setContextRetry((v) => v + 1)}>Réessayer</Button></Card>}
       {!context && !contextError && <Text fontSize="sm">Chargement de la photothèque…</Text>}
       {context && filters.tab === 'photos' && <>
-      <HStack align="start" gap="4">
+      <Flex direction={{ base: 'column', lg: 'row' }} align="start" gap="4">
         <DossierTree dossiers={context.dossiers} currentId={filters.patient || null}
           allLabel="Toutes les photos" title="Dossiers"
           onNavigate={navigateFolder}
@@ -481,7 +489,8 @@ export default function Phototheque({ CollectionsComponent }) {
           </Card>})}
         </SimpleGrid>
         ) : (
-        <Card p="0" overflow="hidden">
+        <Card p="0" overflowX="auto">
+          <Box minW="760px">
           <HStack px="3" py="2" gap="3" borderBottom="1px solid" borderColor={C.cardBorder}>
             <Box w="44px" flexShrink={0} />
             <Text flex="1.6" fontSize="2xs" fontWeight="700" color="gray.500">FICHIER</Text>
@@ -523,6 +532,7 @@ export default function Phototheque({ CollectionsComponent }) {
               </HStack>
             </HStack>
           )})}
+          </Box>
         </Card>
         )}
         <HStack justify="center" my="4" gap="3">
@@ -531,7 +541,7 @@ export default function Phototheque({ CollectionsComponent }) {
           <Button size="sm" variant="outline" disabled={loading || count == null || (page + 1) * pageSize >= count} onClick={() => change({ page: String(page + 1) })}>Suivante</Button>
         </HStack>
         </Box>
-      </HStack>
+      </Flex>
       </>}
       {context && filters.tab === 'patients' && <><Flex wrap="wrap" gap="1" alignContent="flex-start">
         {patients.slice(page * pageSize, (page + 1) * pageSize).map((d) => {
@@ -559,6 +569,7 @@ export default function Phototheque({ CollectionsComponent }) {
         <Button size="sm" variant="outline" disabled={(page + 1) * pageSize >= patients.length} onClick={() => change({ page: String(page + 1) })}>Suivante</Button>
       </HStack></>}
       {context && filters.tab === 'collections' && <CollectionsComponent globalQuery={filters.q} globalPatient={filters.patient} globalSpecialty={filters.specialty} matchingCollectionIds={collections.map((c) => c.id)}
+        onRegisterNew={registerNew}
         onCollectionsChange={(collections) => setContext((old) => old ? { ...old, collections } : old)} />}
       <PatientTimelineModal patient={patient} wsId={wsId} dossiers={dossiers} onClose={() => setPatient(null)}
         onShowGroup={(group) => { change({ ...LIBRARY_DEFAULTS, tab: 'photos', patient: patient.id, session: group.session, day: group.session ? '' : group.day }); setPatient(null) }}

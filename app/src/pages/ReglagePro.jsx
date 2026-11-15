@@ -56,7 +56,7 @@ export default function ReglagePro() {
   }
 
   return (
-    <Box w="100%" px="6" py="6">
+    <Box w="100%" px={{ base: '4', md: '6' }} py={{ base: '4', md: '6' }}>
       <ReglageNav />
       <PageHeader
         icon={FaCrown}
