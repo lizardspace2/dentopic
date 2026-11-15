@@ -312,7 +312,7 @@ function PromptForm({
 // d'ouverture : le clic extérieur et Échap ferment le menu via `onClose`.
 // S'ouvre vers le haut (les cartes sont en bas de page).
 
-export function MenuDropdown({ open, onClose, children, minW = '200px' }) {
+export function MenuDropdown({ open, onClose, children, minW = '200px', up = true }) {
   const ref = useRef(null)
   useEffect(() => {
     if (!open) return
@@ -327,7 +327,7 @@ export function MenuDropdown({ open, onClose, children, minW = '200px' }) {
   }, [open, onClose])
   if (!open) return null
   return (
-    <VStack ref={ref} position="absolute" bottom="100%" right="0" mb="1" align="stretch" gap="0"
+    <VStack ref={ref} position="absolute" {...(up ? { bottom: '100%', mb: '1' } : { top: '100%', mt: '1' })} right="0" align="stretch" gap="0"
       bg="white" border="1px solid" borderColor={C.cardBorder} borderRadius="md"
       minW={minW} py="1" boxShadow="lg" zIndex="20">
       {children}

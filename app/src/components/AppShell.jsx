@@ -3,11 +3,11 @@ import { Box, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FiSearch, FiHome, FiCamera, FiUsers, FiLayers, FiFolder, FiCalendar,
-  FiMonitor, FiSettings, FiLogOut,
+  FiMonitor, FiSettings, FiLogOut, FiUser, FiChevronDown,
   FiMoon, FiSun, FiMenu,
 } from 'react-icons/fi'
 import Logo from './Logo'
-import { Dot, Tip, ToastHost } from './ui'
+import { MenuDropdown, MenuItem, Tip, ToastHost } from './ui'
 import { C, getMode, applyMode } from '../theme'
 import { useApp } from '../context/AppContext'
 
@@ -34,6 +34,7 @@ export default function AppShell() {
   const navigate = useNavigate()
   const [mode, setMode] = useState(getMode())
   const [navOpen, setNavOpen] = useState(false) // tiroir latéral (< lg)
+  const [userMenu, setUserMenu] = useState(false)
   const [q, setQ] = useState('')
   const searchRef = useRef(null)
   const goSearch = () => { const s = q.trim(); if (s) navigate(`/recherche?q=${encodeURIComponent(s)}`) }
@@ -147,21 +148,6 @@ export default function AppShell() {
             />
           </HStack>
           <Box flex="1" />
-          <HStack
-            bg={C.greenBg}
-            border="1px solid" borderColor={C.greenBorder}
-            borderRadius="md" px="2.5" h="26px" gap="1.5"
-            fontSize="2xs" color={C.greenText}
-            display={{ base: 'none', sm: 'flex' }}
-            cursor="pointer" title="Source d'acquisition — configurer"
-            onClick={() => navigate('/acquisition')}
-          >
-            <Dot ok size="6px" />
-            <Text fontWeight="600">Source non confi…</Text>
-            <Text>→</Text>
-            <Text isTruncated maxW="110px">E2E-17933332…</Text>
-            <Text fontWeight="600">⌄</Text>
-          </HStack>
           <Tip label={mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
             <Box
               as={mode === 'dark' ? FiSun : FiMoon} fontSize="15px" cursor="pointer"
@@ -170,10 +156,25 @@ export default function AppShell() {
               onClick={toggleMode}
             />
           </Tip>
-          <Tip label="Réglages">
-            <Box as={FiSettings} fontSize="15px" color={dark ? C.darkMuted : 'gray.500'} cursor="pointer"
-              aria-label="Réglages" onClick={() => navigate('/reglage')} />
-          </Tip>
+          <Box position="relative">
+            <HStack gap="1" cursor="pointer" onClick={() => setUserMenu((v) => !v)} aria-label="Menu utilisateur">
+              <Flex w="28px" h="28px" borderRadius="full" align="center" justify="center"
+                bg={dark ? C.darkBorder : 'gray.200'} color={dark ? '#dfe6ef' : 'gray.600'}
+                fontSize="2xs" fontWeight="700" flexShrink={0}>
+                {initials(profile?.full_name)}
+              </Flex>
+              <Box as={FiChevronDown} fontSize="12px" color={dark ? C.darkMuted : 'gray.400'} />
+            </HStack>
+            <MenuDropdown open={userMenu} onClose={() => setUserMenu(false)} up={false} minW="190px">
+              <Box px="3" py="2" borderBottom="1px solid" borderColor={C.cardBorder}>
+                <Text fontSize="xs" fontWeight="600" color={C.ink} isTruncated>{profile?.full_name || '—'}</Text>
+                <Text fontSize="2xs" color="gray.500" isTruncated>{profile?.profession || ''}</Text>
+              </Box>
+              <MenuItem icon={FiUser} label="Mon profil" onClick={() => { setUserMenu(false); navigate('/reglage/profil') }} />
+              <MenuItem icon={FiSettings} label="Réglages" onClick={() => { setUserMenu(false); navigate('/reglage') }} />
+              <MenuItem icon={FiLogOut} label="Se déconnecter" danger onClick={() => { setUserMenu(false); signOut() }} />
+            </MenuDropdown>
+          </Box>
         </HStack>
 
         <Box flex="1" overflowY="auto" bg={dark ? C.darkBg : C.pageBg}>
