@@ -15,7 +15,7 @@ import { useApp } from '../context/AppContext'
 const NAV = [
   { to: '/recherche', label: 'Recherche', icon: FiSearch },
   { to: '/', label: 'Accueil', icon: FiHome },
-  { to: '/acquisition', label: 'Acquisition Photo & Vidéo', icon: FiCamera },
+  { to: '/acquisition', label: 'Acquisition', icon: FiCamera },
   { to: '/dossier-patient', label: 'Dossier patient', icon: FiUsers },
   { to: '/studio', label: 'Studio', icon: FiLayers },
   { to: '/collection', label: 'Collection', icon: FiFolder },

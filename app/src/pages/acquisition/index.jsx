@@ -211,7 +211,7 @@ export default function Acquisition() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); setModal('import') }}
     >
-      <PageHeader icon={FiCamera} title="Acquisition photo & vidéo" subtitle="Créez un dossier patient et importez vos photos et vidéos.">
+      <PageHeader icon={FiCamera} title="Acquisition" subtitle="Créez un dossier patient et importez vos photos et vidéos.">
         <Tip label="Destination + source, puis session live">
           <PrimaryButton icon={FiCamera} onClick={() => setModal('new')}>Nouvelle acquisition</PrimaryButton>
         </Tip>
