@@ -71,6 +71,12 @@ export const S = {
   a200: sv('a200'),
   a300: sv('a300'),
   a400: sv('a400'),
+  accent: sv('accent'), // accent éditeur (sélections, toggles actifs)
+  onAccent: sv('on-accent'), // texte sur accent
+  flag: sv('flag'), // jaune « armé / actif spécial » (verrou, comparaison)
+  onFlag: sv('on-flag'), // texte sur jaune
+  danger: sv('danger'), // rouge suppressions/danger
+  cyan: sv('cyan'), // cyan masques / repères canvas
 }
 
 // ---- Bascule clair / sombre -------------------------------------------------

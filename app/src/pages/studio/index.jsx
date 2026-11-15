@@ -10,7 +10,7 @@ import {
 } from 'react-icons/fi'
 import { LuPaintBucket, LuWaves } from 'react-icons/lu'
 import { TbMask } from 'react-icons/tb'
-import { C, S, getMode } from '../../theme'
+import { C, S, svar, getMode } from '../../theme'
 import { useApp } from '../../context/AppContext'
 import {
   createMontage, getPhoto, listDossiers, listProtocols, saveEditedPhoto,
@@ -494,7 +494,7 @@ export default function Studio() {
       ctx.stroke()
     }
     if (guidesOn && extras) {
-      ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1
+      ctx.strokeStyle = svar('--s-cyan', '#22d3ee'); ctx.lineWidth = 1
       for (const g of guides.v) {
         const sx = Math.round(g * scale + ox) + .5
         ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, cv.height); ctx.stroke()
@@ -536,7 +536,7 @@ export default function Studio() {
       const [x1, y1, x2, y2] = shapePrev
       const toS = (x, y) => [x * scale + ox, y * scale + oy]
       const [sx1, sy1] = toS(x1, y1), [sx2, sy2] = toS(x2, y2)
-      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5
+      ctx.strokeStyle = svar('--s-accent', '#4f8fe8'); ctx.lineWidth = 1.5
       ctx.setLineDash([5, 4]); ctx.beginPath()
       const w = sx2 - sx1, h = sy2 - sy1
       if (opts.shapeKind === 'rect') ctx.rect(sx1, sy1, w, h)
@@ -562,7 +562,7 @@ export default function Studio() {
       }
       ctx.restore()
       const toS = (p) => [p[0] * scale + ox, p[1] * scale + oy]
-      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'
+      ctx.strokeStyle = svar('--s-accent', '#4f8fe8'); ctx.lineWidth = 1.5; ctx.lineJoin = 'round'
       if (ft.mode === 'warp') {
         // treillis : 12 segments entre les 9 points + poignées
         const wp = ft.wp
@@ -589,7 +589,7 @@ export default function Studio() {
           ctx.fillRect(x - 4, y - 4, 8, 8); ctx.strokeRect(x - 4, y - 4, 8, 8)
         }
         if (ft.mode === 'free') {
-          ctx.fillStyle = '#4f8fe8'; ctx.beginPath()
+          ctx.fillStyle = svar('--s-accent', '#4f8fe8'); ctx.beginPath()
           const [ccx, ccy] = toS([ft.cx, ft.cy])
           ctx.arc(ccx, ccy, 3.5, 0, Math.PI * 2); ctx.fill()
         }
@@ -611,13 +611,13 @@ export default function Studio() {
       ctx.stroke()
     }
     if (penPath) {
-      ctx.strokeStyle = '#4f8fe8'; ctx.lineWidth = 1.5
+      ctx.strokeStyle = svar('--s-accent', '#4f8fe8'); ctx.lineWidth = 1.5
       tracePath(penPath.pts, penPath.hover)
       ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1
       penPath.pts.forEach((p, i) => {
         const [x, y] = [p.x * scale + ox, p.y * scale + oy]
         ctx.fillRect(x - 3.5, y - 3.5, 7, 7); ctx.strokeRect(x - 3.5, y - 3.5, 7, 7)
-        if (i === 0) { ctx.strokeStyle = '#4f8fe8'; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = '#1a1a1a' }
+        if (i === 0) { ctx.strokeStyle = svar('--s-accent', '#4f8fe8'); ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = '#1a1a1a' }
       })
     }
     // ---- Sélection de tracé : ancres + poignées Bézier de la forme éditée ----
@@ -625,7 +625,7 @@ export default function Studio() {
       const s = pathEdit.l.shape, dx = pathEdit.l.dx, dy = pathEdit.l.dy
       const toS = (x, y) => [(x + dx) * scale + ox, (y + dy) * scale + oy]
       if (s.kind === 'path') {
-        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1
+        ctx.strokeStyle = svar('--s-cyan', '#22d3ee'); ctx.lineWidth = 1
         tracePath(s.pts.map((p) => ({ x: p.x + dx, y: p.y + dy, c1: p.c1 ? [p.c1[0] + dx, p.c1[1] + dy] : null, c2: p.c2 ? [p.c2[0] + dx, p.c2[1] + dy] : null })), null)
         ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(120,160,220,.9)'
         ctx.fillStyle = '#ffd166'; ctx.strokeStyle = '#1a1a1a'
@@ -645,7 +645,7 @@ export default function Studio() {
         })
       } else {
         const [x0, y0] = toS(s.x, s.y), [x1, y1] = toS(s.x + s.w, s.y + s.h)
-        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 1; ctx.setLineDash([4, 4])
+        ctx.strokeStyle = svar('--s-cyan', '#22d3ee'); ctx.lineWidth = 1; ctx.setLineDash([4, 4])
         ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.setLineDash([])
       }
     }
@@ -681,7 +681,7 @@ export default function Studio() {
       }
       ctx.stroke()
       if (cursor) {
-        ctx.strokeStyle = '#22d3ee'; ctx.beginPath()
+        ctx.strokeStyle = svar('--s-cyan', '#22d3ee'); ctx.beginPath()
         const s = (horiz ? cursor.x * scale + ox : cursor.y * scale + oy)
         if (s >= 0 && s <= lim) { horiz ? (ctx.moveTo(s + .5, 0), ctx.lineTo(s + .5, RULER_W)) : (ctx.moveTo(0, s + .5), ctx.lineTo(RULER_W, s + .5)) }
         ctx.stroke()
@@ -2415,7 +2415,7 @@ export default function Studio() {
               <Text>@ {Math.round(view.scale * 100)} %</Text>
               <Text isTruncated>({editor.active?.name || '—'}, RVB/8)</Text>
               <Box flex="1" />
-              {editor.sel && <Text color="#4f8fe8">sélection active</Text>}
+              {editor.sel && <Text color={S.accent}>sélection active</Text>}
               {editor.active?.type === 'adjust' && <Text color="#c4b5fd">calque de réglage</Text>}
             </HStack>
           )}

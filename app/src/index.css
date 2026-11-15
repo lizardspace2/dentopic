@@ -48,6 +48,12 @@
   --s-a200: rgba(0, 0, 0, 0.12);
   --s-a300: rgba(0, 0, 0, 0.2);
   --s-a400: rgba(0, 0, 0, 0.32);
+  --s-accent: #2563eb;
+  --s-on-accent: #ffffff;
+  --s-flag: #d9a800;
+  --s-on-flag: #111827;
+  --s-danger: #dc2626;
+  --s-cyan: #0891b2;
 
   /* Infobulles interactives (HoverTip, portal) — thème clair : carte blanche */
   --tip-bg: #ffffff;
@@ -136,6 +142,12 @@ html[data-theme='dark'] {
   --s-a200: rgba(255, 255, 255, 0.12);
   --s-a300: rgba(255, 255, 255, 0.2);
   --s-a400: rgba(255, 255, 255, 0.32);
+  --s-accent: #4f8fe8;
+  --s-on-accent: #ffffff;
+  --s-flag: #f2c200;
+  --s-on-flag: #111827;
+  --s-danger: #f87171;
+  --s-cyan: #22d3ee;
 
   /* Infobulles interactives — thème sombre : carte ardoise */
   --tip-bg: #1f2937;

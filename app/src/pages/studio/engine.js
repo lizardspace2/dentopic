@@ -3,6 +3,8 @@
 // + un calque de réglage global (filtres) + historique annuler/rétablir.
 // Aucun état React ici : la page pilote le moteur et force un re-render.
 
+import { svar } from '../../theme'
+
 export const DEFAULT_ADJUST = {
   brightness: 100, contrast: 100, saturate: 100,
   hue: 0, blur: 0, grayscale: 0, sepia: 0, invert: 0,
@@ -2218,7 +2220,7 @@ export class Editor {
       ctx.fillRect(0, 0, this.w, this.h)
       ctx.clearRect(x, y, w, h)
       ctx.drawImage(src, x, y, w, h, x, y, w, h)
-      ctx.strokeStyle = '#4f8fe8'
+      ctx.strokeStyle = svar('--s-accent', '#4f8fe8')
       ctx.lineWidth = 1.5 / view.scale
       ctx.setLineDash([6 / view.scale, 4 / view.scale])
       ctx.strokeRect(x, y, w, h)
@@ -2239,10 +2241,10 @@ export class Editor {
     // droite de référence du redressage (tracer le plan occlusal / l'horizon)
     if (line) {
       const [x1, y1, x2, y2] = line
-      ctx.strokeStyle = '#4f8fe8'
+      ctx.strokeStyle = svar('--s-accent', '#4f8fe8')
       ctx.lineWidth = 2 / view.scale
       ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
-      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#4f8fe8'
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = svar('--s-accent', '#4f8fe8')
       for (const [cx, cy] of [[x1, y1], [x2, y2]]) {
         ctx.beginPath(); ctx.arc(cx, cy, 4 / view.scale, 0, 7); ctx.fill(); ctx.stroke()
       }
@@ -2250,7 +2252,7 @@ export class Editor {
     // poignées de transformation du calque actif (outil Déplacement)
     if (handles && !handles.locked) {
       const hs = 8 / view.scale
-      ctx.strokeStyle = '#4f8fe8'
+      ctx.strokeStyle = svar('--s-accent', '#4f8fe8')
       ctx.lineWidth = 1.5 / view.scale
       ctx.strokeRect(handles.dx, handles.dy, this.w, this.h)
       ctx.fillStyle = '#ffffff'
@@ -2969,7 +2971,7 @@ export function buildProtocolSheet(cells, { cellW = 900, ratio = 4 / 3, gap = 16
   const cx = gap + cellW + gap, cy = gap + cellH + gap
   ctx.fillStyle = 'rgba(255,255,255,0.05)'
   ctx.beginPath(); ctx.roundRect(cx, cy, cellW, cellH, 10); ctx.fill()
-  ctx.fillStyle = '#4f8fe8'
+  ctx.fillStyle = svar('--s-accent', '#4f8fe8')
   ctx.font = `700 ${Math.round(cellW / 14)}px 'Inter Tight', sans-serif`
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText('DentoPic', cx + cellW / 2, cy + cellH / 2 - cellH / 12)

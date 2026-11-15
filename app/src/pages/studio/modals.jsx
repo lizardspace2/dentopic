@@ -319,7 +319,7 @@ export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, compa
             onClick={() => create(true)}>
             Créer puis enregistrer…
           </Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             disabled={!avant || !apres} loading={busy}
             onClick={() => create(false)}>
             Créer le montage
@@ -341,7 +341,7 @@ export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, compa
             <HStack gap="2" cursor="pointer" onClick={() => setLabels(!labels)}>
               <Box w="14px" h="14px" borderRadius="sm" border="1.5px solid"
                 borderColor={labels ? C.primary : 'gray.400'} bg={labels ? C.primary : 'transparent'}
-                color="#ffffff" fontSize="2xs" textAlign="center" lineHeight="14px">
+                color={C.onPrimary} fontSize="2xs" textAlign="center" lineHeight="14px">
                 {labels ? '✓' : ''}
               </Box>
               <Text fontSize="xs">Étiquettes AVANT / APRÈS</Text>
@@ -374,7 +374,7 @@ export function MontageModal({ open, onClose, wsId, onCreate, sourcePhoto, compa
                 <PhotoImg storagePath={p.storage_path} ratio="1/1" />
                 {sel && (
                   <Box position="absolute" bottom="1" left="1" px="1.5" fontSize="2xs"
-                    fontWeight="700" borderRadius="sm" bg={C.primary} color="#ffffff">{sel}</Box>
+                    fontWeight="700" borderRadius="sm" bg={C.primary} color={C.onPrimary}>{sel}</Box>
                 )}
               </Box>
             )
@@ -427,7 +427,7 @@ export function SheetModal({ open, onClose, wsId, onCompose, initialDossierId })
             onClick={async () => { setBusy(true); await onCompose(slots, true); setBusy(false) }}>
             Composer puis enregistrer…
           </Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             disabled={!filled} loading={busy}
             onClick={async () => { setBusy(true); await onCompose(slots); setBusy(false) }}>
             Composer la planche
@@ -633,8 +633,8 @@ export function LayerStyleModal({ open, onClose, layer, onApply, initial }) {
                   color={sel === key ? S.fg : S.muted}
                   onClick={() => setSel(key)}>
                   <Box w="14px" h="14px" borderRadius="sm" border="1px solid" flexShrink={0} data-fxcheck={key}
-                    borderColor={on ? '#4f8fe8' : 'gray.600'} bg={on ? '#4f8fe8' : 'transparent'}
-                    color="#ffffff" fontSize="2xs" lineHeight="14px" textAlign="center"
+                    borderColor={on ? S.accent : 'gray.600'} bg={on ? S.accent : 'transparent'}
+                    color={S.onAccent} fontSize="2xs" lineHeight="14px" textAlign="center"
                     onClick={(e) => { if (!fixed) { e.stopPropagation(); toggle(key, !on); setSel(key) } }}>
                     {on ? '✓' : ''}
                   </Box>
@@ -720,7 +720,7 @@ export function ColorPickerModal({ open, onClose, color, onApply, title = 'Séle
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => { onApply(hex); onClose() }}>OK</Button>
         </>
       }>
@@ -806,15 +806,15 @@ export function FilterModal({ open, def, onPreview, onPreviewOff, onApply, onCan
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onCancel}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => onApply(params)}>Appliquer</Button>
         </>
       }>
       <VStack align="stretch" gap="3">
         <HStack gap="2" cursor="pointer" onClick={togglePreview} userSelect="none" data-preview-toggle>
           <Box w="14px" h="14px" borderRadius="sm" border="1px solid"
-            borderColor={previewOn ? '#4f8fe8' : 'gray.500'}
-            bg={previewOn ? '#4f8fe8' : 'transparent'} color="#ffffff"
+            borderColor={previewOn ? S.accent : 'gray.500'}
+            bg={previewOn ? S.accent : 'transparent'} color={S.onAccent}
             fontSize="2xs" lineHeight="14px" textAlign="center">
             {previewOn ? '✓' : ''}
           </Box>
@@ -922,7 +922,7 @@ export function SelectMaskModal({ open, onClose, editor, onApply, onChange }) {
         <HStack gap="2">
           {[['overlay', 'Superposition'], ['mask', 'Masque'], ['none', 'Sans aperçu']].map(([k, l]) => (
             <Box as="button" key={k} px="2" py="0.5" fontSize="2xs" borderRadius="sm" cursor="pointer"
-              bg={view === k ? '#4f8fe8' : 'var(--s-a100)'} color={view === k ? '#ffffff' : S.fg}
+              bg={view === k ? S.accent : 'var(--s-a100)'} color={view === k ? S.onAccent : S.fg}
               onClick={() => setView(k)}>{l}</Box>
           ))}
         </HStack>
@@ -940,7 +940,7 @@ export function SelectMaskModal({ open, onClose, editor, onApply, onChange }) {
           <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
             bg="var(--s-a100)" color={S.fg} onClick={() => close(false)}>Annuler</Box>
           <Box as="button" px="3" py="1.5" fontSize="xs" borderRadius="md" cursor="pointer"
-            bg={C.primary} color="#ffffff" onClick={() => close(true)}>OK</Box>
+            bg={C.primary} color={C.onPrimary} onClick={() => close(true)}>OK</Box>
         </HStack>
       </VStack>
     </Modal>
@@ -964,7 +964,7 @@ export function NewDocModal({ open, onClose, onCreate }) {
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => onCreate({
               name: name.trim() || 'Sans titre-1',
               w: Math.max(8, Math.min(16000, Math.round(w))),
@@ -1032,7 +1032,7 @@ export function CanvasSizeModal({ open, onClose, editor, onApply }) {
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => onApply(Math.max(8, Math.round(w)), Math.max(8, Math.round(h)), ax, ay)}>OK</Button>
         </>
       }>
@@ -1086,7 +1086,7 @@ export function FillModal({ open, onClose, fg, bg, onApply }) {
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => onApply({ color, opacity: opacity / 100, blend, feather })}>OK</Button>
         </>
       }>
@@ -1143,7 +1143,7 @@ export function StrokeModal({ open, onClose, fg, onApply }) {
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => onApply({ color: color || fg, width, pos })}>OK</Button>
         </>
       }>
@@ -1206,7 +1206,7 @@ export function ColorRangeModal({ open, onClose, editor, onApply }) {
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             disabled={!rgb} onClick={() => onApply(rgb, tol)}>OK</Button>
         </>
       }>
@@ -1254,7 +1254,7 @@ export function TransformSelModal({ open, onClose, onApply }) {
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => onApply({ dx, dy, sx: sx / 100, sy: sy / 100, angle: (angle * Math.PI) / 180 })}>OK</Button>
         </>
       }>
@@ -1334,7 +1334,7 @@ export function FadeModal({ open, onClose, label = 'le dernier filtre', onApply 
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => onApply(t / 100)}>OK</Button>
         </>
       }>
@@ -1509,7 +1509,7 @@ export function LiquifyModal({ open, onClose, editor, onDone }) {
           <Button variant="outline" size="sm" onClick={reset}>Tout reconstruire</Button>
           <Box flex="1" />
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={apply}>OK</Button>
         </>
       }>
@@ -1605,7 +1605,7 @@ export function FilterGalleryModal({ open, onClose, editor, applyTo, onPick, onA
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose}>Annuler</Button>
-          <Button size="sm" bg={C.primary} color="#ffffff" _hover={{ bg: C.primaryHover }}
+          <Button size="sm" bg={C.primary} color={C.onPrimary} _hover={{ bg: C.primaryHover }}
             onClick={() => (hasParams ? onPick(sel) : onApply(sel))}>
             {hasParams ? 'Régler ce filtre…' : 'Appliquer'}
           </Button>
@@ -1620,14 +1620,14 @@ export function FilterGalleryModal({ open, onClose, editor, applyTo, onPick, onA
               <SimpleGrid columns={4} gap="2">
                 {keys.map((k) => (
                   <Box key={k} cursor="pointer" onClick={() => setSel(k)}
-                    border="2px solid" borderColor={sel === k ? '#4f8fe8' : 'transparent'}
-                    borderRadius="md" overflow="hidden" _hover={{ borderColor: sel === k ? '#4f8fe8' : 'gray.300' }}>
+                    border="2px solid" borderColor={sel === k ? S.accent : 'transparent'}
+                    borderRadius="md" overflow="hidden" _hover={{ borderColor: sel === k ? S.accent : 'gray.300' }}>
                     <Box bg="blackAlpha.50" display="flex" alignItems="center" justifyContent="center" h="86px">
                       {thumbs[k]
                         ? <img src={thumbs[k]} alt={FILTER_DEFS[k]?.label} style={{ maxWidth: '100%', maxHeight: '100%' }} />
                         : <Box w="100%" h="86px" />}
                     </Box>
-                    <Text fontSize="2xs" color={sel === k ? '#4f8fe8' : 'gray.600'} px="1" py="0.5" isTruncated
+                    <Text fontSize="2xs" color={sel === k ? S.accent : 'gray.600'} px="1" py="0.5" isTruncated
                       fontWeight={sel === k ? '600' : '400'}>
                       {FILTER_DEFS[k]?.label || k}
                     </Text>

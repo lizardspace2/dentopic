@@ -300,8 +300,8 @@ export function OptionsBar({
           <Tip label="Contour du tracé (couleur d'arrière-plan)">
             <HStack gap="1">
               <Box w="12px" h="12px" borderRadius="sm" border="1px solid" cursor="pointer"
-                borderColor={opts.shapeStrokeOn ? '#4f8fe8' : 'gray.500'}
-                bg={opts.shapeStrokeOn ? '#4f8fe8' : 'transparent'} color={opts.shapeStrokeOn ? '#ffffff' : fg}
+                borderColor={opts.shapeStrokeOn ? S.accent : 'gray.500'}
+                bg={opts.shapeStrokeOn ? S.accent : 'transparent'} color={opts.shapeStrokeOn ? '#ffffff' : fg}
                 fontSize="2xs" lineHeight="12px" textAlign="center"
                 onClick={() => setOpts({ ...opts, shapeStrokeOn: !opts.shapeStrokeOn })}>
                 {opts.shapeStrokeOn ? '✓' : ''}
@@ -333,8 +333,8 @@ export function OptionsBar({
           <Tip label="Contour (couleur d'arrière-plan)">
             <HStack gap="1">
               <Box w="12px" h="12px" borderRadius="sm" border="1px solid" cursor="pointer"
-                borderColor={opts.shapeStrokeOn ? '#4f8fe8' : 'gray.500'}
-                bg={opts.shapeStrokeOn ? '#4f8fe8' : 'transparent'} color={opts.shapeStrokeOn ? '#ffffff' : fg}
+                borderColor={opts.shapeStrokeOn ? S.accent : 'gray.500'}
+                bg={opts.shapeStrokeOn ? S.accent : 'transparent'} color={opts.shapeStrokeOn ? '#ffffff' : fg}
                 fontSize="2xs" lineHeight="12px" textAlign="center"
                 onClick={() => setOpts({ ...opts, shapeStrokeOn: !opts.shapeStrokeOn })}>
                 {opts.shapeStrokeOn ? '✓' : ''}
@@ -453,7 +453,7 @@ export function OptionsBar({
             </Tip>
             {measure && mm != null && (
               <Tip label="Longueur réelle selon l'étalonnage courant">
-                <Text {...row} color="#4f8fe8" fontWeight="700">≈ {mm.toFixed(2)} mm</Text>
+                <Text {...row} color={S.accent} fontWeight="700">≈ {mm.toFixed(2)} mm</Text>
               </Tip>
             )}
             {measure && (
@@ -488,8 +488,8 @@ export function OptionsBar({
           <Tip label="Cliquer sur le document sélectionne directement le calque sous le curseur">
             <HStack gap="1.5" cursor="pointer" onClick={() => setOpts({ ...opts, autoSelect: !opts.autoSelect })}>
               <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-                borderColor={opts.autoSelect ? '#4f8fe8' : 'gray.500'}
-                bg={opts.autoSelect ? '#4f8fe8' : 'transparent'}
+                borderColor={opts.autoSelect ? S.accent : 'gray.500'}
+                bg={opts.autoSelect ? S.accent : 'transparent'}
                 color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
                 {opts.autoSelect ? '✓' : ''}
               </Box>
@@ -507,8 +507,8 @@ export function OptionsBar({
           <Tip label="Affiche les poignées pour redimensionner le calque">
             <HStack gap="1.5" cursor="pointer" onClick={() => setOpts({ ...opts, transform: !opts.transform })}>
               <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-                borderColor={opts.transform ? '#4f8fe8' : 'gray.500'}
-                bg={opts.transform ? '#4f8fe8' : 'transparent'}
+                borderColor={opts.transform ? S.accent : 'gray.500'}
+                bg={opts.transform ? S.accent : 'transparent'}
                 color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
                 {opts.transform ? '✓' : ''}
               </Box>
@@ -546,7 +546,7 @@ export function OptionsBar({
           <Tip label="Lisse le bord de la sélection (déconseillé pour les angles francs)">
             <HStack gap="1" cursor="pointer" onClick={() => setOpts({ ...opts, selAA: !opts.selAA })}>
               <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-                borderColor={opts.selAA ? '#4f8fe8' : 'gray.500'} bg={opts.selAA ? '#4f8fe8' : 'transparent'}
+                borderColor={opts.selAA ? S.accent : 'gray.500'} bg={opts.selAA ? S.accent : 'transparent'}
                 color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
                 {opts.selAA ? '✓' : ''}
               </Box>
@@ -679,7 +679,7 @@ export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
   const lockBtn = (key, icon, label) => (
     <Tip key={key} label={label}>
       <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="12px"
-        color={act?.[key] ? '#f2c200' : muted} bg={act?.[key] ? 'var(--s-a100)' : 'transparent'}
+        color={act?.[key] ? S.flag : muted} bg={act?.[key] ? 'var(--s-a100)' : 'transparent'}
         _hover={{ color: fg }}
         onClick={() => { if (!act) return; editor.snapshot('Verrou'); act[key] = !act[key]; onChange() }}>
         <Box as={icon} />
@@ -730,7 +730,7 @@ export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
         {lockBtn('lockPx', FiEdit2, 'Verrouiller les pixels — bloque pinceau, gomme, filtres')}
         {lockBtn('lockPos', FiMove, 'Verrouiller la position — l\'outil Déplacement est inactif')}
         {lockBtn('locked', FiLock, 'Tout verrouiller')}
-        {act?.locked && <Text fontSize="2xs" color="#f2c200" ml="1">calque verrouillé</Text>}
+        {act?.locked && <Text fontSize="2xs" color={S.flag} ml="1">calque verrouillé</Text>}
         <Box flex="1" />
         <Text fontSize="2xs" color={muted} flexShrink={0}>Rempl. :</Text>
         {act ? num(act.fill ?? 1, 'Remplissage — affecte les pixels seuls (les effets fx restent visibles)', (v) => { editor.snapshot(); act.fill = v; onChange() })
@@ -798,8 +798,8 @@ export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
                 bg={dropHint?.id === l.id && dropHint.pos === 'no' ? 'rgba(248,113,113,0.18)'
                   : dropHint?.id === l.id && dropHint.pos === 'in' ? 'rgba(79,143,232,0.25)'
                   : editor.activeId === l.id ? 'var(--s-a100)' : editor.selLayerIds?.has(l.id) ? 'var(--s-a50)' : 'transparent'}
-                borderTop={dropHint?.id === l.id && dropHint.pos === 'up' ? '2px solid #4f8fe8' : '2px solid transparent'}
-                borderBottom={dropHint?.id === l.id && dropHint.pos === 'down' ? '2px solid #4f8fe8' : '2px solid transparent'}
+                borderTop={dropHint?.id === l.id && dropHint.pos === 'up' ? `2px solid ${S.accent}` : '2px solid transparent'}
+                borderBottom={dropHint?.id === l.id && dropHint.pos === 'down' ? `2px solid ${S.accent}` : '2px solid transparent'}
                 color={l.visible ? fg : muted}
                 onClick={(e) => {
                   // Ctrl+clic = multi-sélection (pour « Grouper les calques » Ctrl+G)
@@ -827,7 +827,7 @@ export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
               </Tip>
               {l.clip && (
                 <Tip label="Écrêté sur le calque inférieur">
-                  <Text fontSize="xs" color="#4f8fe8" flexShrink="0" fontWeight="700">↳</Text>
+                  <Text fontSize="xs" color={S.accent} flexShrink="0" fontWeight="700">↳</Text>
                 </Tip>
               )}
               <Tip label={isGroup ? 'Groupe de calques — contient les calques imbriqués' : isAdjust ? 'Calque de réglage — clic pour éditer les paramètres' : l.type === 'text' ? 'Calque de texte — éditable dans Propriétés' : l.type === 'shape' ? 'Calque de forme vectoriel — éditable dans Propriétés' : l.locked ? 'Arrière-plan verrouillé — dupliquez-le pour retoucher' : `Calque actif : ${l.name}`}>
@@ -856,7 +856,7 @@ export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
               {l.mask && (
                 <Tip label={l.maskActive ? 'Masque actif — le pinceau édite le masque (noir masque, blanc révèle)' : 'Masque de fusion — clic pour éditer'}>
                   <Box w="30px" h="22px" flexShrink={0} borderRadius="sm" overflow="hidden"
-                    border="2px solid" borderColor={l.maskActive ? '#22d3ee' : 'var(--s-a200)'}
+                    border="2px solid" borderColor={l.maskActive ? S.cyan : 'var(--s-a200)'}
                     cursor="pointer"
                     onClick={(e) => { e.stopPropagation(); editor.snapshot('Masque'); l.maskActive = !l.maskActive; onChange() }}>
                     <img src={editor.maskThumb(l)} alt="" style={{ width: '100%', height: '100%' }} />
@@ -885,7 +885,7 @@ export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
                       onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.duplicateLayer(l.id); onChange() }} />
                   </Tip>
                   <Tip label="Supprimer le calque">
-                    <Box as={FiTrash2} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: '#f87171' }}
+                    <Box as={FiTrash2} fontSize="11px" color={muted} cursor="pointer" _hover={{ color: S.danger }}
                       onClick={(e) => { e.stopPropagation(); editor.snapshot(); editor.removeLayer(l.id); onChange() }} />
                   </Tip>
                 </HStack>
@@ -976,7 +976,7 @@ export function LayersPanel({ editor, onChange, onFx, onAdjust }) {
         </Tip>
         {act && !act.locked && (
           <Tip label="Supprimer le calque">
-            <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="13px" color={muted} _hover={{ color: '#f87171' }}
+            <Center w="22px" h="22px" borderRadius="sm" cursor="pointer" fontSize="13px" color={muted} _hover={{ color: S.danger }}
               onClick={() => { editor.snapshot('Supprimer'); editor.removeLayer(act.id); onChange() }}>
               <Box as={FiTrash2} />
             </Center>
@@ -1104,7 +1104,7 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
       <Section title="Comparaison">
         <Tip label="Original à gauche du séparateur jaune, retouche à droite — Q" display="block">
           <Box as="button" px="2" py="1" fontSize="2xs" borderRadius="sm" cursor="pointer"
-            bg={comparing ? '#f2c200' : 'var(--s-a100)'} color={comparing ? '#111827' : fg}
+            bg={comparing ? S.flag : 'var(--s-a100)'} color={comparing ? S.onFlag : fg}
             fontWeight={comparing ? '700' : '400'} onClick={onCompare}>
             {comparing ? '⬅ AVANT | APRÈS ➡ (glisser le séparateur)' : 'Comparer AVANT / APRÈS'}
           </Box>
@@ -1150,7 +1150,7 @@ export function AdjustPanel({ editor, onChange, wbPick, onWbPick, comparing, onC
             <HStack gap="2">
               <Tip label="Cliquez une zone neutre (grise) de la photo — corrige la dominante couleur">
                 <Box as="button" px="2" py="0.5" fontSize="2xs" borderRadius="sm" cursor="pointer"
-                  bg={wbPick ? '#f2c200' : 'var(--s-a100)'} color={wbPick ? '#111827' : fg}
+                  bg={wbPick ? S.flag : 'var(--s-a100)'} color={wbPick ? S.onFlag : fg}
                   onClick={onWbPick}>
                   {wbPick ? '🎯 Cliquez une zone neutre' : 'Pipette balance des blancs'}
                 </Box>
@@ -1235,7 +1235,7 @@ export function CurvesPanel({ editor, onChange, target }) {
     ctx.beginPath(); ctx.moveTo(0, H); ctx.lineTo(W, 0); ctx.stroke()
     // courbe LUT
     const lut = curveLUT(curves[ch])
-    ctx.strokeStyle = { rgb: '#4f8fe8', r: '#f87171', g: '#4ade80', b: '#60a5fa' }[ch]
+    ctx.strokeStyle = { rgb: svar('--s-accent', '#4f8fe8'), r: '#f87171', g: '#4ade80', b: '#60a5fa' }[ch]
     ctx.lineWidth = 1.5
     ctx.beginPath()
     for (let i = 0; i < 256; i++) {
@@ -1321,8 +1321,8 @@ export function CurvesPanel({ editor, onChange, target }) {
           <HStack gap="1.5" cursor="pointer"
             onClick={() => { editor.adjustVisible = !editor.adjustVisible; onChange() }}>
             <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-              borderColor={editor.adjustVisible ? '#4f8fe8' : 'gray.500'}
-              bg={editor.adjustVisible ? '#4f8fe8' : 'transparent'}
+              borderColor={editor.adjustVisible ? S.accent : 'gray.500'}
+              bg={editor.adjustVisible ? S.accent : 'transparent'}
               color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
               {editor.adjustVisible ? '✓' : ''}
             </Box>
@@ -1450,7 +1450,7 @@ export function DentalPanel({ editor, onChange, dental }) {
                 bg={shadeGuess.rgb ? `rgb(${shadeGuess.rgb.join(',')})` : 'transparent'} />
               <VStack align="stretch" gap="0" flex="1" minW="0">
                 <Text fontSize="2xs" color={fg} fontWeight="700">
-                  Teinte détectée : <Box as="span" color="#f2c200">{shadeGuess.code}</Box>
+                  Teinte détectée : <Box as="span" color={S.flag}>{shadeGuess.code}</Box>
                 </Text>
                 <Text fontSize="2xs" color={muted}>
                   ΔE {shadeGuess.de.toFixed(1)} {shadeGuess.de < 5 ? '— excellente correspondance' : shadeGuess.de < 10 ? '— correspondance correcte' : '— approximative'}
@@ -1468,7 +1468,7 @@ export function DentalPanel({ editor, onChange, dental }) {
             <HStack justify="space-between">
               <Text fontSize="2xs" color={muted}>Teinte de la photo</Text>
               <Tip label="Teinte VITA enregistrée sur la fiche photo">
-                <Text fontSize="xs" fontWeight="700" color={shade ? '#f2c200' : muted}>
+                <Text fontSize="xs" fontWeight="700" color={shade ? S.flag : muted}>
                   {shade || '—'}
                 </Text>
               </Tip>
@@ -1478,8 +1478,8 @@ export function DentalPanel({ editor, onChange, dental }) {
                 <Tip key={s.code} label={`Teinte ${s.code} — enregistrée sur la photo`}>
                   <Box as="button" w="26px" h="26px" borderRadius="sm" cursor="pointer"
                     bg={s.color} border="2px solid"
-                    borderColor={shade === s.code ? '#f2c200' : 'transparent'}
-                    color="#111827" fontSize="2xs" fontWeight="700" lineHeight="22px" textAlign="center"
+                    borderColor={shade === s.code ? S.flag : 'transparent'}
+                    color={S.onFlag} fontSize="2xs" fontWeight="700" lineHeight="22px" textAlign="center"
                     onClick={() => onShade(s.code)}>
                     {s.code}
                   </Box>
@@ -1538,9 +1538,9 @@ export function DentalPanel({ editor, onChange, dental }) {
               <Tip key={t.code} label={`Dent ${t.code} — ${fdiArm === t.code ? 'cliquez sur l\'image' : 'armer la pose'}`}>
                 <Box as="button" flex="1" h="22px" fontSize="2xs" fontWeight="700" borderRadius="sm"
                   cursor="pointer" border="1px solid"
-                  borderColor={fdiArm === t.code ? '#f2c200' : panelBorder}
-                  bg={fdiArm === t.code ? '#f2c200' : 'var(--s-a100)'}
-                  color={fdiArm === t.code ? '#111827' : fg}
+                  borderColor={fdiArm === t.code ? S.flag : panelBorder}
+                  bg={fdiArm === t.code ? S.flag : 'var(--s-a100)'}
+                  color={fdiArm === t.code ? S.onFlag : fg}
                   onClick={() => onFdiArm(fdiArm === t.code ? null : t.code)}>
                   {t.code}
                 </Box>
@@ -1549,7 +1549,7 @@ export function DentalPanel({ editor, onChange, dental }) {
           </HStack>
         ))}
         {fdiArm && (
-          <Text fontSize="2xs" color="#f2c200" fontWeight="700">
+          <Text fontSize="2xs" color={S.flag} fontWeight="700">
             Pose armée : {fdiArm} — cliquez sur l'image
           </Text>
         )}
@@ -1575,7 +1575,7 @@ export function DentalPanel({ editor, onChange, dental }) {
               <HStack key={m.id} gap="2" px="2" py="1" borderRadius="sm" bg="var(--s-a100)" fontSize="2xs">
                 <Text color={muted} w="34px">#{i + 1} {m.t}</Text>
                 <Text flex="1" color={fg}>{m.len.toFixed(1)} px{m.mm != null ? ` · ${m.mm.toFixed(2)} mm` : ''}</Text>
-                <Box as="button" color={muted} cursor="pointer" _hover={{ color: '#f87171' }}
+                <Box as="button" color={muted} cursor="pointer" _hover={{ color: S.danger }}
                   onClick={() => onRemoveMeasure?.(m.id)}>✕</Box>
               </HStack>
             ))}
@@ -1963,7 +1963,7 @@ function LevelsHistCanvas({ editor, ch, inBlack, inWhite, gamma }) {
       ctx.fillStyle = 'rgba(0,0,0,0.45)'
       ctx.fillRect(0, 0, (inBlack / 255) * W, H)
       ctx.fillRect((inWhite / 255) * W, 0, W, H)
-      ctx.fillStyle = '#4f8fe8'
+      ctx.fillStyle = svar('--s-accent', '#4f8fe8')
       const gx = W / 2 + (Math.log(gamma / 100) / Math.log(4)) * (W / 4) // repère gamma approx.
       ctx.fillRect(Math.max(0, Math.min(W - 2, gx)), H - 6, 2, 6)
     } catch { /* doc pas prêt */ }
@@ -2135,7 +2135,7 @@ export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
         {sl('Luminosité', 'light', -100, 100)}
         <HStack gap="1.5" cursor="pointer" onClick={() => setP('colorize', !p.colorize)}>
           <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-            borderColor={p.colorize ? '#4f8fe8' : 'gray.500'} bg={p.colorize ? '#4f8fe8' : 'transparent'}
+            borderColor={p.colorize ? S.accent : 'gray.500'} bg={p.colorize ? S.accent : 'transparent'}
             color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
             {p.colorize ? '✓' : ''}
           </Box>
@@ -2215,7 +2215,7 @@ export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
       <Box h="1px" bg="var(--s-a50)" />
       <HStack gap="1.5" cursor="pointer" onClick={() => { layer.visible = !layer.visible; onChange() }}>
         <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-          borderColor={layer.visible ? '#4f8fe8' : 'gray.500'} bg={layer.visible ? '#4f8fe8' : 'transparent'}
+          borderColor={layer.visible ? S.accent : 'gray.500'} bg={layer.visible ? S.accent : 'transparent'}
           color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
           {layer.visible ? '✓' : ''}
         </Box>
@@ -2223,7 +2223,7 @@ export function AdjustLayerProps({ editor, layer, onChange, onFx }) {
       </HStack>
       <HStack gap="1.5" cursor="pointer" onClick={() => { layer.clip = !layer.clip; onChange() }}>
         <Box w="12px" h="12px" borderRadius="sm" border="1px solid"
-          borderColor={layer.clip ? '#4f8fe8' : 'gray.500'} bg={layer.clip ? '#4f8fe8' : 'transparent'}
+          borderColor={layer.clip ? S.accent : 'gray.500'} bg={layer.clip ? S.accent : 'transparent'}
           color="#ffffff" fontSize="2xs" lineHeight="12px" textAlign="center">
           {layer.clip ? '✓' : ''}
         </Box>
@@ -2275,7 +2275,7 @@ export function HistoryPanel({ editor, onJump }) {
           </HStack>
         </Tip>
       ))}
-      <HStack px="2" py="1.5" gap="2" fontSize="2xs" color="#f2c200" fontWeight="700"
+      <HStack px="2" py="1.5" gap="2" fontSize="2xs" color={S.flag} fontWeight="700"
         bg="var(--s-a100)" borderRadius="sm">
         <Box as={LuHistory} fontSize="11px" />
         <Text>État actuel</Text>
@@ -2341,7 +2341,7 @@ export function SwatchesPanel({ fg, bg, onColor, onPickColor }) {
         {SWATCH_GRID.map((c) => (
           <Tip key={c} label={`${c} — clic : 1er plan · clic droit : arrière-plan`}>
             <Box w="16px" h="16px" borderRadius="sm" cursor="pointer" bg={c}
-              border="1px solid" borderColor={fg === c ? '#4f8fe8' : 'var(--s-a200)'}
+              border="1px solid" borderColor={fg === c ? S.accent : 'var(--s-a200)'}
               onClick={() => onColor('fg', c)}
               onContextMenu={(e) => { e.preventDefault(); onColor('bg', c) }} />
           </Tip>
@@ -2428,7 +2428,7 @@ export function StatusBar({ editor, zoom, tool, onZoom }) {
         <Input
           w="52px" h="17px" fontSize="2xs" px="1" bg="transparent" border="1px solid"
           borderColor="transparent" _hover={{ borderColor: panelBorder }}
-          _focusVisible={{ borderColor: '#4f8fe8', boxShadow: 'none' }}
+          _focusVisible={{ borderColor: S.accent, boxShadow: 'none' }}
           defaultValue={Math.round(zoom * 100) + ' %'}
           key={Math.round(zoom * 100)}
           onKeyDown={(e) => {
@@ -2592,7 +2592,7 @@ export function ContextBar({ items }) {
       ) : (
         <Tip key={i} label={it.tip || it.label}>
           <Box as="button" display="flex" alignItems="center" gap="1.5" px="2" py="1"
-            fontSize="2xs" color={it.active ? '#4f8fe8' : fg} cursor="pointer"
+            fontSize="2xs" color={it.active ? S.accent : fg} cursor="pointer"
             borderRadius="full" _hover={{ bg: 'var(--s-a100)' }}
             onClick={it.onClick}>
             {it.icon && <Box as={it.icon} fontSize="13px" />}
