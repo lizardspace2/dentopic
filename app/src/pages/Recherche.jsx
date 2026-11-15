@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Box, Button, Flex, HStack, Input, SimpleGrid, Text } from '@chakra-ui/react'
 import { FiSearch, FiFilter } from 'react-icons/fi'
 import { Card, EmptyPane, Select, Field, PrimaryButton, Tag, Tip, PageHeader, SearchInput } from '../components/ui'
@@ -39,6 +39,12 @@ export default function Recherche() {
   const nav = useNavigate()
   const [f, setF] = useState(EMPTY)          // brouillon des champs
   const [applied, setApplied] = useState(EMPTY) // filtres réellement appliqués
+  // La barre de recherche de la topbar navigue ici avec ?q=…
+  const [sp] = useSearchParams()
+  useEffect(() => {
+    const q = sp.get('q') || ''
+    if (q) { setF((s) => ({ ...s, q })); setApplied((s) => ({ ...s, q })) }
+  }, [sp])
   const [period, setPeriod] = useState('all')
   const [periodApplied, setPeriodApplied] = useState('all')
   const [advOpen, setAdvOpen] = useState(() => {

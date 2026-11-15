@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   FiSearch, FiHome, FiCamera, FiUsers, FiLayers, FiFolder, FiCalendar,
-  FiMonitor, FiSettings, FiLogOut, FiFilter, FiBell,
-  FiHelpCircle, FiEye, FiMoon, FiSun, FiCommand, FiMenu,
+  FiMonitor, FiSettings, FiLogOut, FiFilter,
+  FiMoon, FiSun, FiCommand, FiMenu,
 } from 'react-icons/fi'
 import Logo from './Logo'
 import { Dot, Tip, ToastHost } from './ui'
@@ -24,8 +24,6 @@ const NAV = [
   { to: '/reglage', label: 'Réglages', icon: FiSettings },
 ]
 
-const TOP_ICONS = [FiBell, FiHelpCircle, FiEye] // + toggle thème + réglages
-
 function initials(name = '') {
   return name.split(/\s+/).filter(Boolean).map((p) => p[0]).join('').slice(0, 2).toUpperCase() || 'DG'
 }
@@ -33,8 +31,21 @@ function initials(name = '') {
 export default function AppShell() {
   const { profile, signOut } = useApp()
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const [mode, setMode] = useState(getMode())
   const [navOpen, setNavOpen] = useState(false) // tiroir latéral (< lg)
+  const [q, setQ] = useState('')
+  const searchRef = useRef(null)
+  const goSearch = () => { const s = q.trim(); if (s) navigate(`/recherche?q=${encodeURIComponent(s)}`) }
+  // Focus de la recherche : ⌘K / Ctrl+K, ou « / » hors champ de saisie
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); searchRef.current?.focus() }
+      else if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) { e.preventDefault(); searchRef.current?.focus() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   const dark = mode === 'dark' // le Studio suit aussi le basculement clair/sombre
   const toggleMode = () => {
     const next = mode === 'dark' ? 'light' : 'dark'
@@ -128,11 +139,15 @@ export default function AppShell() {
           >
             <Box as={FiSearch} color={dark ? C.darkMuted : 'gray.400'} fontSize="13px" />
             <Input
+              ref={searchRef} value={q} onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') goSearch() }}
               variant="flushed" placeholder="Rechercher…" fontSize="xs"
               border="none" _focus={{ boxShadow: 'none' }} h="100%"
               color={dark ? '#dfe6ef' : 'inherit'}
             />
-            <Box as={FiFilter} color={dark ? C.darkMuted : 'gray.400'} fontSize="13px" />
+            <Tip label="Lancer la recherche">
+              <Box as={FiFilter} color={dark ? C.darkMuted : 'gray.400'} fontSize="13px" cursor="pointer" onClick={goSearch} />
+            </Tip>
             <Text fontSize="2xs" color={dark ? C.darkMuted : 'gray.400'}>/</Text>
           </HStack>
           <Box flex="1" />
@@ -142,6 +157,8 @@ export default function AppShell() {
             borderRadius="md" px="2.5" h="26px" gap="1.5"
             fontSize="2xs" color={C.greenText}
             display={{ base: 'none', sm: 'flex' }}
+            cursor="pointer" title="Source d'acquisition — configurer"
+            onClick={() => navigate('/acquisition')}
           >
             <Dot ok size="6px" />
             <Text fontWeight="600">Source non confi…</Text>
@@ -149,14 +166,11 @@ export default function AppShell() {
             <Text isTruncated maxW="110px">E2E-17933332…</Text>
             <Text fontWeight="600">⌄</Text>
           </HStack>
-          <HStack gap="1" color={dark ? C.darkMuted : 'gray.500'} display={{ base: 'none', md: 'flex' }}>
+          <HStack gap="1" color={dark ? C.darkMuted : 'gray.500'} display={{ base: 'none', md: 'flex' }}
+            cursor="pointer" title="Recherche rapide (Ctrl/⌘+K)" onClick={() => searchRef.current?.focus()}>
             <Box as={FiCommand} fontSize="14px" />
             <Text fontSize="2xs" border="1px solid" borderColor={dark ? C.darkBorder : 'gray.300'} borderRadius="sm" px="1">⌘K</Text>
           </HStack>
-          {TOP_ICONS.map((I, i) => (
-            <Box key={i} as={I} fontSize="15px" color={dark ? C.darkMuted : 'gray.500'} cursor="pointer"
-              display={{ base: 'none', md: 'block' }} />
-          ))}
           <Tip label={mode === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}>
             <Box
               as={mode === 'dark' ? FiSun : FiMoon} fontSize="15px" cursor="pointer"
@@ -165,7 +179,10 @@ export default function AppShell() {
               onClick={toggleMode}
             />
           </Tip>
-          <Box as={FiSettings} fontSize="15px" color={dark ? C.darkMuted : 'gray.500'} cursor="pointer" />
+          <Tip label="Réglages">
+            <Box as={FiSettings} fontSize="15px" color={dark ? C.darkMuted : 'gray.500'} cursor="pointer"
+              aria-label="Réglages" onClick={() => navigate('/reglage')} />
+          </Tip>
         </HStack>
 
         <Box flex="1" overflowY="auto" bg={dark ? C.darkBg : C.pageBg}>
