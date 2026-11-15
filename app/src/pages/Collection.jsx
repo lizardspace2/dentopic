@@ -23,11 +23,11 @@ import {
   shareCollection, labelClinicalPhotos,
 } from '../api'
 import { CLINICAL_VIEWS, CLINICAL_STAGES, clinicalLabels } from '../clinical'
-import { SPECIALTIES, specColor } from './DossierPatient'
+import { SPECIALTIES, specColor, COLLECTION_COLORS } from '../brand'
 import Phototheque from './Phototheque'
 import { expandDossierIds, matchesLibraryText } from '../phototheque'
 
-const COLORS = ['#4f46e5', '#4f8fe8', '#0ea5e9', '#14b8a6', '#22c55e', '#84cc16', '#eab308', '#f59e0b', '#ed8936', '#e53e3e', '#ed64a6', '#9f7aea', '#718096']
+const COLORS = COLLECTION_COLORS
 
 export default function Collection() {
   return <Phototheque CollectionsComponent={CollectionsManager} />

@@ -35,19 +35,7 @@ import { photoUrl } from '../media'
 import { DOSSIER_PROJECT_TOOLS } from '../presentationTemplates'
 import { buildContactSheet, fetchImg } from './studio/engine'
 
-// Spécialités dentaires (comme le modal « Nouveau patient » de la concurrence)
-export const SPECIALTIES = [
-  { label: 'Orthodontie', color: '#4f8fe8' },
-  { label: 'Implantologie', color: '#ed8936' },
-  { label: 'Esthétique', color: '#ed64a6' },
-  { label: 'Endodontie', color: '#9f7aea' },
-  { label: 'Parodontie', color: '#48bb78' },
-  { label: 'Prothèse', color: '#a0aec0' },
-  { label: 'Dentisterie conservatrice', color: '#38b2ac' },
-  { label: 'Chirurgie orale', color: '#e53e3e' },
-]
-
-export const specColor = (s) => SPECIALTIES.find((x) => x.label === s)?.color || '#718096'
+import { SPECIALTIES, specColor } from '../brand'
 
 function SpecChip({ label, active, onClick, size = '2xs' }) {
   return (

@@ -24,18 +24,7 @@ import {
   listSocialPosts, getWorkspaceSettings, saveWorkspaceSetting,
 } from '../api'
 
-const PROVIDERS = [
-  { id: 'instagram', label: 'Instagram', color: '#d62976' },
-  { id: 'facebook', label: 'Facebook', color: '#1877f2' },
-  { id: 'tiktok', label: 'TikTok', color: '#000000' },
-  { id: 'linkedin', label: 'LinkedIn', color: '#0a66c2' },
-  { id: 'youtube', label: 'YouTube', color: '#ff0000' },
-  { id: 'pinterest', label: 'Pinterest', color: '#e60023' },
-  { id: 'x', label: 'X (Twitter)', color: '#000000' },
-  { id: 'threads', label: 'Threads', color: '#000000' },
-  { id: 'google_business', label: 'Google Business', color: '#4285f4' },
-]
-const providerOf = (id) => PROVIDERS.find((p) => p.id === id) || PROVIDERS[0]
+import { PROVIDERS, providerOf } from '../brand'
 
 const DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 
