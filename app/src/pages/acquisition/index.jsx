@@ -1,15 +1,15 @@
 // Route /acquisition — flux « source → DentoPic → dossier ».
 // Toutes les actions (source, destination, config appareil, FTP, import, session)
 // se font en popups sans quitter la route — voir ./modals.jsx.
-import { useEffect, useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Box, Button, Center, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
 import {
   FiArrowRight, FiCamera, FiCheck, FiChevronDown, FiChevronRight, FiClock, FiFolder,
   FiFolderPlus, FiMonitor,
 } from 'react-icons/fi'
 import {
-  Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, Dot, ago, isTestName,
+  Card, Tag, PageHeader, PrimaryButton, SearchInput, IconTile, Tip, Dot, ConfirmModal, toast, ago, isTestName,
 } from '../../components/ui'
 import { C } from '../../theme'
 import { useApp } from '../../context/AppContext'
@@ -19,11 +19,22 @@ import {
   createCaptureDevice, updateCaptureDevice, importPhotos, countSessionPhotos, countPhotosByDossier,
   listProtocolSteps, listPhotosByDossier, listRooms,
 } from '../../api'
-import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind } from './constants'
+import { SOURCE_DEFS, sourceLabel, sourceIcon, devKind, deviceFormToPayload } from './constants'
+import { DossierModal, MobileModal, ImportModal, NewAcqModal, DeviceCaptureModal } from './modals'
+import { DeviceModal, DevicePickModal, BridgeBanner, LinkState } from './DeviceModal'
 import {
-  DossierModal, MobileModal, CameraModal,
-  FtpModal, WatchModal, ImportModal, NewAcqModal, DeviceCaptureModal,
-} from './modals'
+  useBridge, withLiveStatus, isBridgeDevice, bridgeQueue, bridgeFile, bridgeAck,
+} from '../../bridge'
+
+// Listes d'appareils par type de source (popups « Appareil photo », « FTP », « Dossier surveillé »)
+const PICKERS = {
+  camera: { title: 'Appareil photo', subtitle: 'Boîtier relié au poste en Wi-Fi, sans Internet',
+    empty: 'Aucun boîtier — ajoutez le vôtre ci-dessous.', add: 'Connecter un boîtier', preset: null },
+  ftp: { title: 'Transfert FTP', subtitle: 'Le boîtier envoie chaque photo à ce poste',
+    empty: 'Aucune liaison FTP — créez-en une ci-dessous, elle restera réutilisable.', add: 'Nouvelle liaison FTP', preset: 'ftp' },
+  watch: { title: 'Dossier surveillé', subtitle: 'Auto-import depuis un dossier de ce poste',
+    empty: 'Aucun dossier surveillé — ajoutez-en un ci-dessous, il restera réutilisable.', add: 'Nouveau dossier surveillé', preset: 'watch' },
+}
 
 // Petit point de statut : vert = configuré, ambre = à configurer
 function StatusDot({ ok }) {
@@ -37,6 +48,13 @@ export default function Acquisition() {
   const navigate = useNavigate()
   const wsId = workspace?.id
   const [d, setD] = useState({ devices: [], dossiers: [], active: [], rooms: [] })
+  const [loaded, setLoaded] = useState(false)
+  // DentoPic Bridge (programme local) : liaisons FTP / Wi-Fi / dossier + état réel des appareils
+  const bridge = useBridge(loaded ? d.devices : null)
+  const devices = withLiveStatus(d.devices, bridge)
+  const [devEdit, setDevEdit] = useState(null) // { device?, preset?, back } — fiche appareil ouverte
+  const [waiting, setWaiting] = useState([])   // photos reçues par le Bridge hors session en cours
+  const [dropWaiting, setDropWaiting] = useState(false)
   const [received, setReceived] = useState(0)
   const [target, setTarget] = useState(null) // dossier ARRIVÉE
   const [source, setSource] = useState(null) // { key, deviceId?, label? } DÉPART
@@ -75,6 +93,7 @@ export default function Acquisition() {
       countPhotosByDossier(wsId),
     ])
     setD({ devices, dossiers, active, rooms })
+    setLoaded(true)
     setPhotoCounts(counts)
     const cur = active[0]
     if (cur) {
@@ -133,7 +152,7 @@ export default function Acquisition() {
 
   // Clic sur une source : mémorise + ouvre la modal de configuration associée
   const pickSource = (def) => {
-    const firstOfType = d.devices.find((x) => devKind(x) === def.key)
+    const firstOfType = devices.find((x) => devKind(x) === def.key)
     setSource({
       key: def.key,
       deviceId: def.deviceId || firstOfType?.id || null,
@@ -143,38 +162,67 @@ export default function Acquisition() {
     else setModal(null)
   }
 
-  // FTP : deviceId=null -> crée une source ; sinon met à jour sa config.
-  // Dans les deux cas la source devient l'appareil sélectionné (réutilisable ensuite).
-  const saveFtp = async (deviceId, { roomId, ...ftp }) => {
-    const dev = deviceId
-      ? await updateCaptureDevice(deviceId, {
-          name: ftp.name?.trim() || undefined,
-          room_id: roomId || null,
-          metadata: { ...d.devices.find((x) => x.id === deviceId)?.metadata, kind: 'ftp', ftp },
-        })
-      : await createCaptureDevice(wsId, {
-          name: ftp.name?.trim() || `FTP — ${ftp.host || 'serveur'}`,
-          connectionType: 'other', roomId, metadata: { kind: 'ftp', ftp },
-        })
-    if (dev) setSource({ key: 'ftp', deviceId: dev.id, label: dev.name })
+  // Fiche appareil (création / réglage de la liaison) — même formulaire que Réglages › Appareils
+  const editDevice = (device, preset, back) => { setDevEdit({ device, preset, back }); setModal('devedit') }
+  const saveDevice = async (form, prev) => {
+    const payload = deviceFormToPayload(form, prev)
+    const dev = prev
+      ? await updateCaptureDevice(prev.id, payload)
+      : await createCaptureDevice(wsId, { ...payload, roomId: payload.room_id, connectionType: payload.connection_type })
+    if (!dev) return
+    setSource({ key: devKind(dev), deviceId: dev.id, label: dev.name })
+    setModal(null)
     await reload()
-    return dev
   }
 
-  const saveWatch = async (deviceId, { roomId, ...watch }) => {
-    const dev = deviceId
-      ? await updateCaptureDevice(deviceId, {
-          name: watch.name?.trim() || undefined,
-          room_id: roomId || null,
-          metadata: { ...d.devices.find((x) => x.id === deviceId)?.metadata, kind: 'watch', watch },
-        })
-      : await createCaptureDevice(wsId, {
-          name: watch.name?.trim() || watch.path || 'Dossier surveillé',
-          connectionType: 'other', roomId, metadata: { kind: 'watch', watch },
-        })
-    if (dev) setSource({ key: 'watch', deviceId: dev.id, label: dev.name })
-    await reload()
-    return dev
+  // ---- Réception réseau : photos en attente dans le Bridge -> session active ----
+  const importing = useRef(false)
+  const failed = useRef(new Set())
+  const stepRef = useRef(null)
+  stepRef.current = activeStep
+  // Une photo n'entre dans la session que si elle a été reçue APRÈS son ouverture
+  // (et par son appareil, s'il est défini) : jamais dans le dossier du patient suivant.
+  const forSession = (it) => active
+    && Date.parse(it.at) >= Date.parse(active.started_at)
+    && (!active.device_id || !bridge.live[active.device_id] || it.sourceId === active.device_id)
+  const pump = async () => {
+    if (importing.current) return
+    importing.current = true
+    try {
+      const items = await bridgeQueue()
+      let n = 0
+      for (const it of items.filter(forSession)) {
+        if (failed.current.has(it.id)) continue
+        const out = await importPhotos(wsId, [await bridgeFile(it)], active.dossier_id || null, active.id, stepRef.current)
+        if (out.length) { await bridgeAck(it.id); n++ }
+        else { failed.current.add(it.id); toast.error(`Import impossible : ${it.name}`) }
+      }
+      setWaiting(items.filter((it) => !forSession(it) || failed.current.has(it.id)))
+      if (n) { setActiveStep(null); reload() }
+    } catch { /* Bridge momentanément injoignable : nouvel essai au prochain relevé */ } finally {
+      importing.current = false
+    }
+  }
+  // un seul onglet importe à la fois (sinon doublons)
+  const pumpOnce = () => (navigator.locks
+    ? navigator.locks.request('dentopic-bridge-import', { ifAvailable: true }, (lock) => lock && pump())
+    : pump())
+  useEffect(() => {
+    if (bridge.up && wsId && (bridge.status.queue || waiting.length)) pumpOnce()
+  }, [bridge.status, active?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const importWaiting = async () => {
+    for (const it of waiting) {
+      const out = await importPhotos(wsId, [await bridgeFile(it)], null, null, null).catch(() => [])
+      if (out.length) { failed.current.delete(it.id); await bridgeAck(it.id) }
+    }
+    toast.success('Photos importées dans « Non triées ».')
+    await pump(); reload()
+  }
+  const discardWaiting = async () => {
+    for (const it of waiting) await bridgeAck(it.id).catch(() => {})
+    setDropWaiting(false)
+    await pump()
   }
 
   const doImport = async (files) => {
@@ -198,6 +246,8 @@ export default function Acquisition() {
     localStorage.setItem('dentopic.acq.checklist', '1')
     setChecklistHidden(true)
   }
+
+  const srcDev = devices.find((x) => x.id === source?.deviceId)
 
   const steps = [
     { done: !!target, label: 'Dossier de destination', desc: 'la destination des photos' },
@@ -292,12 +342,12 @@ export default function Acquisition() {
                   {source?.key === def.key && !source?.deviceId && <Box as={FiCheck} color={C.primary} />}
                 </HStack>
               ))}
-              {d.devices.length > 0 && (
+              {devices.length > 0 && (
                 <Text fontSize="2xs" fontWeight="600" letterSpacing="0.08em" color="gray.400" pt="2">
                   AUTRE APPAREIL
                 </Text>
               )}
-              {d.devices.map((dev) => (
+              {devices.map((dev) => (
                 <HStack key={dev.id} px="3" py="2" borderRadius="lg" gap="3" cursor="pointer"
                   bg={source?.deviceId === dev.id ? C.softBlue : 'transparent'}
                   _hover={{ bg: C.softBlue }}
@@ -328,12 +378,11 @@ export default function Acquisition() {
                 {source?.key === 'direct' && <Box as={FiCheck} color={C.primary} />}
               </HStack>
             </VStack>
-            <Link to="/reglage/appareils" style={{ textDecoration: 'none' }}>
-              <HStack px="3" py="2" mt="1" borderRadius="lg" cursor="pointer" _hover={{ bg: C.softBlue }}>
-                <IconTile icon={FiFolderPlus} />
-                <Text fontSize="sm" color={C.primary} fontWeight="500">Connecter un nouvel appareil</Text>
-              </HStack>
-            </Link>
+            <HStack px="3" py="2" mt="1" borderRadius="lg" cursor="pointer" _hover={{ bg: C.softBlue }}
+              onClick={() => { setDepartOpen(false); editDevice(null, null, null) }}>
+              <IconTile icon={FiFolderPlus} />
+              <Text fontSize="sm" color={C.primary} fontWeight="500">Connecter un nouvel appareil</Text>
+            </HStack>
           </Box>
         )}
 
@@ -373,6 +422,40 @@ export default function Acquisition() {
           </Box>
         )}
       </Card>
+
+      {/* ---- Liaison réseau de l'appareil source (état réel vu par le Bridge) ---- */}
+      {srcDev && isBridgeDevice(srcDev) && (
+        <Card px="4" py="3" mb="4">
+          <HStack gap="3" align="start">
+            <Box flex="1" minW="0">
+              {bridge.up ? <LinkState bridge={bridge} deviceId={srcDev.id} /> : <BridgeBanner bridge={bridge} />}
+            </Box>
+            <Button variant="outline" size="xs" borderRadius="md" onClick={() => editDevice(srcDev, null, null)}>
+              Régler la liaison
+            </Button>
+          </HStack>
+        </Card>
+      )}
+
+      {/* ---- Photos reçues par le Bridge hors session : jamais rangées d'office ---- */}
+      {waiting.length > 0 && (
+        <Card px="4" py="3" mb="4" borderColor={C.amberBorder} bg={C.amberBg}>
+          <HStack gap="3" flexWrap="wrap">
+            <Box flex="1" minW="200px">
+              <Text fontSize="sm" fontWeight="600" color={C.amberText}>
+                {waiting.length} photo(s) reçue(s) hors session
+              </Text>
+              <Text fontSize="xs" color={C.amberText}>
+                {active
+                  ? 'Arrivées avant l’ouverture de la session ou depuis un autre appareil : elles ne sont pas rangées dans le dossier du patient en cours.'
+                  : 'Aucune session ouverte : démarrez la session avant de photographier pour un rangement automatique dans le dossier du patient.'}
+              </Text>
+            </Box>
+            <Button variant="outline" size="xs" borderRadius="md" onClick={importWaiting}>Importer dans « Non triées »</Button>
+            <Button variant="outline" size="xs" borderRadius="md" onClick={() => setDropWaiting(true)}>Supprimer</Button>
+          </HStack>
+        </Card>
+      )}
 
       {/* ---- Session active ---- */}
       {active && (
@@ -494,31 +577,24 @@ export default function Acquisition() {
       <DossierModal open={modal === 'dossier'} onClose={() => setModal(dossierBack)} dossiers={d.dossiers} target={target}
         onPick={(ds) => { setTarget(ds); setModal(dossierBack) }} onCreate={createDest} />
       <MobileModal open={modal === 'mobile'} onClose={close} target={target} onStart={startSession} />
-      <CameraModal open={modal === 'camera'} onClose={close}
-        devices={d.devices.filter((x) => devKind(x) === 'camera')}
-        rooms={d.rooms}
-        selectedId={source?.deviceId}
-        onPick={(dev) => { setSource({ key: 'camera', deviceId: dev.id, label: dev.name }); close() }}
-        onCreate={async (form) => {
-          const dev = await createCaptureDevice(wsId, form)
-          if (dev) { setSource({ key: 'camera', deviceId: dev.id, label: dev.name }); reload() }
-          return dev
-        }} />
-      <FtpModal open={modal === 'ftp'} onClose={close}
-        devices={d.devices.filter((x) => devKind(x) === 'ftp')}
-        rooms={d.rooms}
-        selectedId={source?.deviceId}
-        onPick={(dev) => { setSource({ key: 'ftp', deviceId: dev.id, label: dev.name }); close() }}
-        onSave={saveFtp} />
-      <WatchModal open={modal === 'watch'} onClose={close}
-        devices={d.devices.filter((x) => devKind(x) === 'watch')}
-        rooms={d.rooms}
-        selectedId={source?.deviceId}
-        onPick={(dev) => { setSource({ key: 'watch', deviceId: dev.id, label: dev.name }); close() }}
-        onSave={saveWatch} />
+      {Object.entries(PICKERS).map(([k, p]) => (
+        <DevicePickModal key={k} open={modal === k} onClose={close}
+          title={p.title} subtitle={p.subtitle} emptyText={p.empty} addLabel={p.add}
+          devices={devices.filter((x) => devKind(x) === k)} rooms={d.rooms} bridge={bridge}
+          selectedId={source?.deviceId}
+          onPick={(dev) => { setSource({ key: k, deviceId: dev.id, label: dev.name }); close() }}
+          onAdd={() => editDevice(null, p.preset, k)}
+          onEdit={(dev) => editDevice(dev, null, k)} />
+      ))}
+      <DeviceModal open={modal === 'devedit'} onClose={() => setModal(devEdit?.back || null)}
+        rooms={d.rooms} devices={d.devices} bridge={bridge}
+        device={devEdit?.device || null} preset={devEdit?.preset} onSave={saveDevice} />
+      <ConfirmModal open={dropWaiting} onClose={() => setDropWaiting(false)} onConfirm={discardWaiting}
+        title="Supprimer ces photos ?" confirmLabel="Oui, supprimer"
+        message={`Les ${waiting.length} photo(s) reçue(s) hors session seront effacées du poste sans être importées. Elles restent sur la carte du boîtier.`} />
       <ImportModal open={modal === 'import'} onClose={close} target={target} onImport={doImport} />
       <DeviceCaptureModal open={modal === 'device'} onClose={close} target={target} onCapture={doImport} />
-      <NewAcqModal open={modal === 'new'} onClose={close} target={target} source={source} devices={d.devices}
+      <NewAcqModal open={modal === 'new'} onClose={close} target={target} source={source} devices={devices}
         rooms={d.rooms}
         onPickDest={() => openDossier('new')} onPickSource={pickSource}
         onPickDevice={(dev) => setSource({ key: 'camera', deviceId: dev.id, label: dev.name })}

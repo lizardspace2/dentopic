@@ -14,15 +14,15 @@ export const SOURCE_DEFS = [
   },
   {
     key: 'camera', icon: FiCamera, label: 'Appareil photo',
-    hint: 'Boîtier connecté — Canon, Nikon…', modal: 'camera',
+    hint: 'Boîtier relié en Wi-Fi au poste — Canon, Nikon, Sony, Fujifilm…', modal: 'camera',
   },
   {
     key: 'ftp', icon: FiWifi, label: 'FTP',
-    hint: "Transfert FTP depuis l'appareil", modal: 'ftp',
+    hint: 'Le boîtier envoie ses photos au poste en FTP', modal: 'ftp',
   },
   {
     key: 'watch', icon: FiMonitor, label: 'Dossier surveillé',
-    hint: 'Auto-import depuis un dossier (Nikon WMU, EOS Utility…)', modal: 'watch',
+    hint: 'Auto-import depuis un dossier du poste (EOS Utility, NX Tether, Imaging Edge…)', modal: 'watch',
   },
   {
     key: 'import', icon: FiUpload, label: 'Importer des fichiers',
@@ -40,55 +40,94 @@ export const devKind = (d) =>
   d?.metadata?.kind || (d?.connection_type === 'ftp' ? 'ftp'
     : d?.connection_type === 'watch_folder' ? 'watch' : 'camera')
 
-// Types de connexion proposés dans le formulaire « Ajouter un appareil »
-export const CONNECTION_TYPES = [
-  ['wifi', 'Wi-Fi direct (Canon, Sony…)'],
-  ['ptp', 'Wi-Fi PTP/IP (Nikon Z6 II, Z7 II, Z8, Z9…)'],
-  ['ftp', 'FTP'],
-  ['sd', 'Carte SD'],
-  ['watch_folder', 'Dossier surveillé'],
+// ---- Liaisons boîtier ↔ poste (réseau local, sans Internet) ---------------------
+// Chaque méthode correspond à un pilote du DentoPic Bridge (bridge/src).
+
+export const LINK_METHODS = {
+  ftp: { icon: FiUpload, label: 'Transfert FTP', conn: 'ftp', kind: 'ftp',
+    hint: 'Le boîtier envoie chaque photo au poste dès la prise de vue. Méthode la plus répandue et la plus fiable.' },
+  ptpip: { icon: FiWifi, label: 'Wi-Fi PTP/IP', conn: 'ptp', kind: 'camera',
+    hint: 'Le poste se connecte au boîtier (mode « connexion au PC ») et rapatrie les nouvelles photos.' },
+  ccapi: { icon: FiCamera, label: 'Canon CCAPI', conn: 'wifi', kind: 'camera',
+    hint: 'API Wi-Fi des Canon EOS R récents. Doit être activée sur le boîtier.' },
+  sdcard: { icon: MdOutlineSdCard, label: 'Carte SD Wi-Fi', conn: 'sd', kind: 'camera',
+    hint: 'Carte FlashAir dans le boîtier : pour les appareils sans Wi-Fi intégré.' },
+  watch: { icon: FiMonitor, label: 'Dossier surveillé', conn: 'watch_folder', kind: 'watch',
+    hint: 'Le logiciel du constructeur (Wi-Fi ou USB) ou un lecteur de carte dépose les photos dans un dossier du poste.' },
+  none: { icon: FiLayers, label: 'Sans liaison', conn: 'other', kind: 'camera',
+    hint: 'Appareil déclaré pour mémoire. Les photos sont importées à la main.' },
+}
+
+// Marques : méthodes proposées (la première est recommandée) + où trouver le
+// réglage sur le boîtier. Les menus varient selon le modèle et le firmware.
+export const CAMERA_BRANDS = [
+  { key: 'canon', label: 'Canon', methods: ['ftp', 'ccapi', 'watch', 'ptpip', 'sdcard'], steps: {
+    ftp: 'Menu Réseau › Transfert FTP (EOS R5, R6 II, R3, R1… ; boîtiers plus anciens via un émetteur WFT). Activez le transfert automatique.',
+    ccapi: 'Activez CCAPI sur le boîtier avec l’outil d’activation Canon, puis Menu Réseau › Camera Control API.',
+    watch: 'EOS Utility (Wi-Fi ou USB) : choisissez comme destination le dossier indiqué ci-dessous.',
+    ptpip: 'Menu Réseau › Connexion à EOS Utility. Liaison expérimentale : préférez le FTP.',
+  } },
+  { key: 'nikon', label: 'Nikon', methods: ['ptpip', 'ftp', 'watch', 'sdcard'], steps: {
+    ptpip: 'Menu Réseau › Connecter au PC (Z6 II, Z7 II, Z8, Z9, Zf…). Validez l’appairage sur l’écran du boîtier à la première connexion.',
+    ftp: 'Menu Réseau › Connecter au serveur FTP (Z8, Z9, Z6 III ; autres boîtiers via un émetteur WT). Activez l’envoi automatique.',
+    watch: 'NX Tether ou Wireless Transmitter Utility : choisissez comme destination le dossier indiqué ci-dessous.',
+  } },
+  { key: 'sony', label: 'Sony', methods: ['ftp', 'watch', 'sdcard'], steps: {
+    ftp: 'Menu Réseau › Fonction de transfert FTP › Enregistrer un serveur (α7 III et suivants, α7R, α9, α1…). Activez le transfert automatique.',
+    watch: 'Imaging Edge Desktop (Remote, Wi-Fi ou USB) : choisissez comme destination le dossier indiqué ci-dessous.',
+  } },
+  { key: 'fujifilm', label: 'Fujifilm', methods: ['ftp', 'watch', 'sdcard'], steps: {
+    ftp: 'Menu Réseau › Transfert FTP (X-H2S, X-H2, GFX100 II, ou poignée transmetteur FT-XH).',
+    watch: 'FUJIFILM X Acquire (Wi-Fi ou USB) : choisissez comme destination le dossier indiqué ci-dessous.',
+  } },
+  { key: 'panasonic', label: 'Panasonic', methods: ['watch', 'ftp', 'sdcard'], steps: {
+    watch: 'LUMIX Tether (Wi-Fi ou USB) : choisissez comme destination le dossier indiqué ci-dessous.',
+    ftp: 'Transfert FTP disponible sur certains boîtiers LUMIX S et GH récents.',
+  } },
+  { key: 'om', label: 'OM System / Olympus', methods: ['watch', 'sdcard', 'ftp'], steps: {
+    watch: 'OM Capture (Wi-Fi ou USB) : choisissez comme destination le dossier indiqué ci-dessous.',
+  } },
+  { key: 'other', label: 'Autre', methods: ['ftp', 'watch', 'sdcard', 'ptpip', 'none'], steps: {} },
 ]
 
-// Marques rapides dans « Ajouter un appareil » — pré-remplissent fabricant + connexion
-export const BRAND_PRESETS = [
-  { label: 'Canon WiFi', manufacturer: 'Canon', connectionType: 'wifi', hint: 'Connexion WiFi directe à l’appareil' },
-  { label: 'Nikon WiFi', manufacturer: 'Nikon', connectionType: 'ptp', hint: 'Pairing PTP/IP direct (Z6 II, Z7 II, Z8, Z9…)' },
-  { label: 'Sony WiFi', manufacturer: 'Sony', connectionType: 'wifi', hint: 'Transfert WiFi / Imaging Edge' },
-  { label: 'Autre', manufacturer: '', connectionType: 'wifi', hint: 'Saisie libre' },
-]
+export const brandOf = (manufacturer = '') => {
+  const m = manufacturer.trim().toLowerCase()
+  return CAMERA_BRANDS.find((b) => m && (b.label.toLowerCase().includes(m) || m.startsWith(b.key))) || CAMERA_BRANDS.at(-1)
+}
 
-// ---- « Nouvel appareil » façon concurrent : tuiles source + liaison ----------
+const password = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => 'abcdefghjkmnpqrstuvwxyz23456789'[b % 31]).join('')
 
-// Tuiles « Source d'acquisition » — chaque tuile pré-remplit fabricant/connexion
-// et définit le type fonctionnel (kind) de l'appareil.
-export const DEVICE_SOURCES = [
-  { key: 'manual', icon: FiMonitor, label: 'Manuel / autre', hint: 'Boîtier saisi à la main', kind: 'camera', conn: 'other' },
-  { key: 'mobile', icon: FiSmartphone, label: 'Application mobile', hint: 'QR code — photos en direct', kind: 'camera', conn: 'mobile' },
-  { key: 'canon', icon: FiCamera, label: 'Canon', hint: 'Connexion WiFi directe à l’appareil', kind: 'camera', conn: 'wifi', manufacturer: 'Canon' },
-  { key: 'nikon', icon: FiCamera, label: 'Nikon WiFi', hint: 'Pairing PTP/IP direct (Z6 II, Z7 II, Z8, Z9…)', kind: 'camera', conn: 'ptp', manufacturer: 'Nikon' },
-  { key: 'sdcard', icon: MdOutlineSdCard, label: 'Carte SD Wi-Fi', hint: 'Carte SD Wi-Fi (Toshiba FlashAir, ez Share…) — le bridge relève les nouvelles photos', kind: 'camera', conn: 'sd' },
-  { key: 'ftp', icon: FiWifi, label: 'FTP', hint: 'Transfert FTP depuis l’appareil', kind: 'ftp', conn: 'ftp' },
-  { key: 'watch', icon: FiMonitor, label: 'Dossier surveillé', hint: 'Auto-import depuis un dossier (Nikon WMU, EOS Utility…)', kind: 'watch', conn: 'watch_folder' },
-]
+/** Valeurs par défaut d'une liaison ; `devices` sert à proposer un port FTP libre. */
+export function defaultLink(method, devices = []) {
+  if (method === 'ftp') {
+    const used = new Set(devices.map((d) => String(d.metadata?.link?.port || '')))
+    let port = 2121
+    while (used.has(String(port))) port++
+    return { method, port: String(port), user: 'dentopic', pass: password() }
+  }
+  if (method === 'ptpip') return { method, host: '', port: '15740' }
+  if (method === 'ccapi') return { method, host: '', port: '8080' }
+  if (method === 'sdcard') return { method, host: '' }
+  if (method === 'watch') return { method, path: '', exts: '' }
+  return { method: 'none' }
+}
 
-// Tuiles « Liaison d'acquisition » (section DentoPic Bridge)
-export const LIAISON_DEFS = [
-  { key: 'sdcard', icon: MdOutlineSdCard, label: 'Carte SD Wi-Fi' },
-  { key: 'watch', icon: FiMonitor, label: 'Dossier surveillé' },
-  { key: 'wifi', icon: FiWifi, label: 'Wi-Fi intégré (DCAPI)' },
-  { key: 'ftp', icon: FiUpload, label: 'Passerelle FTP' },
-]
-
-// Select « Connexion » du formulaire appareil — libellés conviviaux.
-// NB : la contrainte SQL n'accepte que wifi|usb|mobile|other — les valeurs
-// riches sont rangées dans metadata.conn par createCaptureDevice.
-export const CONN_SELECT = [
-  ['wifi', 'Wi-Fi'],
-  ['ptp', 'Wi-Fi PTP/IP'],
-  ['usb', 'USB'],
-  ['sd', 'Carte SD Wi-Fi'],
-  ['ftp', 'FTP'],
-  ['watch_folder', 'Dossier surveillé'],
-  ['mobile', 'Application mobile'],
-  ['other', 'Autre'],
-]
+/** Formulaire « appareil » -> colonnes capture_devices (les autres clés de metadata sont préservées) */
+export function deviceFormToPayload(form, prev = null) {
+  const def = LINK_METHODS[form.link.method] || LINK_METHODS.none
+  const allowed = ['wifi', 'usb', 'mobile', 'other']
+  return {
+    name: form.name.trim(),
+    manufacturer: form.manufacturer,
+    model: form.model,
+    room_id: form.roomId || null,
+    connection_type: allowed.includes(def.conn) ? def.conn : 'other',
+    metadata: {
+      ...prev?.metadata,
+      kind: def.kind,
+      conn: allowed.includes(def.conn) ? undefined : def.conn,
+      link: form.link,
+      interop: form.interop || undefined,
+    },
+  }
+}

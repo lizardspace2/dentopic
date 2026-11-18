@@ -1,0 +1,13 @@
+{
+  "name": "dentopic-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Passerelle locale DentoPic : reçoit les photos des boîtiers (FTP, PTP/IP, CCAPI, carte SD Wi-Fi, dossier surveillé) sans Internet",
+  "bin": { "dentopic-bridge": "src/index.js" },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}

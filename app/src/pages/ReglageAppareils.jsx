@@ -8,16 +8,18 @@ import { ReglageNav } from '../components/ReglageNav'
 import { C } from '../theme'
 import { useApp } from '../context/AppContext'
 import {
-  ALLOWED_CONN, createCaptureDevice, createRoom, deleteRoom,
+  createCaptureDevice, createRoom, deleteRoom,
   listCaptureDevices, listRooms, updateCaptureDevice,
 } from '../api'
-import { devKind, sourceLabel } from './acquisition/constants'
-import { DeviceModal } from './acquisition/modals'
+import { LINK_METHODS, deviceFormToPayload } from './acquisition/constants'
+import { DeviceModal, BridgeBanner, LinkState } from './acquisition/DeviceModal'
+import { deviceLink, useBridge, withLiveStatus } from '../bridge'
 
 export default function ReglageAppareils() {
   const { workspace } = useApp()
   const wsId = workspace?.id
   const [devices, setDevices] = useState([])
+  const [loaded, setLoaded] = useState(false)
   const [rooms, setRooms] = useState([])
   const [roomForm, setRoomForm] = useState(null) // { name, location } | null
   const [devModal, setDevModal] = useState(null) // 'new' | device | null
@@ -25,9 +27,13 @@ export default function ReglageAppareils() {
   const reload = async () => {
     if (!wsId) return
     const [devs, rms] = await Promise.all([listCaptureDevices(wsId), listRooms(wsId)])
-    setDevices(devs); setRooms(rms)
+    setDevices(devs); setRooms(rms); setLoaded(true)
   }
   useEffect(() => { reload() }, [wsId])
+
+  // Le Bridge local applique les liaisons des appareils et remonte leur état réel
+  const bridge = useBridge(loaded ? devices : null)
+  const shown = withLiveStatus(devices, bridge)
 
   const roomName = (id) => rooms.find((r) => r.id === id)?.name
 
@@ -45,31 +51,12 @@ export default function ReglageAppareils() {
     setBusy(false)
   }
 
-  // Formulaire DeviceModal -> payload capture_devices (+ metadata fonctionnelle)
-  const saveDevice = async (form) => {
-    const prev = devModal && devModal !== 'new' ? devModal : null
-    const kind = form.src === 'ftp' ? 'ftp' : form.src === 'watch' ? 'watch' : 'camera'
-    const meta = {
-      ...prev?.metadata,
-      source: form.src, kind,
-      liaison: form.liaison || undefined,
-      interop: form.interop || undefined,
-      conn: ALLOWED_CONN.has(form.conn) ? undefined : form.conn,
-    }
-    if (kind === 'ftp') meta.ftp = { ...prev?.metadata?.ftp, host: form.ftpHost }
-    if (kind === 'watch') meta.watch = { ...prev?.metadata?.watch, path: form.watchPath }
-    const payload = {
-      name: form.name.trim(),
-      manufacturer: form.manufacturer,
-      model: form.model,
-      status: form.status,
-      room_id: form.roomId || null,
-      connection_type: ALLOWED_CONN.has(form.conn) ? form.conn : 'other',
-      metadata: meta,
-    }
+  // Formulaire DeviceModal -> capture_devices (la liaison vit dans metadata.link)
+  const saveDevice = async (form, prev) => {
+    const payload = deviceFormToPayload(form, prev)
     const dev = prev
       ? await updateCaptureDevice(prev.id, payload)
-      : await createCaptureDevice(wsId, { ...payload, roomId: payload.room_id, connectionType: payload.connection_type, status: payload.status })
+      : await createCaptureDevice(wsId, { ...payload, roomId: payload.room_id, connectionType: payload.connection_type })
     if (dev) { setDevModal(null); reload() }
     return !!dev
   }
@@ -140,8 +127,9 @@ export default function ReglageAppareils() {
         {/* ---- Appareils de capture ---- */}
         <Box>
           <Text fontSize="lg" fontWeight="700" color={C.ink} mb="3">Appareils de capture</Text>
+          <BridgeBanner bridge={bridge} mb="3" />
           <VStack align="stretch" gap="3">
-            {devices.map((d) => (
+            {shown.map((d) => (
               <Card key={d.id} p="4">
                 <HStack gap="3" flexWrap="wrap">
                   <IconTile icon={FiMonitor} />
@@ -149,12 +137,13 @@ export default function ReglageAppareils() {
                     <HStack gap="2" flexWrap="wrap">
                       <Text fontSize="sm" fontWeight="600" color={C.ink}>{d.name}</Text>
                       {d.status === 'online' ? <Tag color="green">En ligne</Tag> : <Tag color="gray">Hors ligne</Tag>}
-                      <Tag color="blue">{sourceLabel(devKind(d) === 'camera' ? 'camera' : devKind(d))}</Tag>
+                      <Tag color="blue">{LINK_METHODS[deviceLink(d).method]?.label}</Tag>
                       {d.room_id && roomName(d.room_id) && <Tag color="purple">{roomName(d.room_id)}</Tag>}
                     </HStack>
                     <Text fontSize="xs" color="gray.500" isTruncated>
                       {[d.manufacturer, d.model].filter(Boolean).join(' · ') || '—'}
                     </Text>
+                    <LinkState bridge={bridge} deviceId={d.id} />
                   </Box>
                   <HStack gap="2" color="gray.400" flexShrink={0}>
                     <FiWifi /> <Text fontSize="xs">{d.metadata?.conn || d.connection_type || '—'}</Text>
@@ -185,7 +174,7 @@ export default function ReglageAppareils() {
       <DeviceModal
         open={!!devModal}
         onClose={() => setDevModal(null)}
-        rooms={rooms}
+        rooms={rooms} devices={devices} bridge={bridge}
         device={devModal && devModal !== 'new' ? devModal : null}
         onSave={saveDevice} />
 

@@ -159,3 +159,32 @@ SUPABASE_ACCESS_TOKEN=$(grep ^SUPABASE_ACCESS_TOKEN app/.env | cut -d= -f2) \
 - `social-oauth-callback` se déploie avec `--no-verify-jwt` (redirection Meta
   sans session) ; les autres gardent la vérif JWT.
 - `.env` contient aussi les clés publiques Vite (`VITE_SUPABASE_URL/ANON_KEY`).
+
+## Acquisition réseau local : DentoPic Bridge (`../bridge/`)
+
+Un navigateur ne peut ni héberger un serveur FTP ni parler PTP/IP : les liaisons
+boîtier ↔ poste passent par `bridge/`, programme Node **sans dépendance** lancé sur
+le poste de la salle (`node bridge/src/index.js --origin <URL du site>`).
+
+- Pilotes (`bridge/src`) : `ftp.js` (serveur FTP en réception seule), `watch.js`
+  (dossier surveillé), `ptpip.js` (client PTP/IP générique), `httpcams.js`
+  (Canon CCAPI, carte SD FlashAir). Chaque photo reçue va dans une file sur disque
+  (`~/.dentopic-bridge/spool`) jusqu'à acquittement.
+- API sur `127.0.0.1:47600` uniquement, origines web autorisées (localhost +
+  `--origin`) : `GET /status`, `PUT /sources`, `GET /queue`, `GET|DELETE /files/:id`,
+  `POST /probe`. Le Bridge n'a aucun identifiant Supabase : c'est la page
+  Acquisition qui récupère les fichiers et appelle `importPhotos`.
+- Front : `src/bridge.js` (client + `useBridge(devices)` qui synchronise les
+  appareils et remonte leur état réel). La liaison d'un appareil vit dans
+  `capture_devices.metadata.link` (`method`: ftp|ptpip|ccapi|sdcard|watch|none) ;
+  `deviceLink()` relit aussi les anciennes fiches (`metadata.ftp/watch/liaison`).
+- UI unique `pages/acquisition/DeviceModal.jsx` (`DeviceModal`, `LinkSetup`,
+  `BridgeBanner`, `DevicePickModal`), utilisée par Acquisition **et** Réglages ›
+  Appareils. Catalogue marques/méthodes : `CAMERA_BRANDS`, `LINK_METHODS` dans
+  `acquisition/constants.js`.
+- Règle de sécurité patient : une photo n'entre dans la session active que si elle a
+  été reçue après son ouverture (et par son appareil). Les autres restent « hors
+  session » et ne sont jamais rangées d'office dans un dossier patient.
+- Tests : `cd bridge && npm test`. FTP et dossier surveillé sont testés pour de
+  vrai (client `curl`) ; PTP/IP, CCAPI et FlashAir uniquement contre des
+  simulateurs — à valider sur de vrais boîtiers.
